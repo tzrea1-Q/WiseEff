@@ -14,7 +14,7 @@ import { resolveIncludeTarget } from "../dts/configSetResolver";
 import { closureManifest, composeDtsBuildInputs, loadSharedDtsiClosure, mountedSharedPath } from "../shared-dtsi/dependencies";
 import { assertSharedDtsiNewReferences, lockSharedDtsiReferences } from "../shared-dtsi/lifecycle";
 import type { DtsBuildInputs } from "../contracts/dtoSchemas/dtsPreprocessing";
-import { inspectDtsCppIncludes, type DtsPreprocessingReceipt } from "../dts/cppSources";
+import { DtsPreprocessingError, inspectDtsCppIncludes, type DtsPreprocessingReceipt } from "../dts/cppSources";
 import type { SharedReferenceSwitchPreview, SharedSwitchConflict } from "../contracts/dtoSchemas/canonicalMemberAddition";
 import type { ObjectStore } from "../logs/objectStore";
 import { asValueClient, listObservedProperties, lockSourceCatalogGovernance, nearestAncestorCompatibles, parseCompatibles, rawTextToPayload,
@@ -34,13 +34,14 @@ import { loadOrganizationCatalogSnapshot, lockOrganizationModuleRecognition } fr
 import { insertConfigRevision, insertConfigRevisionMembers, nextConfigRevisionNumber } from "../parameter-topology/repository";
 import type { ConfigRevisionManifestMember, ConfigRevisionMemberRole } from "../parameter-topology/types";
 import { getParameterFileCandidateByIdForUpdate } from "./candidateRepository";
-import { registerCanonicalJsonSource } from "./canonicalJsonSource";
+import { checkJsonInstanceMapping, readCurrentJsonInstances, registerCanonicalJsonSource, writeCheckedJsonInstance,
+  type JsonInstanceMapping } from "./canonicalJsonSource";
 import { requireCanonicalUserInvocation, type CanonicalSourceSecurityContext } from "./canonicalSource";
 import { canonicalMemberMutationId, lockMemberAdditionOperation } from "./canonicalMemberAdditionIntents";
 import { createDtsToolchainRunner, type DtsToolchainRunner } from "./dtsToolchain";
 import { loadFormerRootOverlayFiles } from "./configSetSnapshot";
 import { MAX_PARAMETER_SOURCE_BYTES, parseJsonSource, readJsonSourceValue } from "./jsonSource";
-import { assertProjectSourceWritable, configurationSourceFileName, insertFileVersion, insertProjectParameterFile, setCurrentVersion } from "./repository";
+import { assertProjectSourceWritable, configurationSourceFileName, getFileVersionById, insertFileVersion, insertProjectParameterFile, setCurrentVersion } from "./repository";
 import { freezeSourceRevisionRequest, loadSnapshot, loadSourceRevisionCatalogSnapshots, requireCurrentSourceAdministrator,
   sameSourceRevision, sourceRevisionDigest, type SourceRevisionTarget, type SourceRevisionNewProperty } from "./sourceRevisionService";
 import { applySourceRestoration, matchingDeletedSourceAnchors, prepareSourceRestorations, sourceRestorationNodes, type SourceRestoration } from "./sourceRestoration";
@@ -50,6 +51,8 @@ import { withCanonicalSourceAttemptTransaction } from "./canonicalSourceAttemptT
 import { provePrivateSharedConversion } from "./sharedConversion";
 import type { ConfigSetRole } from "./types";
 import { filterPreviouslySuspendedSourceBindings } from "./sourceManagedScope";
+import { retargetProjectIncludes } from "./projectSourcePath";
+import { buildDtsParsedIndex } from "./parseIndex";
 
 export type MemberAdditionInput = {
   projectId: string; configSetId: string; candidateId?: string; fileId?: string;
@@ -58,6 +61,8 @@ export type MemberAdditionInput = {
   removeSharedReference?: {resourceId:string;versionId:string};
   role: ConfigSetRole; sortOrder: number;
   setAsRoot?: boolean;
+  pathCorrection?: string;
+  jsonCorrection?: JsonInstanceMapping & { previousOccurrenceId: string };
   json?: { configurationSchemaId: string; rootPointer: string; mappings: Array<{ definitionId: string; pointer: string }> };
 };
 type Member = {
@@ -89,6 +94,11 @@ type Proof = {
     beforeSources: Array<{fileId:string;fileVersionId:string;referenceId:string;memberId:string;sourceName:string}>;
     beforeFiles:Array<{fileId:string;fileVersionId:string}>; beforeMembers:Member[] };
   rootEdit?: { fileId: string; baseFileVersionId: string; sourceName: string; before: string; after: string };
+  pathCorrection?: { from: string; to: string; references: ReturnType<typeof retargetProjectIncludes>["references"];
+    versions: Array<{ fileId: string; fileVersionId: string; baseFileVersionId: string; contentChanged: boolean }> };
+  jsonCorrection?: { previousOccurrenceId: string; subjectId: string; rootPointer: string;
+    previousBindings: Array<{ bindingId: string; valueId: string }>;
+    values: Array<{ definitionId: string; pointer: string; value: ContractJsonValue }> };
 };
 export type MemberAdditionPreview = {
   proofToken: string; configSetId: string; fileName: string; format: "dts" | "json";
@@ -99,6 +109,8 @@ export type MemberAdditionPreview = {
   sharedConversion?:import("../contracts/dtoSchemas/canonicalMemberAddition").MemberAdditionPreviewResponse["item"]["sharedConversion"];
   sharedRemoval?:Proof["sharedRemoval"];
   rootEdit?: Proof["rootEdit"];
+  pathCorrection?: Proof["pathCorrection"];
+  values?: NonNullable<Proof["jsonCorrection"]>["values"];
   diagnostics: Array<{ severity: "error" | "warning"; code: string; message: string; rawMessage?:string } & Partial<Omit<SharedSwitchConflict,"message">>>;
   impact: { parameterChanges: number; nodeAdditions: number; nodeRemovals: number; retainedBindings: number; sourceReplacements: number; restoredParameters?: number };
 };
@@ -159,7 +171,29 @@ async function inspect(tx: Database, storage: ObjectStore, auth: AuthContext, in
      from public.project_parameter_files file join public.project_parameter_file_versions version on version.id=file.current_version_id and version.file_id=file.id
      where file.id=$1 and file.organization_id=$2 and file.project_id=$3`, [input.fileId, parameterOrganizationId(auth), input.projectId])).rows[0] : null;
   if (input.fileId && !existing) throw new ApiError("NOT_FOUND", "待加入的项目文件或当前版本不存在。");
+  const moving = input.pathCorrection === undefined ? undefined : members.find(row => row.fileId === input.fileId);
+  if (input.pathCorrection !== undefined && !moving) throw new ApiError("NOT_FOUND", "项目文件不属于当前配置。");
+  const correctingJson = input.jsonCorrection ? members.find(row => row.fileId === input.fileId && row.format === "json") : undefined;
+  if (input.jsonCorrection && !correctingJson) throw new ApiError("NOT_FOUND", "项目 JSON 文件不属于当前配置。");
+  const adjusting = moving ?? correctingJson;
   if (existing) await assertProjectSourceWritable(tx, existing.id);
+  if (moving) {
+    const path = input.pathCorrection!;
+    const location = { sourceName: path, severity: "error" };
+    const normalized = path.normalize("NFC");
+    if (members.some(row => {
+      const current = row.sourceName.normalize("NFC");
+      return current === normalized || current.startsWith(`${normalized}/`) || normalized.startsWith(`${current}/`);
+    })) {
+      const message = "目标路径已存在，请选择其他路径。";
+      throw new ApiError("CONFLICT", message, { diagnostics: [{ ...location, code: "source-file-name-conflict", message }] });
+    }
+    if (normalizeManifestLogicalPath(path) !== path || /[\\:"<>?#]/u.test(path)
+      || posixPath.extname(path).toLowerCase() !== posixPath.extname(moving.sourceName).toLowerCase()
+      || !/\.(dts|dtsi|json)$/iu.test(path)) {
+      throw new ApiError("VALIDATION_FAILED", "请输入规范的项目相对路径并保留原扩展名。", { diagnostics: [{ ...location, code: "source-path-invalid", message: "路径或扩展名无效。" }] });
+    }
+  }
   const currentReferences=(await tx.query<{id:string;resourceId:string;versionId:string;mountPath:string;direct:boolean}>(
     `select id,resource_id as "resourceId",revision_id as "versionId",mount_path as "mountPath",is_direct as direct
      from public.project_shared_dtsi_references where organization_id=$1 and project_id=$2 and config_set_id=$3 order by created_at,id`,
@@ -233,16 +267,16 @@ async function inspect(tx: Database, storage: ObjectStore, auth: AuthContext, in
       || existing.configSetId !== input.configSetId || !members.some((row) => row.fileId === existing.id && row.sourceName !== revision.entry_file)) {
       throw new ApiError("VALIDATION_FAILED", "请选择当前配置中尚未作为根文件的 DTS 文件。");
     }
-  } else if (existing?.configSetId) conflict("该文件已属于一个配置，请先从原配置移除后再加入。");
-  const target = removing ? members.find(member=>member.sourceName===revision.entry_file&&member.role==="base"&&member.format==="dts")??null : candidate ? { fileId: `member_${candidate.id}`, fileVersionId: candidate.id, sourceName: candidate.fileName,
+  } else if (existing?.configSetId && !adjusting) conflict("该文件已属于一个配置，请先从原配置移除后再加入。");
+  const target = adjusting ?? (removing ? members.find(member=>member.sourceName===revision.entry_file&&member.role==="base"&&member.format==="dts")??null : candidate ? { fileId: `member_${candidate.id}`, fileVersionId: candidate.id, sourceName: candidate.fileName,
     format: candidate.format, storageKey: candidate.storageKey!, checksum: candidate.checksum!, sizeBytes: candidate.sizeBytes! }
     : existing ? { fileId: existing.id, fileVersionId: existing.fileVersionId,
       sourceName: input.setAsRoot ? members.find((row) => row.fileId === existing.id)!.sourceName : existing.fileName,
       format: existing.format, storageKey: existing.storageKey, checksum: existing.checksum, sizeBytes: existing.sizeBytes }
-    : (converting?sharedTargets.find(member=>member.fileId===converting.fileId):sharedTargets[0])??null;
+    : (converting?sharedTargets.find(member=>member.fileId===converting.fileId):sharedTargets[0])??null);
   if (!target || !["dts", "json"].includes(target.format)) throw new ApiError("VALIDATION_FAILED", "请选择 DTS/JSON 候选或已有文件。");
   const retainedMembers=members.filter(member=>!beforeSources.some(source=>source.fileId===member.fileId));
-  if (normalizeManifestLogicalPath(target.sourceName) !== target.sourceName || !conversion && retainedMembers.some((row) => row.sourceName === target.sourceName && (!(input.setAsRoot||removing) || row.fileId !== target.fileId))) {
+  if (normalizeManifestLogicalPath(target.sourceName) !== target.sourceName || !conversion && retainedMembers.some((row) => row.sourceName === target.sourceName && (!(adjusting||input.setAsRoot||removing) || row.fileId !== target.fileId))) {
     conflict("文件来源名称不合法或与已有成员重名，请使用不同文件名重新上传。");
   }
   if(sharedTargets.length && !conversion) {
@@ -272,7 +306,7 @@ async function inspect(tx: Database, storage: ObjectStore, auth: AuthContext, in
   }
   let afterMembers: Member[] = [...retainedMembers.map(({ fileId, fileVersionId, sourceName, format, role, sortOrder, checksum, sizeBytes }) =>
     ({ fileId, fileVersionId, sourceName, format, role, sortOrder, checksum, sizeBytes })),
-  ...(!input.setAsRoot ? (removing||shared?sharedTargets:[target]).map((row,index)=>({ fileId: row.fileId, fileVersionId: row.fileVersionId, sourceName: row.sourceName, format: row.format,
+  ...(!input.setAsRoot && !adjusting ? (removing||shared?sharedTargets:[target]).map((row,index)=>({ fileId: row.fileId, fileVersionId: row.fileVersionId, sourceName: row.sourceName, format: row.format,
     role: shared ? "include" : input.role, sortOrder: additionSortOrder+index, checksum: row.checksum, sizeBytes: row.sizeBytes })) : [])].sort((a, b) => a.sortOrder - b.sortOrder || a.fileId.localeCompare(b.fileId));
   if(conversion)afterMembers=members.map(({fileId,fileVersionId,sourceName,format,role,sortOrder,checksum,sizeBytes})=>({fileId,fileVersionId,sourceName,format,role,sortOrder,checksum,sizeBytes}));
   let rootEdit: Proof["rootEdit"];
@@ -354,8 +388,7 @@ async function inspect(tx: Database, storage: ObjectStore, auth: AuthContext, in
       : overlays.includes(row.sourceName) && row.format === "dts" ? { ...row, role: "overlay", sortOrder: overlays.indexOf(row.sourceName) + 1 } : row)
       .sort((a, b) => a.sortOrder - b.sortOrder || a.fileId.localeCompare(b.fileId));
   }
-  const dts = afterMembers.filter((row) => row.format === "dts");
-  const entryFile = input.setAsRoot ? target.sourceName : revision.entry_file ?? dts.find((row) => row.role === "base")?.sourceName ?? null;
+  const previousEntry = input.setAsRoot ? target.sourceName : revision.entry_file ?? afterMembers.find((row) => row.format === "dts" && row.role === "base")?.sourceName ?? null;
   const currentPins = (await tx.query<{resourceId:string;versionId:string;mountPath:string}>(`select resource_id as "resourceId",revision_id as "versionId",mount_path as "mountPath"
     from public.project_shared_dtsi_references where organization_id=$1 and project_id=$2 and config_set_id=$3 order by created_at,id`,
     [parameterOrganizationId(auth),input.projectId,input.configSetId])).rows;
@@ -364,7 +397,44 @@ async function inspect(tx: Database, storage: ObjectStore, auth: AuthContext, in
   const declaredBuildInputs = revision.declared_build_inputs;
   const {includeSearchPaths,defines} = composeDtsBuildInputs(declaredBuildInputs,completeResources);
   const overlayNames=afterMembers.filter((row)=>row.format==="dts"&&row.role==="overlay").map(row=>row.sourceName);
-  const overlayOrder=input.setAsRoot?overlayNames:[...revision.overlay_order,...overlayNames.filter(name=>!revision.overlay_order.includes(name))];
+  const previousOverlays = adjusting ? revision.overlay_order
+    : input.setAsRoot ? overlayNames : [...revision.overlay_order,...overlayNames.filter(name=>!revision.overlay_order.includes(name))];
+  let pathCorrection: Proof["pathCorrection"];
+  if (moving) {
+    const from = moving.sourceName, to = input.pathCorrection!;
+    const files = new Map(members.filter(row => row.format === "dts").map(row => [row.sourceName, {
+      content: contents.get(row.fileId)!, fileVersionId: row.fileVersionId
+    }]));
+    let retargeted: ReturnType<typeof retargetProjectIncludes> | undefined;
+    if (moving.format === "dts" && previousEntry) {
+      const sharedNames = new Set(currentResources.flatMap(resource => resource.item.members.map(member => mountedSharedPath(resource.mountPath, member.sourceName))));
+      try {
+        retargeted = retargetProjectIncludes({ entryFile: previousEntry, overlayOrder: previousOverlays, includeSearchPaths, defines, files }, from, to, sharedNames);
+      } catch (error) {
+        if (!(error instanceof DtsPreprocessingError)) throw error;
+        const prefix = files.get(error.fileName)?.content.slice(0, error.offset);
+        throw new ApiError("VALIDATION_FAILED", error.message, { diagnostics: [{
+          sourceName: error.fileName, line: prefix?.split("\n").length,
+          severity: "error", code: error.code, message: error.message
+        }] });
+      }
+    }
+    const versions: NonNullable<Proof["pathCorrection"]>["versions"] = [];
+    afterMembers = afterMembers.map(member => {
+      const sourceName = member.fileId === moving.fileId ? to : member.sourceName;
+      const before = contents.get(member.fileId)!;
+      const after = retargeted?.files.get(sourceName)?.content ?? before;
+      if (sourceName === member.sourceName && before === after) return member;
+      const fileVersionId = `path_${sourceRevisionDigest([member.fileVersionId, sourceName, after])}`;
+      versions.push({ fileId: member.fileId, fileVersionId, baseFileVersionId: member.fileVersionId, contentChanged: before !== after });
+      contents.set(member.fileId, after);
+      return { ...member, sourceName, fileVersionId, checksum: `sha256:${sourceRevisionDigest(Buffer.from(after))}`, sizeBytes: Buffer.byteLength(after) };
+    });
+    pathCorrection = { from, to, versions, references: retargeted?.references ?? [] };
+  }
+  const entryFile = pathCorrection && previousEntry === pathCorrection.from ? pathCorrection.to : previousEntry;
+  const overlayOrder = previousOverlays.map(name => pathCorrection && name === pathCorrection.from ? pathCorrection.to : name);
+  const dts = afterMembers.filter(row => row.format === "dts");
   let continuity: ReviewedSourceContinuity | null = null;
   let resolved: ReturnType<typeof resolveDtsConfigSet> | null = null;
   const switchSource=(message:string,sourceName:string,offset?:number,node?:string,property?:string,identity=false):SharedSwitchConflict=>{
@@ -399,7 +469,7 @@ async function inspect(tx: Database, storage: ObjectStore, auth: AuthContext, in
   const diagnostics: MemberAdditionPreview["diagnostics"] = [];
   const restorationScope = { organizationId: parameterOrganizationId(auth), projectId: input.projectId, configSetId: input.configSetId };
   let anchors: Awaited<ReturnType<typeof matchingDeletedSourceAnchors>> = [];
-  if (target.format === "json" && !input.json) diagnostics.push({ severity: "warning", code: "json-unregistered",
+  if (target.format === "json" && !input.json && !adjusting) diagnostics.push({ severity: "warning", code: "json-unregistered",
     message: "JSON 文件已校验；未登记为参数，将产生 0 个新 Binding。" });
   if (dts.length) {
     if (!entryFile || dts.filter((row) => row.role === "base").length !== 1
@@ -423,6 +493,25 @@ async function inspect(tx: Database, storage: ObjectStore, auth: AuthContext, in
   }
   const cohort: Cohort[] = [], targets: SourceRevisionTarget[] = [], newProperties: NewProperty[] = [], originTransfers: Proof["originTransfers"] = [];
   const scope = { organizationId: parameterOrganizationId(auth), projectId: input.projectId, configSetId: input.configSetId };
+  let jsonCorrection: Proof["jsonCorrection"];
+  let checkedJson: Awaited<ReturnType<typeof checkJsonInstanceMapping>> | undefined;
+  if (input.jsonCorrection) {
+    if (!snapshot) conflict("JSON 实例纠正需要已发布的配置规范。");
+    const choice = input.jsonCorrection;
+    const { items } = await readCurrentJsonInstances(tx, snapshot, { ...scope, fileId: target.fileId });
+    const previous = items.find(row => row.occurrenceId === choice.previousOccurrenceId);
+    if (!previous) conflict("当前 JSON 实例已变化，请重新选择。");
+    checkedJson = await checkJsonInstanceMapping(tx, snapshot, scope.organizationId, choice, contents.get(target.fileId)!);
+    const subjectId = checkedJson.subject.id;
+    const collision = await tx.query(`
+      select 1 from parameter_catalog.project_parameter_source_occurrences where organization_id=$1 and project_id=$2
+        and config_set_id=$3 and file_id=$4 and occurrence_kind='json' and configuration_schema_subject_id=$5 and root_pointer=$6`,
+    [scope.organizationId, scope.projectId, scope.configSetId, target.fileId, subjectId, choice.rootPointer]);
+    if (collision.rowCount) conflict("目标配置规范和 JSON Pointer 已有实例，请选择其他目标。");
+    jsonCorrection = { previousOccurrenceId: previous.occurrenceId, subjectId, rootPointer: choice.rootPointer,
+      previousBindings: previous.bindings.map(({ bindingId, valueId }) => ({ bindingId, valueId })),
+      values: checkedJson.values.map(({ definitionId, pointer, value }) => ({ definitionId, pointer, value })) };
+  }
   const retainedCohort = await loadSourceBindingCohortReadOnly(tx, scope);
   const currentCohort = await filterPreviouslySuspendedSourceBindings(tx, { ...scope, baseConfigRevisionId: revision.id },
     retainedCohort);
@@ -435,6 +524,7 @@ async function inspect(tx: Database, storage: ObjectStore, auth: AuthContext, in
     }
   }
   for (const entry of currentCohort) {
+    if (entry.sourceOccurrenceId === jsonCorrection?.previousOccurrenceId) continue;
     const pin = await loadOwnedProjectValueSourcePin(tx, { organizationId: parameterOrganizationId(auth), projectId: input.projectId, bindingId: entry.bindingId, projectValueId: entry.oldValueId });
     if (!pin || pin.configRevisionId !== revision.id || pin.valueState !== "present" || !members.some((row) => row.fileId === pin.fileId && row.fileVersionId === pin.fileVersionId)) conflict("参数来源已变化，请重新预览。");
     const old = await readOwnedProjectValueIdentity(tx, { organizationId: parameterOrganizationId(auth), projectId: input.projectId, bindingId: entry.bindingId, projectValueId: entry.oldValueId });
@@ -473,7 +563,7 @@ async function inspect(tx: Database, storage: ObjectStore, auth: AuthContext, in
         sourcePinId: pin.sourcePinId, fromFileId: pin.fileId, toFileId: origin.fileId });
     }
   }
-  if (snapshot && resolved && continuity) for (const node of resolved.effective.nodesByLocator.values()) {
+  if (snapshot && resolved && continuity && !adjusting) for (const node of resolved.effective.nodesByLocator.values()) {
     if (node.deleted) continue;
     const subject = resolveObservedSubject(snapshot, { compatibles: parseCompatibles(node.properties.get("compatible")?.rawText ?? null), nodeName: node.name,
       ownerCompatibles: nearestAncestorCompatibles(resolved.effective.nodesByLocator, node.nodeLocator) });
@@ -538,7 +628,14 @@ async function inspect(tx: Database, storage: ObjectStore, auth: AuthContext, in
     sharedConversion={...conversion,semanticEqual:true,identitiesRetained:true,origins:cohort.map(pin=>({bindingId:pin.bindingId,sourcePinId:pin.sourcePinId,
       fileId:pin.fileId,fileVersionId:pin.fileVersionId,propertyName:pin.propertyName,locator:pin.locator}))};
   }
+  if (adjusting && (targets.length || restorations.length || newProperties.length
+    || beforeNodes.length !== (continuity?.nodes.length ?? 0)
+    || beforeNodes.some(node => !continuity?.nodes.some(after => after.logicalNodeId === node.id)))) {
+    conflict("路径更正改变了生效参数或节点身份，请修正引用后重新预览。");
+  }
   const facts = { kind: "member_addition" as const, organizationId: parameterOrganizationId(auth), projectId: input.projectId, configSetId: input.configSetId,
+    ...(pathCorrection ? { pathCorrection } : {}),
+    ...(jsonCorrection ? { jsonCorrection } : {}),
     ...(sharedConversion?{sharedConversion}:{}),
     ...(input.setAsRoot ? { setAsRoot: true } : {}),
     ...(recomposing?{sharedSwitch:{beforeReferences:currentReferences,beforeSources,beforeMembers:members.map(({storageKey:_key,currentVersionId:_current,currentRole:_role,currentOrder:_order,...member})=>member),beforeFiles:[...beforeSources,...retainedSources.filter(source=>sharedTargets.some(target=>target.fileId===source.fileId))].map(({fileId,fileVersionId})=>({fileId,fileVersionId}))}}:{}),
@@ -548,7 +645,7 @@ async function inspect(tx: Database, storage: ObjectStore, auth: AuthContext, in
         .map(({memberId,fileId,fileVersionId,sourceName})=>({memberId,fileId,fileVersionId,sourceName}))})),...(rootEdit?{rootEdit}:{}) } : {}),
     candidateId: candidate?.id ?? null, fileId: target.fileId, baseConfigRevisionId: revision.id,
     baseDigest: sourceRevisionDigest(members.map(({ storageKey: _storage, currentVersionId: _version, currentRole: _role, currentOrder: _order, ...row }) => row)),
-    proposedDigest: (removing?afterMembers.find(member=>member.fileId===target.fileId)!.checksum:target.checksum).replace(/^sha256:/, ""), entryFile, includeSearchPaths, overlayOrder, declaredBuildInputs,
+    proposedDigest: (removing||moving?afterMembers.find(member=>member.fileId===target.fileId)!.checksum:target.checksum).replace(/^sha256:/, ""), entryFile, includeSearchPaths, overlayOrder, declaredBuildInputs,
     ...(resolved?.preprocessing?{preprocessing:resolved.preprocessing.receipt}:{}),
     members: afterMembers, cohort, continuity, targets, newProperties, ...(restorations.length ? { restorations } : {}), originTransfers, json: input.json ?? null,
     catalogRelease: snapshot ? { id: snapshot.release.id, digest: snapshot.release.digest } : null };
@@ -582,7 +679,9 @@ async function inspect(tx: Database, storage: ObjectStore, auth: AuthContext, in
         after:contents.get(afterMembers.find(member=>member.sourceName===sourceName)?.fileId??"")??null,
         projectOwned:!oldNames.has(sourceName)&&!nextNames.has(sourceName)})),effective,build:{mode:"release",passed:true,includeSearchPaths,defines}};
   }
-  const preview: MemberAdditionPreview = { proofToken: proof.proofDigest, configSetId: input.configSetId, fileName: target.sourceName, format: target.format,
+  const preview: MemberAdditionPreview = { proofToken: proof.proofDigest, configSetId: input.configSetId, fileName: pathCorrection?.to ?? target.sourceName, format: target.format,
+    ...(pathCorrection ? { pathCorrection } : {}),
+    ...(jsonCorrection ? { values: jsonCorrection.values } : {}),
     ...(sharedConversion?{sharedConversion}:{}),
     ...(shared ? { sharedReference: proof.sharedReference,sharedComposition:proof.sharedComposition, rootEdit } : {}),
     ...(switchPreview?{sharedSwitch:switchPreview}:{}),
@@ -593,7 +692,7 @@ async function inspect(tx: Database, storage: ObjectStore, auth: AuthContext, in
       nodeRemovals: beforeNodes.filter((row) => !continuity?.nodes.some((node) => node.logicalNodeId === row.id)).length,
       retainedBindings: cohort.length - targets.filter((row) => row.action === "delete").length - restorations.length,
       sourceReplacements: originTransfers.length, restoredParameters: restorations.length } };
-  return { proof, preview, contents, candidate, target,resolved };
+  return { proof, preview, contents, candidate, target, resolved, checkedJson, organizationSnapshot: snapshot };
 }
 
 export async function previewCanonicalMemberAddition(db: Database, storage: ObjectStore, auth: AuthContext, input: MemberAdditionInput,
@@ -651,6 +750,35 @@ export async function applyCanonicalMemberAddition(db: Database, storage: Object
     const attribution = trustedDomainAttribution(security.invocation);
     let fileVersionId = target.fileVersionId;
     const versionIds = new Map<string, string>();
+    for (const edit of proof.pathCorrection?.versions ?? []) {
+      const member = proof.members.find(row => row.fileId === edit.fileId)!;
+      const base = await getFileVersionById(tx, { versionId: edit.baseFileVersionId });
+      if (!base || base.fileId !== edit.fileId) conflict("项目文件版本已变化，请重新预览。");
+      const content = contents.get(edit.fileId)!;
+      const stored = edit.contentChanged ? await attempt.objectStore.put({
+        organizationId: parameterOrganizationId(auth), fileName: `${randomUUID()}.dts`, contentType: "text/plain", bytes: Buffer.from(content)
+      }) : null;
+      if (stored && sourceRevisionDigest(await attempt.objectStore.getBounded!(stored.storageKey, MAX_PARAMETER_SOURCE_BYTES)) !== member.checksum.replace(/^sha256:/, "")) {
+        conflict("项目来源写入校验失败，配置未改变。");
+      }
+      const document = inspected.resolved?.preprocessing?.originalDocuments.get(member.sourceName);
+      const parsedIndex = edit.contentChanged && !/\.(h|hpp)$/iu.test(member.sourceName)
+        ? buildDtsParsedIndex(content, document) : base.parsedIndex;
+      await insertFileVersion(tx, { id: edit.fileVersionId, fileId: edit.fileId, versionNumber: 0,
+        storageKey: stored?.storageKey ?? base.storageKey, checksum: member.checksum,
+        sizeBytes: member.sizeBytes, parsedIndex, origin: "writeback", attribution });
+      if (member.format === "dts" && !/\.(h|hpp)$/iu.test(member.sourceName)) {
+        await ingestDtsFileVersion(tx, edit.fileVersionId, content, document,
+          inspected.resolved ? new Set(inspected.resolved.effective.nodesByLocator.keys()) : undefined);
+      }
+      const updated = await tx.query(`update public.project_parameter_files set current_version_id=$2, updated_at=now(),
+        file_name=case when id=$4 then $5 else file_name end where id=$1 and current_version_id=$3`,
+      [edit.fileId, edit.fileVersionId, edit.baseFileVersionId, target.fileId,
+        configurationSourceFileName(input.configSetId, proof.pathCorrection!.to)]);
+      if (updated.rowCount !== 1) conflict("项目文件已变化，整次更正已回滚。");
+      versionIds.set(edit.fileId, edit.fileVersionId);
+      if (edit.fileId === target.fileId) fileVersionId = edit.fileVersionId;
+    }
     if(proof.sharedConversion)for(const source of derived)versionIds.set(source.fileId,source.fileVersionId);
     for(const source of proof.sharedConversion?[]:derived.length?derived:candidate?[target]:[]) {
       const stored = proof.sharedComposition ? await attempt.objectStore.put({ organizationId: parameterOrganizationId(auth),
@@ -682,7 +810,7 @@ export async function applyCanonicalMemberAddition(db: Database, storage: Object
     }
     if(proof.sharedSwitch) {
       await tx.query("select public.apply_shared_dtsi_switch($1,$2::jsonb)",[requestId,JSON.stringify(derived.map(source=>({fileId:source.fileId,fileVersionId:versionIds.get(source.fileId)!})))]);
-    } else if(proof.sharedConversion) {
+    } else if(proof.sharedConversion || proof.pathCorrection || proof.jsonCorrection) {
       // Exact existing versions acquire an immutable upstream reference; no source or role is rewritten.
     } else if (input.setAsRoot) {
       for (const member of proof.members) {
@@ -791,18 +919,29 @@ export async function applyCanonicalMemberAddition(db: Database, storage: Object
     if (proof.json && snapshot) await registerCanonicalJsonSource(tx, storage, auth, snapshot, { projectId: input.projectId,
       configSetId: input.configSetId, fileId: target.fileId, fileVersionId, ...proof.json,
       invocation: security.invocation, requestId: security.requestId, refusalSink: security.refusalSink });
+    const jsonCorrection = proof.jsonCorrection && inspected.checkedJson && inspected.organizationSnapshot
+      ? await writeCheckedJsonInstance(tx, inspected.organizationSnapshot, {
+        organizationId: parameterOrganizationId(auth), projectId: input.projectId, configSetId: input.configSetId,
+        fileId: target.fileId, fileVersionId, configRevisionId: revisionId, rootPointer: proof.jsonCorrection.rootPointer
+      }, inspected.checkedJson).then(result => ({ previousOccurrenceId: proof.jsonCorrection!.previousOccurrenceId,
+        successorOccurrenceId: result.occurrenceId, bindingIds: result.bindings.map(binding => binding.id) })) : undefined;
     const receipt = { requestId, configRevisionId: revisionId, fileId: target.fileId, fileVersionId,
+      ...(proof.pathCorrection ? { pathCorrection: proof.pathCorrection } : {}),
+      ...(jsonCorrection ? { jsonCorrection } : {}),
       ...(proof.sharedComposition?{derivedSources:derived.map(source=>({fileId:source.fileId,fileVersionId:versionIds.get(source.fileId)!}))}:{}),
       ...(proof.rootEdit ? { rootFileVersionId: versionIds.get(proof.rootEdit.fileId) } : {}), sourceRevisionProofDigest: proof.proofDigest, results };
     await writeTrustedAuditEventInTx(asAuditTx(tx), { id: auditRef, invocation: security.invocation, app: "parameters", kind: "parameter-topology-governance",
       action: "value-change-applied", severity: "Medium", projectId: input.projectId, targetType: "project-parameter-value-change-request", targetId: requestId,
-      metadata: { applicationMode: "administrator_direct", appliedByUserId: auth.user.id, requestKind: "member_addition", operation: proof.sharedConversion?"convert_private_shared":proof.sharedRemoval?"remove_shared_reference":proof.sharedSwitch?"switch_shared_version":input.setAsRoot ? "set_root" : "add_member",
+      metadata: { applicationMode: "administrator_direct", appliedByUserId: auth.user.id, requestKind: "member_addition", operation: proof.jsonCorrection ? "correct_json_instance" : proof.pathCorrection ? "correct_source_path" : proof.sharedConversion?"convert_private_shared":proof.sharedRemoval?"remove_shared_reference":proof.sharedSwitch?"switch_shared_version":input.setAsRoot ? "set_root" : "add_member",
         restoredParameters: proof.restorations?.length ?? 0, configSetId: input.configSetId, result: receipt }, traceId: security.requestId });
     if (candidate) await tx.query("update public.project_parameter_file_candidates set status='active',activated_at=now(),activated_by_user_id=$2,activated_version_id=$3 where id=$1 and status='ready'",
       [candidate.id, auth.user.id, fileVersionId]);
     await tx.query(`update public.project_parameter_value_change_requests set status='approved',apply_outcome='committed',applied_at=now(),
       applied_audit_ref=$2,applied_file_version_ids=$3::jsonb,applied_source_result=$4::jsonb,updated_at=now() where id=$1 and status='pending'`,
     [requestId, auditRef, JSON.stringify([...versionIds.values()].length ? [...versionIds.values()] : [fileVersionId]), JSON.stringify(receipt)]);
+    if (jsonCorrection) await tx.query(`insert into parameter_catalog.json_instance_corrections
+      (previous_occurrence_id,successor_occurrence_id,request_id) values ($1,$2,$3)`,
+    [jsonCorrection.previousOccurrenceId, jsonCorrection.successorOccurrenceId, requestId]);
     if(intent)await tx.query("update public.member_addition_intents set status='applied' where id=$1 and status='pending'",[intent.id]);
     return receipt;
   }); } catch (error) { rethrowSourceTransactionError(error); }

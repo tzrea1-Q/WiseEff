@@ -134,7 +134,7 @@ export function createDtsStructuredClient(client: ApiClient = createDefaultApiCl
     async getBaseline(projectId, baselineId) {
       return client.get<{
         item: DtsReleaseBaseline;
-        members: Array<{ baselineId: string; fileId: string; fileVersionId: string; versionNumber: number }>;
+        members: Array<{ baselineId: string; fileId: string; fileName?: string; fileVersionId: string; versionNumber: number }>;
       }>(routeBaseline(projectId, baselineId));
     },
     async getReleaseReadiness(projectId, configSetId, options) {

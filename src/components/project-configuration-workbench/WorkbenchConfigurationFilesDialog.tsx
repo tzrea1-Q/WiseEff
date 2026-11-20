@@ -49,13 +49,16 @@ export type WorkbenchConfigurationFilesDialogProps = {
   onRemoveSharedReference?: (member:DtsConfigSetMemberFile)=>void;
   onCreateShared?: (member: DtsConfigSetMemberFile) => void;
   onConvertShared?: (member: DtsConfigSetMemberFile) => void;
+  onCorrectConfigSet?: () => void;
+  onCorrectFile?: (kind: "path" | "json", member: DtsConfigSetMemberFile) => void;
 };
 
 export function WorkbenchConfigurationFilesDialog({
   open, onClose, configSet, members, canAdmin, pendingAction, loading, error, operationError = "", ready, canonical, onRetry,
   availableFiles, addErrors, memberFileId, memberRole, memberSortOrder, onMemberFileIdChange,
   onMemberRoleChange, onMemberSortOrderChange, onAddMember, onRemoveMember, canRequestReviewedMemberRemoval,
-  onOpenFile, onUpdateFile, onOpenVersions, onAddSourceFile, onCanonicalAdd, onReviewedMemberRemoval, onSetRoot,onSwitchSharedVersion,onRemoveSharedReference,onCreateShared,onConvertShared
+  onOpenFile, onUpdateFile, onOpenVersions, onAddSourceFile, onCanonicalAdd, onReviewedMemberRemoval, onSetRoot,onSwitchSharedVersion,onRemoveSharedReference,onCreateShared,onConvertShared,
+  onCorrectConfigSet, onCorrectFile
 }: WorkbenchConfigurationFilesDialogProps) {
   const addErrorId = useId();
   const closeRef = useRef<HTMLButtonElement>(null);
@@ -75,9 +78,12 @@ export function WorkbenchConfigurationFilesDialog({
           <h2 id={titleId}>配置组成</h2>
           <p id={descriptionId}>{configSet.name === "default" ? "默认配置" : configSet.name} · {members.length} 个文件{!canAdmin ? " · 只读" : ""}</p>
         </div>
-        <Button ref={closeRef} type="button" variant="ghost" size="icon-sm" aria-label="关闭配置组成" disabled={busy} onClick={onClose}>
-          <X aria-hidden="true" />
-        </Button>
+        <div className="flex items-center gap-2">
+          {canAdmin && configSet.name !== "default" && onCorrectConfigSet ? <Button type="button" variant="outline" size="sm" disabled={busy} onClick={onCorrectConfigSet}>更正配置集资料</Button> : null}
+          <Button ref={closeRef} type="button" variant="ghost" size="icon-sm" aria-label="关闭配置组成" disabled={busy} onClick={onClose}>
+            <X aria-hidden="true" />
+          </Button>
+        </div>
       </header>
       <div className="workbench-configuration-files-dialog__body" aria-busy={loading || busy}>
         {canonical ? <p className="workbench-configuration-files-dialog__note">此配置已登记来源。添加或移除文件均需预览并确认，项目文件及历史会保留。</p> : null}
@@ -110,6 +116,10 @@ export function WorkbenchConfigurationFilesDialog({
               <Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => member.sharedReference ? onOpenFile(member.fileId) : onUpdateFile(member.fileId)}>{member.sharedReference ? "查看源码" : canAdmin ? "更新文件" : "更新记录"}</Button>
               <RowActionMenu label={`${member.fileName} 文件操作`} triggerLabel={`${member.fileName} 更多`} items={[
                 { id: "versions", label: "版本历史与下载", disabled: busy, onSelect: () => onOpenVersions(member.fileId) },
+                ...(canAdmin && checked && !member.sharedReference && member.currentVersionId && onCorrectFile && /\.(dts|dtsi|json)$/iu.test(member.fileName)
+                  ? [{ id: "correct-path", label: "更正文件路径", disabled: busy, onSelect: () => onCorrectFile("path", member) },
+                    ...(member.format === "json" ? [{ id: "correct-json", label: "更正 JSON 实例关联", disabled: busy, onSelect: () => onCorrectFile("json", member) }] : [])]
+                  : []),
                 ...(canAdmin&&checked&&member.sharedReference?.direct&&onSwitchSharedVersion
                   && members.find(item=>item.sharedReference?.resourceId===member.sharedReference!.resourceId)?.fileId===member.fileId
                   ?[{id:"switch-shared",label:"切换共享版本",disabled:busy,onSelect:()=>onSwitchSharedVersion(member)}]:[]),

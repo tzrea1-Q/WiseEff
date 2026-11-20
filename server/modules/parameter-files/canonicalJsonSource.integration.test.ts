@@ -13,6 +13,7 @@ import { createPostgresDatabase, getRootPostgresPool } from "../../shared/databa
 import { createLocalObjectStore } from "../logs/objectStore";
 import { createUserInvocation } from "../auth/trustedInvocation";
 import { createTrustedRefusalAuditSink } from "../audit/trustedRefusalSink";
+import { dropLabRuntimeLogins, provisionPublicationRuntimeLogins } from "../catalog-publication/runtime/provisionRuntimeLogins";
 import { asValueClient, listCatalogBindingRowsForProject, loadPublishedCatalog, readCanonicalBindingChangeHistory } from "../parameter-bindings/catalogProjectValueSync";
 import { casCurrentTip, insertProjectValue, loadProjectValueById } from "../parameter-bindings/values/repositories";
 import { loadOwnedProjectValueSourcePin } from "../parameter-bindings/values";
@@ -28,6 +29,7 @@ import { createRouter } from "../../shared/http/router";
 import { createHttpServer } from "../../shared/http/server";
 import { requestJson } from "../../test/testClient";
 import { registerCatalogProjectValueConsumerRoutes } from "../parameter-bindings/catalogProjectValueRoutes";
+import { registerParameterFileRoutes } from "./routes";
 import { createWiseEffServer } from "../../app";
 import { createLocalAuthService } from "../auth/localAuth";
 import { hashLocalAccountPassword } from "../auth/localAccountCredentials";
@@ -39,6 +41,8 @@ const USER = "user-t11-json";
 const SUBJECT = "csub_t11_json";
 const MODEL = "wiseeff.t11.limits";
 const DEFINITION = "pdef_acme_power_iin_max";
+const alternateSchema = { subjectId: "csub_t1581_json", schemaId: "wiseeff.t1581.limits",
+  definitionId: "pdef_t1581_iin_max", revisionId: "drev_t1581_iin_max_1" };
 const SOURCE = '{ "a/b":{"":{"limit":36.5,"enabled":false}}, "untouched":[1,2] }\n';
 
 it("atomically refuses an existing incorrect JSON root digest when upgrading 0152", async () => {
@@ -157,7 +161,7 @@ describe("canonical JSON configuration source", () => {
        values ('t11-json-reviewer-role','reviewer-t11-json',$1,$2,'software-committer')`,
       [ORG, PROJECT]
     );
-    await installConfigurationSourceFixture(db,auth,{ subjectId: SUBJECT,schemaId: MODEL });
+    await installConfigurationSourceFixture(db,auth,{ subjectId: SUBJECT,schemaId: MODEL, alternateSchema });
     SET = (await createConfigSet(db,auth,{ projectId: PROJECT,name: "JSON configuration" })).id;
     const uploaded = await uploadProjectParameterFile(db,storage,auth,{ projectId: PROJECT,fileName: "settings.json",bytes: Buffer.from(SOURCE) });
     fileId = uploaded.file.id; versionId = uploaded.version.id;
@@ -167,6 +171,73 @@ describe("canonical JSON configuration source", () => {
   afterAll(async () => {
     await db?.close(); await database?.drop();
     if (storageDirectory) await rm(storageDirectory, { recursive: true, force: true });
+  });
+
+  it("corrects the JSON schema and root through the API and replays both exact value identities", async () => {
+    const projectId = "project-t11-json-correction";
+    await db.query("insert into projects(id,organization_id,name,code,status) values ($1,$2,'JSON correction','T1581','initialized')",
+      [projectId, ORG]);
+    const set = await createConfigSet(db, auth, { projectId, name: "JSON association correction" });
+    const file = await uploadProjectParameterFile(db, storage, auth, {
+      projectId, fileName: "association.json", bytes: Buffer.from('{"wrong":{"limit":11},"right":{"limit":22}}')
+    });
+    await addConfigSetFile(db, auth, { configSetId: set.id, fileId: file.file.id, role: "base" });
+    const runToken = `jsoncorr${process.pid}`;
+    const { apiUrl } = await provisionPublicationRuntimeLogins(database.url, { mode: "lab", runToken });
+    const apiDb = createPostgresDatabase(apiUrl);
+    try {
+      function server() {
+        const router = createRouter();
+        const options = { db: apiDb, objectStore: storage, getCurrentAuthContext: () => auth, refusalAuditSink: refusalSink };
+        registerParameterFileRoutes(router, options);
+        registerCatalogProjectValueConsumerRoutes(router, options);
+        return createHttpServer(router);
+      }
+      const projectPath = `/api/v2/projects/${projectId}`;
+      const path = `${projectPath}/parameter-files/${file.file.id}/configuration-instances`;
+      const api = <T,>(url: string, payload?: unknown) => requestJson<T>(server(), url,
+        payload ? { method: "POST", body: JSON.stringify(payload) } : undefined);
+      const registration = await api<{items:Array<{id:string;currentValueId:string}>}>(path, {
+        configSetId: set.id, fileVersionId: file.version.id, configurationSchemaId: MODEL, rootPointer: "/wrong",
+        mappings: [{ definitionId: DEFINITION, pointer: "/wrong/limit" }]
+      });
+      expect(registration.status, registration.bodyText).toBe(201);
+      const old = registration.body.items[0]!;
+      const values = `${projectPath}/parameter-bindings`;
+      const replayPath = `${values}/${old.id}/export?projectValueId=${old.currentValueId}`;
+      const historical = await api(replayPath);
+      expect(historical.status, historical.bodyText).toBe(200);
+      const instances = await api<{items:Array<{occurrenceId:string;rootPointer:string;bindings:unknown[]}>}>(path);
+      expect(instances.status, instances.bodyText).toBe(200);
+      expect(instances.body.items).toMatchObject([{ rootPointer: "/wrong",
+        bindings: [{ bindingId: old.id, pointer: "/wrong/limit", value: 11 }] }]);
+      const correction = `${path}/${instances.body.items[0]!.occurrenceId}/correction`;
+      const next = { configurationSchemaId: alternateSchema.schemaId, rootPointer: "/right",
+        mappings: [{ definitionId: alternateSchema.definitionId, pointer: "/right/limit" }] };
+      expect((await api(`${correction}/preview`, { ...next, rootPointer: "/missing" })).status).toBe(409);
+      expect((await api(`${correction}/preview`, { ...next, mappings: [{ definitionId: DEFINITION, pointer: "/right/limit" }] })).status).toBe(409);
+      expect((await api(`${correction}/preview`, { ...next, mappings: [{ definitionId: alternateSchema.definitionId, pointer: "/wrong/limit" }] })).status).toBe(409);
+      const collision = await api(`${correction}/preview`, { configurationSchemaId: MODEL, rootPointer: "/wrong",
+        mappings: [{ definitionId: DEFINITION, pointer: "/wrong/limit" }] });
+      expect(collision.status).toBe(409);
+      const preview = await api<{item:{proofToken:string}}>(`${correction}/preview`, next);
+      expect(preview.status, preview.bodyText).toBe(200);
+      expect(preview.body.item).toMatchObject({ values: [{ pointer: "/right/limit", value: 22 }] });
+      const apply = { ...next, proofToken: preview.body.item.proofToken, reason: "Correct authored instance root", clientMutationId: "t1581-json" };
+      expect((await api(`${correction}/apply`, { ...apply, proofToken: "0".repeat(64) })).status).toBe(409);
+      const result = await api<{item:{jsonCorrection:{previousOccurrenceId:string;successorOccurrenceId:string}}}>(`${correction}/apply`, apply);
+      expect(result.status, result.bodyText).toBe(200);
+      expect(result.body.item.jsonCorrection.previousOccurrenceId).toBe(instances.body.items[0]!.occurrenceId);
+      expect((await api(`${correction}/apply`, apply)).body).toEqual(result.body);
+      const current = await api<{items:Array<{occurrenceId:string}>}>(path);
+      expect(current.body.items).toMatchObject([{ occurrenceId: result.body.item.jsonCorrection.successorOccurrenceId,
+        configurationSchemaId: alternateSchema.schemaId, rootPointer: "/right", bindings: [{ pointer: "/right/limit", value: 22 }] }]);
+      expect((await api(replayPath)).body).toEqual(historical.body);
+      expect((await api<{items:Array<{id:string}>}>(values)).body.items.some(row => row.id === old.id)).toBe(false);
+    } finally {
+      await apiDb.close();
+      await dropLabRuntimeLogins(database.url, runToken);
+    }
   });
 
   it("registers an explicit governed root without a DTS node and prepares a typed decimal edit", async () => {

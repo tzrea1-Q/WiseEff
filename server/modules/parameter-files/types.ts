@@ -289,12 +289,15 @@ export type FileConfigSetMembershipDto = {
 
 export type BaselineStatus = "draft" | "released" | "historical";
 
+export type BaselineErratum = { id: string; note: string; source: string; actorName: string; createdAt: string };
+
 export type ReleaseBaselineDto = {
   id: string;
   organizationId: string;
   configSetId: string;
   name: string;
   notes?: string;
+  errata?: BaselineErratum[];
   status: BaselineStatus;
   createdBy?: string;
   createdAt: string;
@@ -304,6 +307,7 @@ export type ReleaseBaselineMemberDto = {
   baselineId: string;
   fileId: string;
   fileVersionId: string;
+  fileName?: string;
   versionNumber: number;
 };
 

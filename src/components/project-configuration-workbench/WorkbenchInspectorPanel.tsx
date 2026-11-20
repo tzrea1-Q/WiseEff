@@ -67,7 +67,7 @@ export type WorkbenchInspectorPanelProps = {
   baselineActionError: string;
   baselineCompare: DtsCompareBaselineResult | null;
   baselineCompareAgainst: "working" | "released";
-  baselinePinnedMembers: Array<{ fileId: string; fileVersionId: string; versionNumber: number }>;
+  baselinePinnedMembers: Array<{ fileId: string; fileName?: string; fileVersionId: string; versionNumber: number }>;
   baselinePinnedMembersLoading: boolean;
   baselinePinnedMembersError: string;
   onRetryBaselineMembers: () => void;
@@ -83,6 +83,7 @@ export type WorkbenchInspectorPanelProps = {
   onCompareBaseline: (against: "working" | "released") => void;
   onOpenRelease: () => void;
   onOpenRestoreBaseline: () => void;
+  onCorrectBaseline?: (baseline: DtsReleaseBaseline) => void;
   onSelectBaselineCompareMember: (member: DtsBaselineMemberComparison) => void;
   activeCandidate: ParameterFileCandidate | null;
   sourcePreview: ParameterFileSourcePreview | null;
@@ -172,6 +173,7 @@ export function WorkbenchInspectorPanel({
   onCompareBaseline,
   onOpenRelease,
   onOpenRestoreBaseline,
+  onCorrectBaseline,
   onSelectBaselineCompareMember,
   activeCandidate,
   sourcePreview,
@@ -290,7 +292,7 @@ export function WorkbenchInspectorPanel({
             releaseBlockedReason={sessionDraftsDirty ? "请先保存或撤销本地变更" : !releaseReadiness?.canRelease ? "请先处理定版检查问题" : undefined}
             comparing={pendingAction === "compare-baseline"}
             onSelectBaseline={onSelectBaseline} onRetry={onBaselinesRetry} onCompare={onCompareBaseline}
-            onOpenRelease={onOpenRelease} onOpenRestore={onOpenRestoreBaseline} onSelectCompareMember={onSelectBaselineCompareMember} />
+            onOpenRelease={onOpenRelease} onOpenRestore={onOpenRestoreBaseline} onCorrectBaseline={onCorrectBaseline} onSelectCompareMember={onSelectBaselineCompareMember} />
           {canAdmin ? <details className="configuration-versions-dialog__checks" open={!readinessLoading && (!releaseReadiness?.available || issues.length > 0)}>
             <summary>定版检查<span>{checkStatus}</span></summary>{releaseIssues}
           </details> : null}

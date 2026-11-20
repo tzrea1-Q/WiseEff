@@ -63,6 +63,7 @@ import {
 } from "./workbenchInspectorModel";
 import { WorkbenchInspectorPanel } from "./WorkbenchInspectorPanel";
 import { WorkbenchConfigurationFilesDialog } from "./WorkbenchConfigurationFilesDialog";
+import { WorkbenchCorrectionDialog, type WorkbenchCorrection } from "./WorkbenchCorrectionDialog";
 import { WorkbenchMemberAdditionDialog } from "./WorkbenchMemberAdditionDialog";
 import type { SharedSwitchConflict } from "@wiseeff/dto-schemas";
 import { WorkbenchRevisionGate } from "./WorkbenchRevisionGate";
@@ -117,6 +118,7 @@ import { createCanonicalConflictClient } from "@/infrastructure/http/canonicalCo
 import { createCanonicalMemberAdditionClient } from "@/infrastructure/http/canonicalMemberAdditionClient";
 import { createSharedDtsiClient } from "@/infrastructure/http/sharedDtsiClient";
 import { createAdministratorMemberRemovalClient } from "@/infrastructure/http/administratorMemberRemovalClient";
+import { createConfigurationCorrectionClient } from "@/infrastructure/http/configurationCorrectionClient";
 
 export type ProjectConfigurationWorkbenchProject = {
   id: string;
@@ -195,6 +197,10 @@ export function ProjectConfigurationWorkbench({
   const { toast } = useToast();
   const [memberRemovalTarget, setMemberRemovalTarget] = useState<DtsConfigSetMemberFile | null>(null);
   const [setRootTarget, setSetRootTarget] = useState<DtsConfigSetMemberFile | null>(null);
+  const correctionClient = useMemo(() => apiMode && apiClient ? createConfigurationCorrectionClient(apiClient, project.id) : null,
+    [apiMode, apiClient, project.id]);
+  const [correction, setCorrection] = useState<WorkbenchCorrection | null>(null);
+  useEffect(() => { setCorrection(null); }, [project.id, organizationId, currentUserId]);
   const [reviewedMemberRemovalTarget, setReviewedMemberRemovalTarget] = useState<DtsConfigSetMemberFile | null>(null);
   const [sourceUpdateReviewTarget, setSourceUpdateReviewTarget] = useState<HTMLDivElement | null>(null);
   const [singleConflictReview, setSingleConflictReview] = useState<{ candidateId: string; active: boolean } | null>(null);
@@ -1901,6 +1907,7 @@ export function ProjectConfigurationWorkbench({
               sourceEditing={selectedMember?.format === "dts"}
               readinessLoading={readinessLoading}
               onOpenCreateBaseline={handleOpenCreateBaseline}
+              onCorrectBaseline={correctionClient ? item => setCorrection({ kind: "baseline", item }) : undefined}
               releaseIssues={readinessLoading ? <SectionSkeleton label="正在检查配置版本…" />
                 : readinessError ? <SectionError message={readinessError} onRetry={() => setReadinessRetry((value) => value + 1)} />
                 : <WorkbenchReleaseReadinessIssues readiness={releaseReadiness}
@@ -2263,6 +2270,10 @@ export function ProjectConfigurationWorkbench({
         onSwitchSharedVersion={apiMode?member=>{setSwitchSharedMember(member);if(member.sharedReference){const task={scope:switchTaskKey,reference:member.sharedReference,draft:{versionId:"",reason:""}};try{saveSwitchTask(task);}catch{setSwitchTask(task);}}openMemberAddition();}:undefined}
         onRemoveSharedReference={apiMode?member=>{if(member.sharedReference){const task:SwitchTask={scope:switchTaskKey,operation:"remove",reference:member.sharedReference,draft:{versionId:"",reason:""}};try{saveSwitchTask(task);}catch{setSwitchTask(task);}openMemberAddition();}}:undefined}
         onSetRoot={apiMode ? setSetRootTarget : undefined}
+        onCorrectConfigSet={correctionClient ? () => setCorrection({ kind: "config", item: selectedConfigSet }) : undefined}
+        onCorrectFile={correctionClient ? (kind, member) => setCorrection({
+          kind, configSetId: selectedConfigSet.id, fileId: member.fileId, fileName: member.fileName
+        }) : undefined}
         onConvertShared={apiMode&&sharedImportRevisionId?member=>{if(!member.currentVersionId)return;dismissSwitchTask();setConversionSource({configRevisionId:sharedImportRevisionId,fileId:member.fileId,fileVersionId:member.currentVersionId,sourceName:member.fileName});openMemberAddition();}:undefined}
         onCreateShared={apiMode && sharedDtsiClient && sharedImportRevisionId ? member => {
           void runAction("create-shared",async () => {
@@ -2278,6 +2289,20 @@ export function ProjectConfigurationWorkbench({
           });
         } : undefined}
       /> : null}
+      {canAdmin && correctionClient && correction ? <WorkbenchCorrectionDialog target={correction} client={correctionClient}
+        onClose={() => setCorrection(null)} onSaved={() => {
+          setCorrection(null);
+          if (correction.kind === "config") workspaceLoadSession.retryConfigSets();
+          else if (correction.kind === "baseline") setBaselinesRetry(value => value + 1);
+          else {
+            workspaceLoadSession.retryFiles();
+            workspaceLoadSession.retryMembers();
+            setSourceWorkflowReloadToken(value => value + 1);
+            setVersionsReloadToken(value => value + 1);
+            setReadinessRetry(value => value + 1);
+          }
+          showToast("已保存更正。");
+        }} /> : null}
       {memberAdditionOpen && memberAdditionScope===switchTaskKey && canAdmin && selectedConfigSet ? <WorkbenchMemberAdditionDialog key={switchTaskKey} projectId={project.id} configSets={configSets}
         client={additionClient} sharedClient={sharedDtsiClient}
         canContinueOperation={()=>currentMemberAdditionScope.current===switchTaskKey}
