@@ -174,6 +174,7 @@ export const routeManifest = [
     module: "users",
     stability: "commercial-readiness"
   },
+  { id: "users.correctLocalUsername", method: "PATCH", path: "/api/v1/users/:userId/username", module: "users", stability: "commercial-readiness" },
 
   { id: "parameters.listProjects", method: "GET", path: "/api/v1/projects", module: "parameters", stability: "mvp" },
   {
@@ -1442,6 +1443,7 @@ export const routeManifest = [
   { id: "deviceBridges.listMine", method: "GET", path: "/api/v1/device-bridges/mine", module: "device-bridge", stability: "mvp" },
   { id: "deviceBridges.listOrganization", method: "GET", path: "/api/v1/device-bridges/organization", module: "device-bridge", stability: "mvp" },
   { id: "deviceBridges.getOrganizationBridge", method: "GET", path: "/api/v1/device-bridges/organization/:bridgeId", module: "device-bridge", stability: "mvp" },
+  { id: "deviceBridges.renameOrganizationBridge", method: "PATCH", path: "/api/v1/device-bridges/organization/:bridgeId", module: "device-bridge", stability: "mvp" },
   { id: "deviceBridges.revokeOrganizationBridge", method: "POST", path: "/api/v1/device-bridges/organization/:bridgeId/revoke", module: "device-bridge", stability: "mvp" },
   { id: "deviceBridges.updateBridge", method: "PATCH", path: "/api/v1/device-bridges/:bridgeId", module: "device-bridge", stability: "mvp" },
   { id: "deviceBridges.revokeBridge", method: "POST", path: "/api/v1/device-bridges/:bridgeId/revoke", module: "device-bridge", stability: "mvp" },

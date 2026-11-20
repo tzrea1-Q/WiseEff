@@ -22,6 +22,7 @@ import {
   insertUser,
   insertPasswordCredential,
   lockUserById,
+  updateLocalUsername,
   updateOrganizationRoles,
   updatePasswordCredential,
   updateProjectWorkflowRoles,
@@ -54,6 +55,8 @@ import { assertAdministratorContinuity, hasOrganizationRole, lockAdministratorMu
 import { getAuthContext } from "../auth/repository";
 import { canOperateInOrganization } from "../auth/policy";
 import { hashLocalAccountPassword, validateLocalAccountPassword, validateLocalAccountUsername } from "../auth/localAccountCredentials";
+import { requireActiveOrganization } from "../auth/organizationLifecycle";
+import { requirePlatformOrganizationManager } from "./platformOrganizations";
 
 const roleIds = new Set<BackendRoleId>([
   "guest",
@@ -147,7 +150,7 @@ async function auditUserMutation(
   tx: AuditTx,
   invocation: TrustedInvocationContext,
   input: {
-    kind: "user-create" | "user-update" | "user-activation" | "user-role-replace" | "user-password-reset" | "user-delete";
+    kind: "user-create" | "user-update" | "user-username-correction" | "user-activation" | "user-role-replace" | "user-password-reset" | "user-delete";
     action: "create" | "update" | "activate" | "deactivate" | "replace-roles" | "reset-password" | "delete";
     userId: string;
     metadata: Record<string, unknown>;
@@ -393,6 +396,36 @@ export async function updateUserProfile(
     }, context);
 
     return user;
+  });
+}
+
+export async function correctLocalUsername(db: Database, caller: UserInvocationContext, userId: string, rawUsername: string, context: AuditCorrelationContext) {
+  const { auth, organizationId, invocation } = governanceScope(caller);
+  requirePlatformOrganizationManager(auth);
+  const username = normalizeUsername(rawUsername);
+  requireUsername(username);
+
+  return db.transaction(async (tx) => {
+    await lockAdministratorMutation(tx);
+    requirePlatformOrganizationManager(await getAuthContext(tx, auth.user.id));
+    await requireActiveOrganization(tx, organizationId, true);
+    const locked = await lockUserById(tx, { organizationId, userId });
+    const user = locked ? await getUserById(tx, { organizationId, userId }) : null;
+    if (!user?.username) throw new ApiError("NOT_FOUND", "Local login username was not found.", { userId });
+    if (username === user.username) return user;
+
+    await updateLocalUsername(tx, userId, username);
+    await auditUserMutation(asAuditTx(tx), invocation, {
+      kind: "user-username-correction", action: "update", userId,
+      metadata: { previousUsername: user.username, username }
+    }, context);
+    return { ...user, username };
+  }).catch((error: unknown) => {
+    const pgError = error as { code?: string; constraint?: string };
+    if (pgError?.code === "23505" && pgError.constraint === "user_password_credentials_username_unique_idx") {
+      throw new ApiError("CONFLICT", "Username is already registered.", { username });
+    }
+    throw error;
   });
 }
 

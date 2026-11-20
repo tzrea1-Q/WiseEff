@@ -284,6 +284,11 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     responseBody: "UserGovernanceResponse",
     additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
   },
+  "users.correctLocalUsername": {
+    summary: "Correct a governed user's local login username as a platform super administrator",
+    tags: ["users"], requestBody: "CorrectLocalUsernameRequest", responseBody: "UserGovernanceResponse",
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
 
   "parameters.listProjects": { summary: "List projects", tags: ["parameters"], responseBody: "ProjectListResponse" },
   "parameters.listConfigSetFiles": {
@@ -2354,6 +2359,11 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     tags: ["device-bridge"], responseBody: "OrganizationDeviceBridgeResponse",
     additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse" }
   },
+  "deviceBridges.renameOrganizationBridge": {
+    summary: "Correct a member's Bridge display name as a platform super administrator",
+    tags: ["device-bridge"], requestBody: "RenameOrganizationDeviceBridgeRequest", responseBody: "OrganizationDeviceBridgeResponse",
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
   "deviceBridges.revokeOrganizationBridge": {
     summary: "Revoke an organization member's bridge credentials and connections with an audited reason",
     tags: ["device-bridge"], requestBody: "RevokeOrganizationDeviceBridgeRequest", responseBody: "OrganizationDeviceBridgeResponse",
@@ -2390,9 +2400,9 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
 
 for (const routeId of [
   "organization.get", "organization.workspaceSummary", "organization.update", "users.list", "users.create", "users.setOidcIdentity", "users.update", "users.delete", "users.activation",
-  "users.replaceRoles", "users.replaceOrganizationRoles", "users.resetPassword", "users.getProjectWorkflowRoleBindings", "users.replaceProjectWorkflowRoleBindings",
+  "users.replaceRoles", "users.replaceOrganizationRoles", "users.resetPassword", "users.correctLocalUsername", "users.getProjectWorkflowRoleBindings", "users.replaceProjectWorkflowRoleBindings",
   "users.listRegistrationRoleRequests", "users.approveRegistrationRoleRequest", "users.enableBasicRegistrationRoleRequest", "users.rejectRegistrationRoleRequest",
-  "deviceBridges.listOrganization", "deviceBridges.getOrganizationBridge", "deviceBridges.revokeOrganizationBridge",
+  "deviceBridges.listOrganization", "deviceBridges.getOrganizationBridge", "deviceBridges.renameOrganizationBridge", "deviceBridges.revokeOrganizationBridge",
   "audit.createEvent", "audit.listEvents", "jobs.get", "jobs.events", "parameterSpecs.listReviewTasks",
   "parameterModules.getRegistry", "parameterModules.discoveryHints", "parameterModules.listDriverRegistry",
   "catalog.listSubjects", "catalog.getSubject", "catalog.listSubjectDefinitions", "catalog.listDefinitions",

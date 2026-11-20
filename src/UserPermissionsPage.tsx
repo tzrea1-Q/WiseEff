@@ -78,7 +78,8 @@ export type UserGovernanceActions = {
   setUserActive(userId: string, isActive: boolean): Promise<User | void>;
   deleteUser(userId: string): Promise<void>;
   resetUserPassword?(userId: string, password: string): Promise<User | void>;
-  updateUserProfile?(userId: string, input: { name: string; title: string }): Promise<User>;
+  correctLocalUsername?(userId: string, username: string): Promise<User>;
+  updateUserProfile?(userId: string, input: { name: string; title: string; email?: string }): Promise<User>;
   listRegistrationRoleRequests?(status?: "pending" | "decided"): Promise<RegistrationRoleRequest[]>;
   approveRegistrationRoleRequest?(requestId: string): Promise<RegistrationRoleRequest | void>;
   rejectRegistrationRoleRequest?(requestId: string): Promise<RegistrationRoleRequest | void>;

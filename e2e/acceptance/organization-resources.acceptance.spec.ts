@@ -9,10 +9,14 @@ import { withPgClient } from "./helpers/database";
 import { prepareInteractionSurface } from "./helpers/interactionSurface";
 import { installBrowserDiagnostics, useBrowserDiagnostics } from "./helpers/browserDiagnostics";
 import { apiRoute } from "./helpers/runtime";
+import { recordOperationEvidence } from "./helpers/operationEvidence";
+
+// @acceptance ORG-MEMBER-BRIDGE-CORRECTION-001
+// @operation ORG-MEMBER-BRIDGE-CORRECTION-001
 
 test.use({ viewport: { width: 1440, height: 900 } });
-useBrowserDiagnostics(test);
-type Session = { token: string; auth: { user: { id: string; organizationId: string }; organization: { id: string; name: string } } };
+useBrowserDiagnostics(test, { expectedApiFailures: [{ method: "PATCH", path: "/api/v1/users/", status: 409 }] });
+type Session = { token: string; auth: { user: { id: string; organizationId: string }; organization: { id: string; name: string }; roles: Array<{ projectId: string | null; roleId: string }> } };
 type Credential = { id: string; name: string; status: string; skillId: string | null };
 const username = "organization.resources.operator";
 
@@ -28,6 +32,107 @@ test.describe("fixed-target device and integration governance", () => {
         await client.query("insert into user_password_credentials(user_id,username,password_hash) values($1,$2,$3) on conflict(user_id) do update set password_hash=excluded.password_hash", [id, role === "platform-admin" ? username : `${username}.admin`, hash]);
       }
     });
+  });
+
+  test("corrects a selected organization's member identity fields and Bridge display name", async ({ page, browser }, testInfo) => {
+    const signIn = async (loginName: string) => {
+      const result = await page.request.post(apiRoute("/api/v1/auth/login"), { data: { username: loginName, password: LOCAL_DEMO_SHARED_PASSWORD } });
+      expect(result.status()).toBe(200); return await result.json() as Session;
+    };
+    const platform = await signIn(username), headers = { Authorization: `Bearer ${platform.token}` };
+    expect(platform.auth.roles).toEqual([{ projectId: null, roleId: "platform-admin" }]);
+    const suffix = randomUUID().slice(0, 8), ownerUsername = `correction.owner.${suffix}`, ownerName = `纠错验收成员-${suffix}`;
+    const created = await page.request.post(apiRoute("/api/v1/platform/organizations"), { headers, data: { name: `纠错验收组织-${suffix}`, initialAdministrator: { name: ownerName, username: ownerUsername, password: LOCAL_DEMO_SHARED_PASSWORD } } });
+    expect(created.status()).toBe(201);
+    const target = (await created.json() as { item: { id: string; name: string } }).item, scope = `?organizationId=${target.id}`;
+    const owner = await signIn(ownerUsername), ownerHeaders = { Authorization: `Bearer ${owner.token}` };
+    const code = await page.request.post(apiRoute("/api/v1/device-bridges/pairing-codes"), { headers: ownerHeaders, data: {} });
+    expect(code.status()).toBe(201);
+    const pairing = await page.request.post(apiRoute("/api/v1/device-bridges/pair"), {
+      data: { code: (await code.json() as { code: string }).code, machineLabel: `原设备-${suffix}`, platform: "linux", arch: "amd64" }
+    });
+    expect(pairing.status()).toBe(201);
+    const bridge = await pairing.json() as { bridgeId: string };
+    const scopedPatch = (path: string) => page.waitForResponse(response => response.request().method() === "PATCH" && new URL(response.url()).pathname === path && new URL(response.url()).searchParams.get("organizationId") === target.id);
+    const memberPath = `/api/v1/users/${owner.auth.user.id}`, bridgePath = `/api/v1/device-bridges/organization/${bridge.bridgeId}`;
+
+    await page.addInitScript(token => window.localStorage.setItem("wiseeff.localAuthToken", token), platform.token);
+    await page.goto(`/organization/members${scope}`); await prepareInteractionSurface(page);
+    await expect(page.getByRole("region", { name: "当前操作组织" })).toContainText(target.name);
+    const details = page.getByRole("dialog", { name: `${ownerName} · 成员资料`, exact: true });
+    const openMember = () => page.getByRole("button", { name: `查看 ${ownerName} 的成员资料`, exact: true }).click();
+    await openMember();
+    const email = details.getByRole("textbox", { name: "资料邮箱", exact: true });
+    const saveProfile = details.getByRole("button", { name: "保存基本资料", exact: true });
+    await email.fill("invalid-email"); await saveProfile.press("Enter");
+    await expect(details.getByRole("alert", { name: "保存错误摘要" })).toContainText("请输入有效的资料邮箱");
+    const correctedEmail = `corrected.${suffix}@example.com`;
+    const profileSaved = scopedPatch(memberPath);
+    await email.fill(correctedEmail.toUpperCase()); await saveProfile.click(); expect((await profileSaved).status()).toBe(200);
+    await expect(email).toHaveValue(correctedEmail);
+    await expect(details.getByText("成员资料已保存。", { exact: true })).toBeVisible();
+
+    await details.getByRole("button", { name: "更正本地登录名", exact: true }).press("Enter");
+    const correction = page.getByRole("dialog", { name: "更正本地登录名", exact: true });
+    const loginName = correction.getByRole("textbox", { name: "新本地登录名", exact: true });
+    const saveName = correction.getByRole("button", { name: "保存登录名", exact: true });
+    await loginName.fill(username.toUpperCase()); await saveName.click();
+    await expect(correction.getByRole("alert")).toContainText("该用户名已被注册");
+    const correctedUsername = `corrected.owner.${suffix}`;
+    const usernameSaved = scopedPatch(`${memberPath}/username`);
+    await loginName.fill(correctedUsername.toUpperCase()); await saveName.click(); expect((await usernameSaved).status()).toBe(200);
+    await expect(correction).toBeHidden();
+    await expect(details).toContainText(`本地登录名：${correctedUsername}`);
+    await details.getByRole("button", { name: "关闭", exact: true }).click();
+    await page.reload(); await prepareInteractionSurface(page); await openMember();
+    await expect(details).toContainText(`本地登录名：${correctedUsername}`);
+    await expect(email).toHaveValue(correctedEmail);
+    const memberScreenshot = testInfo.outputPath("member-profile-corrected-1440.png");
+    await page.screenshot({ path: memberScreenshot, animations: "disabled" });
+    await details.getByRole("button", { name: "关闭", exact: true }).click();
+    expect((await signIn(correctedUsername)).auth.user).toMatchObject({ id: owner.auth.user.id, organizationId: target.id });
+    expect((await page.request.post(apiRoute("/api/v1/auth/login"), { data: { username: ownerUsername, password: LOCAL_DEMO_SHARED_PASSWORD } })).status()).toBe(401);
+
+    await page.goto(`/organization/bridges${scope}`); await prepareInteractionSurface(page);
+    await expect(page.getByRole("region", { name: "当前操作组织" })).toContainText(target.name);
+    const row = page.getByRole("table", { name: "组织设备代理", exact: true }).getByRole("row").filter({ hasText: bridge.bridgeId });
+    await row.getByRole("button", { name: "更正设备名称", exact: true }).press("Enter");
+    const rename = page.getByRole("dialog", { name: "更正设备名称", exact: true });
+    await expect(rename).toContainText(ownerName);
+    const correctedLabel = `更正后设备-${suffix}`;
+    await rename.getByRole("textbox", { name: "设备名称", exact: true }).fill(correctedLabel);
+    const bridgeSaved = scopedPatch(bridgePath);
+    await rename.getByRole("button", { name: "保存名称", exact: true }).click(); expect((await bridgeSaved).status()).toBe(200);
+    await expect(rename).toBeHidden();
+    await page.reload(); await prepareInteractionSurface(page);
+    await expect(row).toContainText(correctedLabel); await expect(row).toContainText(ownerName);
+    const organizationScreenshot = testInfo.outputPath("organization-bridge-corrected-1440.png");
+    await page.screenshot({ path: organizationScreenshot, animations: "disabled" });
+
+    const ownerContext = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+    const ownerScreenshot = testInfo.outputPath("owner-bridge-corrected-1440.png");
+    try {
+      await ownerContext.addInitScript(token => window.localStorage.setItem("wiseeff.localAuthToken", token), owner.token);
+      const ownerPage = await ownerContext.newPage(), diagnostics = installBrowserDiagnostics(ownerPage, testInfo);
+      await ownerPage.goto("/organization/members"); await prepareInteractionSurface(ownerPage);
+      await ownerPage.getByRole("button", { name: `查看 ${ownerName} 的成员资料`, exact: true }).click();
+      const ordinaryDetails = ownerPage.getByRole("dialog", { name: `${ownerName} · 成员资料`, exact: true });
+      await expect(ordinaryDetails.getByRole("button", { name: "更正本地登录名", exact: true })).toHaveCount(0);
+      await expect(ordinaryDetails.getByRole("textbox", { name: "资料邮箱", exact: true })).toBeEditable();
+      await ownerPage.goto("/organization/bridges"); await prepareInteractionSurface(ownerPage);
+      const ownerRow = ownerPage.getByRole("row").filter({ hasText: bridge.bridgeId });
+      await expect(ownerRow).toContainText(correctedLabel);
+      await expect(ownerRow.getByRole("button", { name: "更正设备名称", exact: true })).toHaveCount(0);
+      await ownerPage.goto("/node-debugging"); await prepareInteractionSurface(ownerPage);
+      await ownerPage.getByRole("button", { name: "管理设备代理", exact: true }).click();
+      await expect(ownerPage.getByRole("dialog", { name: "管理设备代理", exact: true }).getByLabel("设备名", { exact: true })).toHaveValue(correctedLabel);
+      await ownerPage.screenshot({ path: ownerScreenshot, animations: "disabled" });
+      diagnostics.assertNoBrowserDiagnosticsFailures();
+    } finally { await ownerContext.close(); }
+    await recordOperationEvidence({ operationId: "ORG-MEMBER-BRIDGE-CORRECTION-001", title: "Correct scoped member and Bridge information", status: "passed", testInfo,
+      role: "Platform Admin", artifacts: [memberScreenshot, organizationScreenshot, ownerScreenshot],
+      api: [memberPath, `${memberPath}/username`, bridgePath].map(path => ({ method: "PATCH", path, status: 200 })),
+      notes: "Local-auth API at 1440×900. The selected organization was sent on all writes. Browser reloads showed both member fields and the Bridge label. The owner used the pre-change session to read the name in personal Bridge management." });
   });
 
   test("revokes a target owner's live pairing and reuses organization and skill credential views with real token invalidation", async ({ page, browser }, testInfo) => {

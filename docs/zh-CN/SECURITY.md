@@ -195,6 +195,8 @@ Bridge 重命名（`PATCH /api/v1/device-bridges/:bridgeId`）与撤销（`POST 
 
 具有 `users:manage` 的本组织管理员和平台超级管理员可通过 `/api/v1/device-bridges/organization` 盘点、撤销本组织成员的 Bridge，不改变设备执行所有权或人工批准要求。目录不含认证凭据与配对密钥。管理员撤销将操作人、所有者、目标和原因与 Bridge／token 撤销在同一事务提交，重复撤销保留原结果；提交后断开本地连接并拒绝待处理的 RPC。WebSocket 授权复核完成前不能接收设备 RPC，后续消息及每个心跳周期也会复核凭据，使其他 API 进程上的已撤销或过期连接关闭。
 
+平台超级管理员可在 `/organization/bridges` 更正操作组织内的 Bridge 显示名称。`PATCH /api/v1/device-bridges/organization/:bridgeId` 接收 `machineLabel`，并在同一事务提交显示名称与 `device-bridge-admin-rename` 审计。审计标识实际操作人、Bridge 和所有者。原连接、凭据、所有权和撤销状态保持不变，设备所有者可在个人设备列表中查看新名称。
+
 ## 不可信子进程执行（DTS 校验门禁）
 
 P2 配置集基线校验门禁用系统 `dtc` 二进制编译用户提供的 DTS 内容（`server/modules/parameter-files/dtcValidator.ts`）。DTS 内容属于不可信输入（项目成员上传/编辑），子进程边界必须保持受限：

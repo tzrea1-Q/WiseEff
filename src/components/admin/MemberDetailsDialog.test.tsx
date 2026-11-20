@@ -28,6 +28,24 @@ function renderMember(updateUserProfile: NonNullable<UserGovernanceActions["upda
 }
 
 describe("MemberDetailsDialog", () => {
+  it("validates profile email and uses the existing profile save for a corrected address", async () => {
+    const update = vi.fn<NonNullable<UserGovernanceActions["updateUserProfile"]>>();
+    const { user } = renderMember(update);
+    const email = screen.getByRole("textbox", { name: "资料邮箱" });
+    expect(email).toHaveValue(user.email ?? "");
+    fireEvent.change(email, { target: { value: "invalid-email" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存基本资料" }));
+    expect(screen.getByRole("alert", { name: "保存错误摘要" })).toHaveTextContent("请输入有效的资料邮箱");
+    expect(update).not.toHaveBeenCalled();
+
+    update.mockResolvedValue({ ...user, email: "updated@example.com" });
+    fireEvent.change(email, { target: { value: "Updated@Example.com" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存基本资料" }));
+    expect(await screen.findByRole("status")).toHaveTextContent("成员资料已保存。");
+    expect(update).toHaveBeenCalledExactlyOnceWith(user.id, { name: user.name, title: user.title, email: "Updated@Example.com" });
+    expect(email).toHaveValue("updated@example.com");
+  });
+
   it("saves trimmed profile fields and adopts the complete server-returned user", async () => {
     const update = vi.fn<NonNullable<UserGovernanceActions["updateUserProfile"]>>();
     const { user, onUpdated } = renderMember(update);

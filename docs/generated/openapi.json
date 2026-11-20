@@ -4634,6 +4634,71 @@
         }
       }
     },
+    "/api/v1/users/{userId}/username": {
+      "patch": {
+        "operationId": "users.correctLocalUsername",
+        "summary": "Correct a governed user's local login username as a platform super administrator",
+        "tags": [
+          "users"
+        ],
+        "parameters": [
+          {
+            "name": "userId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "organizationId",
+            "in": "query",
+            "required": false,
+            "description": "Explicit operating Organization; cross-Organization access requires a platform super administrator. Omitting it preserves the endpoint's existing scope.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CorrectLocalUsernameRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserGovernanceResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
     "/api/v1/projects": {
       "get": {
         "operationId": "parameters.listProjects",
@@ -29829,6 +29894,66 @@
             "$ref": "#/components/responses/ErrorResponse"
           }
         }
+      },
+      "patch": {
+        "operationId": "deviceBridges.renameOrganizationBridge",
+        "summary": "Correct a member's Bridge display name as a platform super administrator",
+        "tags": [
+          "device-bridge"
+        ],
+        "parameters": [
+          {
+            "name": "bridgeId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "organizationId",
+            "in": "query",
+            "required": false,
+            "description": "Explicit operating Organization; cross-Organization access requires a platform super administrator. Omitting it preserves the endpoint's existing scope.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RenameOrganizationDeviceBridgeRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrganizationDeviceBridgeResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
       }
     },
     "/api/v1/device-bridges/organization/{bridgeId}/revoke": {
@@ -37181,6 +37306,19 @@
       "ResetUserPasswordRequest": {
         "type": "object",
         "x-wiseeff-schema": "ResetUserPasswordRequest"
+      },
+      "CorrectLocalUsernameRequest": {
+        "type": "object",
+        "properties": {
+          "username": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "username"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "CorrectLocalUsernameRequest"
       },
       "ProjectListResponse": {
         "type": "object",
@@ -85291,6 +85429,19 @@
         ],
         "additionalProperties": false,
         "x-wiseeff-schema": "OrganizationDeviceBridgeResponse"
+      },
+      "RenameOrganizationDeviceBridgeRequest": {
+        "type": "object",
+        "properties": {
+          "machineLabel": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "machineLabel"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "RenameOrganizationDeviceBridgeRequest"
       },
       "RevokeOrganizationDeviceBridgeRequest": {
         "type": "object",

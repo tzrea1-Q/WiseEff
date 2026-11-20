@@ -8,8 +8,8 @@ import { parsePreviewRequestSchema, parsePreviewResponseSchema } from "../../log
 import { signalPreviewRequestSchema, signalPreviewResponseSchema } from "../../logs/signalRules";
 import { extractorPreviewRequestSchema, extractorPreviewResponseSchema } from "../../logs/parsing/extractorBuilder";
 import { formatPreviewRequestSchema, formatPreviewResponseSchema } from "../../logs/formatProfile";
-import { organizationBridgeListResponseSchema, organizationBridgeResponseSchema, revokeOrganizationBridgeBodySchema } from "../../deviceBridge/schemas";
-import { createUserBodySchema, roleBindingSchema } from "../../users/schemas";
+import { organizationBridgeListResponseSchema, organizationBridgeResponseSchema, renameOrganizationBridgeBodySchema, revokeOrganizationBridgeBodySchema } from "../../deviceBridge/schemas";
+import { correctLocalUsernameBodySchema, createUserBodySchema, roleBindingSchema } from "../../users/schemas";
 import { userImportCreateBodySchema, userImportReceiptSchema, userImportPreviewBodySchema, userImportPreviewResponseSchema } from "./userImport";
 import { oidcIdentitySchema, setOidcIdentityBodySchema } from "./oidcMembers";
 import { enterOperatingContextBodySchema, operatingContextResponseSchema } from "./organizationScope";
@@ -125,6 +125,7 @@ export const dtoSchemaCatalog: Record<string, ZodTypeAny> = {
   UserImportReceiptResponse: userImportReceiptSchema,
   UserImportPreviewResponse: userImportPreviewResponseSchema,
   SetUserOidcIdentityRequest: setOidcIdentityBodySchema,
+  CorrectLocalUsernameRequest: correctLocalUsernameBodySchema,
   UserGovernanceResponse: z.object({ item: userGovernanceDtoSchema }),
   UserGovernanceListResponse: z.object({ items: z.array(userGovernanceDtoSchema) }),
   OrganizationProjectCandidatesResponse: z.object({ items: z.array(z.object({ id: z.string(), name: z.string() }).strict()) }).strict(),
@@ -134,6 +135,7 @@ export const dtoSchemaCatalog: Record<string, ZodTypeAny> = {
   }),
   OrganizationDeviceBridgeListResponse: organizationBridgeListResponseSchema,
   OrganizationDeviceBridgeResponse: organizationBridgeResponseSchema,
+  RenameOrganizationDeviceBridgeRequest: renameOrganizationBridgeBodySchema,
   RevokeOrganizationDeviceBridgeRequest: revokeOrganizationBridgeBodySchema,
   MeResponse: operatingContextResponseSchema.shape.actor,
   UpdateCurrentUserProfileRequest: z.object({
@@ -291,8 +293,8 @@ export const dtoSchemaCoveredRouteIds = [
   "organization.projectCandidates",
   "users.listRegistrationRoleRequests", "users.approveRegistrationRoleRequest", "users.rejectRegistrationRoleRequest", "users.enableBasicRegistrationRoleRequest",
   "debugging.admin.previewModuleDeletion",
-  "auth.localConfig", "users.list", "users.create", "users.importPreview", "users.setOidcIdentity",
-  "deviceBridges.listOrganization", "deviceBridges.getOrganizationBridge", "deviceBridges.revokeOrganizationBridge",
+  "auth.localConfig", "users.list", "users.create", "users.importPreview", "users.setOidcIdentity", "users.correctLocalUsername",
+  "deviceBridges.listOrganization", "deviceBridges.getOrganizationBridge", "deviceBridges.renameOrganizationBridge", "deviceBridges.revokeOrganizationBridge",
   "logs.restoreSourceSnapshot",
   "logs.retrySourceSnapshot",
   "parameters.previewRestoreReleaseBaseline", "parameters.rollbackReleaseBaseline",

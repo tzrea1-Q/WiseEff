@@ -21,9 +21,11 @@ export const roleBindingSchema = z.object({
   roleId: roleIdSchema
 });
 
+const localUsernameSchema = z.string().min(3).max(64);
+
 export const createUserBodySchema = z.union([z.object({
   name: z.string().min(1),
-  username: z.string().min(3).max(64),
+  username: localUsernameSchema,
   password: z.string().min(8),
   title: z.string().optional(),
   roles: z.array(roleBindingSchema).min(1)
@@ -34,6 +36,8 @@ export const updateUserBodySchema = z.object({
   email: z.string().email().optional(),
   title: z.string().optional()
 });
+
+export const correctLocalUsernameBodySchema = z.object({ username: localUsernameSchema }).strict();
 
 export const updateUserActiveBodySchema = z.object({
   isActive: z.boolean()
