@@ -275,7 +275,7 @@ export function buildWiseEffRouter(options: WiseEffServerOptions = {}) {
     webhooks: options.logWebhooks,
     skillBudgetCaps: {
       stepBudget: options.env?.LOG_ANALYSIS_MAX_STEPS ?? 6,
-      tokenBudget: options.env?.LOG_ANALYSIS_TOKEN_BUDGET ?? 8000
+      tokenBudget: options.env?.LOG_ANALYSIS_TOKEN_BUDGET ?? 24_000
     },
     getIntegrationPrincipal: (request) => {
       if (!options.db) throw new ApiError("UNAUTHENTICATED", "Integration credential authentication requires a database.");

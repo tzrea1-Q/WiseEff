@@ -21,7 +21,7 @@
 
 ## 技能预算与编写检查
 
-`LOG_ANALYSIS_MAX_STEPS`（默认 6）与 `LOG_ANALYSIS_TOKEN_BUDGET`（默认 8000）同时是默认值与平台上限。版本可设置更低的 `stepBudget` 和 `tokenBudget`，省略时沿用全局配置。步数至少为 1；显式 token 预算至少为 `min(4096, LOG_ANALYSIS_TOKEN_BUDGET)`。API 暴露 `budgetCaps` 并校验创建、保存、发布、恢复和技能包导入，worker 运行时再次取上限。API 与 worker 应配置一致。`modelOverride` 只修改模型名，不修改模型服务凭据或超时。已发布运行使用所钉版本的流程与预算，保存草稿不会改变进行中的运行。
+`LOG_ANALYSIS_MAX_STEPS`（默认 6）与 `LOG_ANALYSIS_TOKEN_BUDGET`（默认 24000）同时是默认值与平台上限。24000 与 `LOG_ANALYSIS_PROTOCOL=json` 两个默认值来自 MiniMax-M3 在仿真层的真实对比（2026-11-19）：8000 时所有运行都退回规则兜底；原生工具每轮要重发约 2,100 token 的工具定义。环境中已显式写入 `LOG_ANALYSIS_TOKEN_BUDGET=8000` 的部署在修改前保持原值。以 `<think>…</think>` 推理块开头的回复可以被接受：解析前去掉该块，也不会回传给模型。版本可设置更低的 `stepBudget` 和 `tokenBudget`，省略时沿用全局配置。步数至少为 1；显式 token 预算至少为 `min(4096, LOG_ANALYSIS_TOKEN_BUDGET)`。API 暴露 `budgetCaps` 并校验创建、保存、发布、恢复和技能包导入，worker 运行时再次取上限。API 与 worker 应配置一致。`modelOverride` 只修改模型名，不修改模型服务凭据或超时。已发布运行使用所钉版本的流程与预算，保存草稿不会改变进行中的运行。
 
 在技能工作区试运行前先保存样例与草稿。解析测试无需模型服务，检查字段和信号；分析用例与试运行使用已配置的分析器，只有显式开启确定性模式时才不用真实模型。将分析用例与上一已发布版本对比，通过试运行轨迹检查预算耗尽、源码工具不可用及未接地输出。测试结果与警告供发布时参考，不阻止发布。试运行不创建公开日志记录或结果 Webhook；该投递链路须通过普通上传验证。
 
