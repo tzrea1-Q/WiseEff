@@ -5,7 +5,8 @@ import { emitLogTrace } from "../traceTypes";
 import { parseLogAnalysisModelJson, type LogAnalysisChatMessage, type LogAnalysisChatModel, type LogAnalysisLlmTelemetry } from "./llmAnalyzer";
 import { estimateLogPromptTokens, estimateLogTokens } from "./modelBudget";
 
-export const VERIFIER_MAX_OUTPUT_TOKENS = 1024;
+/** Reasoning models think before the verdict; 1,024 truncated half of MiniMax-M3 verdicts. */
+export const VERIFIER_MAX_OUTPUT_TOKENS = 4096;
 const MAX_CONTEXT_BYTES = 16 * 1024;
 const MAX_LINE_CHARS = 600;
 const MAX_LINES = 80;

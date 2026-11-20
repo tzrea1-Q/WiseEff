@@ -251,3 +251,32 @@ describe("final-answer allowance", () => {
     } finally { fetch.mockRestore(); }
   });
 });
+
+describe("reasoning-model verifier", () => {
+  it("gives the conclusion verifier room to think before its verdict", async () => {
+    const parsed = parseLogText({ fileName: "power.log", content: "ERROR thermal foldback" });
+    if (!parsed.ok) throw new Error("Fixture must parse");
+    const report = { conclusion: "Thermal foldback", impact: "Reduced current", severity: "Warning", confidence: 0.8,
+      suggestedActions: ["Inspect cooling"], evidence: [{ lineNumbers: [1], inference: "Foldback logged", suggestedAction: "Inspect cooling" }] };
+    const verifierCaps: number[] = [];
+    let analysisCalls = 0;
+    const fetch = vi.spyOn(globalThis, "fetch").mockImplementation(async (_url, init) => {
+      const request = JSON.parse(String(init?.body)) as { max_tokens: number; messages: Array<{ content: string }> };
+      const verifying = request.messages[0].content.startsWith("Independently verify");
+      if (verifying) verifierCaps.push(request.max_tokens);
+      const content = verifying
+        ? `<think>${"Checking the cited line. ".repeat(40)}</think>{"claims":[{"id":0,"status":"supported"},{"id":1,"status":"supported"}]}`
+        : JSON.stringify(analysisCalls++ === 0 ? { action: "tool", tool: "read_line_range", args: { startLine: 1, endLine: 1 } } : { action: "final", ...report });
+      return Response.json({ choices: [{ message: { role: "assistant", content }, finish_reason: "stop" }],
+        usage: { prompt_tokens: 100, completion_tokens: 40 } });
+    });
+    try {
+      const output = await createLogAnalyzerFromEnv({ ...env, LOG_ANALYSIS_DETERMINISTIC: false,
+        LOG_ANALYSIS_API_BASE_URL: "https://verifier.example.invalid/v1", LOG_ANALYSIS_API_KEY: "fixture-key",
+        LOG_ANALYSIS_PROTOCOL: "json", LOG_ANALYSIS_VERIFY_CONCLUSION: true }).analyze({ parsed });
+      expect(output.verification).toMatchObject({ status: "passed" });
+      // MiniMax-M3 spent 1,000+ tokens thinking before verdicts; 1,024 truncated half of them.
+      expect(verifierCaps).toEqual([4096]);
+    } finally { fetch.mockRestore(); }
+  });
+});
