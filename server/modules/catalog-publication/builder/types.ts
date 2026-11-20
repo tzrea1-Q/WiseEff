@@ -148,7 +148,10 @@ export type ReviseDefinitionChange = {
   readonly op: "revise-definition";
   readonly definitionId: string;
   readonly class: "documentation" | "semantic";
-  readonly content: SupportedDefinitionContent;
+  readonly content?: SupportedDefinitionContent;
+  /** A string deprecates or redirects. Null withdraws deprecation. */
+  readonly successorDefinitionId?: string | null;
+  readonly reason?: string;
 };
 
 export type CreateSubjectChange = Omit<CreateSubjectWithDefinitionsChange, "op" | "definitions"> & {

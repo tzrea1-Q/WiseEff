@@ -80,7 +80,7 @@ const CREATE_SUBJECT_KEYS = new Set([
   "cardinality",
   "ownerSubjectId",
 ]);
-const REVISE_KEYS = new Set(["op", "definitionId", "class", "content"]);
+const REVISE_KEYS = new Set(["op", "definitionId", "class", "content", "successorDefinitionId", "reason"]);
 const LIFECYCLE_CHANGE_KEYS = new Set(["op", "definitionId", "class", "content", "reason"]);
 const SELECTOR_KEYS = new Set(["kind", "value"]);
 const DECLARE_OWNER_KEYS = new Set(["op", "subjectId", "ownerSubjectId"]);
@@ -267,12 +267,14 @@ export const contentClassOf = (
     "/valueSchema": previous.valueSchema,
     "/matching": previous.matching,
     "/lifecycle": previous.lifecycle,
+    "/successorDefinitionId": previous.successorDefinitionId ?? null,
   });
   const nextSemantic = serializeContract({
     "/unit": next.unit ?? null,
     "/valueSchema": next.valueSchema,
     "/matching": next.matching,
     "/lifecycle": next.lifecycle,
+    "/successorDefinitionId": next.successorDefinitionId ?? null,
   });
   return previousSemantic === nextSemantic ? "documentation" : "semantic";
 };
@@ -641,8 +643,12 @@ const applyReviseDefinition = (
   if (change.class !== "documentation" && change.class !== "semantic") {
     return { kind: "invalid-input", reason: "revise class must be documentation or semantic" };
   }
-  const content = validateSupportedDefinitionContent(change.content, `${path}.content`);
-  if (!content.ok) return content.error;
+  if (change.content === undefined && change.successorDefinitionId === undefined) {
+    return { kind: "invalid-input", reason: "revision-content-required" };
+  }
+  const content = change.content === undefined ? undefined :
+    validateSupportedDefinitionContent(change.content, `${path}.content`);
+  if (content && !content.ok) return content.error;
   const current = documents.find(
     (document): document is CatalogReleaseDefinitionDocument =>
       document.kind === "definition" && document.content.id === change.definitionId,
@@ -650,7 +656,22 @@ const applyReviseDefinition = (
   if (!current) {
     return { kind: "invalid-input", reason: `definition not found:${change.definitionId}` };
   }
-  const nextRevisionFields = revisedDefinitionContent(current.content.revision, content.value);
+  const revisionContent = current.content.revision;
+  if (change.successorDefinitionId === change.definitionId) {
+    return { kind: "invalid-input", reason: "definition-successor-invalid" };
+  }
+  if (change.successorDefinitionId !== undefined && revisionContent.lifecycle === "retired") {
+    return { kind: "invalid-input", reason: "definition-retired" };
+  }
+  const revised = content?.ok ? revisedDefinitionContent(revisionContent, content.value) : revisionContent;
+  const { successorDefinitionId: _previousSuccessor, ...withoutSuccessor } = revised;
+  const successorDefinitionId = change.successorDefinitionId;
+  const nextRevisionFields = successorDefinitionId === undefined ? revised : {
+    ...withoutSuccessor,
+    ...(successorDefinitionId === null
+      ? { lifecycle: "active" as const }
+      : { lifecycle: "deprecated" as const, successorDefinitionId }),
+  };
   const previousDigest = canonicalDigest(revisionContentModel(current.content.revision));
   const nextDigest = canonicalDigest(revisionContentModel(nextRevisionFields));
   if (previousDigest === nextDigest) {
@@ -1143,6 +1164,24 @@ export async function buildCompleteSuccessor(
       phase: validated.error.phase,
       violations: validated.error.violations,
     });
+  }
+  // The compiler already proves the chain terminates at an active definition.
+  // Authoring also needs that definition's subject to be currently usable.
+  for (const change of input.changeSet) {
+    if (change.op !== "revise-definition" || !change.successorDefinitionId) continue;
+    let nextId: string | undefined = change.successorDefinitionId;
+    while (nextId) {
+      const definition = successor.documents.find(document => document.kind === "definition" && document.content.id === nextId);
+      if (definition?.kind !== "definition") break;
+      if (definition.content.revision.lifecycle === "active") {
+        const owner = successor.documents.find(document => document.kind === "subject" && document.content.id === definition.content.subjectId);
+        if (owner?.kind !== "subject" || owner.content.lifecycle !== "active") {
+          return fail({ kind: "invalid-input", reason: "definition-successor-terminal-invalid" });
+        }
+        break;
+      }
+      nextId = definition.content.revision.successorDefinitionId;
+    }
   }
 
   const contract = capabilityContract(input.changeSet, successor.documents);

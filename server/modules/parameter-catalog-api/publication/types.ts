@@ -5,6 +5,7 @@ import type { catalogPublicationCommandByRouteId } from "./mapping";
 import type { planMarkdownImport } from "../../catalog-publication/import/markdownImport";
 import type { OwnerDeclaration } from "../../catalog-publication/claimedOwners";
 import type { UsageProjectScope } from "../../parameter-bindings/usage";
+import type { PreviewPublicationValue } from "../../catalog-publication/preview";
 
 export type PlacementHintWithWarnings = ReturnType<typeof planMarkdownImport>["placementHints"][number];
 
@@ -58,6 +59,8 @@ export type PublicationCandidateView = {
     readonly addedSubjectIds?: readonly string[];
     readonly ownerDeclarations?: readonly OwnerDeclaration[];
     readonly ownerPublicationOnly?: boolean;
+    readonly definitionSuccessorChange?: PreviewPublicationValue["impactSummary"]["definitionSuccessorChange"];
+    readonly definitionReplacement?: PreviewPublicationValue["impactSummary"]["definitionReplacement"];
   };
   readonly capabilityContract: {
     readonly revision: string;

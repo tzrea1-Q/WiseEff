@@ -31,6 +31,7 @@ export type ReplacementPreviewFingerprintModel = {
     readonly configRevisionId: string;
     readonly sourceRef: string;
     readonly rewrittenSourceRef: string;
+    readonly mergeConflict?: FrozenProjectTip["mergeConflict"];
   }[];
   readonly previewReleaseId: string;
   readonly capabilityContractDigest: string;
@@ -65,6 +66,7 @@ export const replacementPreviewFingerprintModel = (input: {
       configRevisionId: project.configRevisionId,
       sourceRef: project.sourceRef,
       rewrittenSourceRef: project.rewrittenSourceRef,
+      ...(project.mergeConflict ? { mergeConflict: project.mergeConflict } : {}),
     })),
   previewReleaseId: input.previewReleaseId,
   capabilityContractDigest: input.capabilityContractDigest,

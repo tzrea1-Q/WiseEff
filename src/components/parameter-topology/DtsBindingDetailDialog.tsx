@@ -136,6 +136,9 @@ export function DtsBindingDetailDialog({
             <div className="parameter-inspector__configuration">
               <section className="parameter-inspector__definition"><h3>参数定义</h3>
                 {currentDefinition && differsFromPinned ? <p role="status">当前目录定义 v{currentDefinition.revisionNumber} · 项目合同仍固定于 {pinnedRevisionId}。下方说明来自最新目录；单位、约束与实际值仍遵循项目固定修订。</p> : null}
+                {currentDefinition?.recommendedDefinition ? <p>此定义已弃用。推荐使用 <a
+                  href={`/parameters/definitions?${new URLSearchParams({ definitionId: currentDefinition.recommendedDefinition.id })}`}>
+                  {currentDefinition.recommendedDefinition.displayName}</a>。</p> : null}
                 {latestStatus === "loading" ? <p role="status">正在读取最新目录说明…</p> : null}
                 {latestStatus === "error" ? <p role="status">最新目录说明暂不可用，当前展示项目固定修订。</p> : null}
                 {description ? <p>{description}</p> : null}{documentation ? <p>{documentation}</p> : null}

@@ -159,6 +159,7 @@ const mapContent = (raw: Record<string, unknown>): DefinitionContent => {
   );
   return {
     lifecycle: (raw.lifecycle as DefinitionLifecycle) ?? "active",
+    ...(typeof raw.successorDefinitionId === "string" ? { successorDefinitionId: raw.successorDefinitionId } : {}),
     displayName: typeof raw.displayName === "string" ? raw.displayName : "",
     description: absent,
     documentation: documentation ? present(documentation) : absent,

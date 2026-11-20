@@ -6,24 +6,28 @@ import { requestJson } from "../../test/testClient";
 import { makeTestAuthContext } from "../../testing/authContext";
 import { provisionPublicationRuntimeLogins, dropLabRuntimeLogins } from "../../testing/labRuntimeLogins";
 import { captureCurrentCatalogPin } from "../catalog-publication/runtime";
+import { setPublicationFreeze } from "../catalog-publication/runtime/freeze";
 import { createUserInvocation } from "../auth/trustedInvocation";
 import { getAuthContext } from "../auth/repository";
 import { createCatalogInstaller } from "../catalog-kernel/install/installer";
 import { runPublicationManagerOnce } from "../catalog-publication/jobs/manager";
+import { enablePublicationPolicy } from "../catalog-publication/authorization/testHarness";
 import { catalogReplacementPreviewResponseSchema, catalogReplacementResponseSchema } from "../contracts/dtoSchemas/parameterCatalog";
 import { createMigrationHarness, integerContent, PREDECESSOR_DEFINITION_ID, PREDECESSOR_PROPERTY_KEY, PREDECESSOR_REVISION_ID, PREDECESSOR_SUBJECT_ID, type MigrationHarness } from "./testing/harness";
 
 const ORG = "org-zero-correction", ADMIN = "zero-platform-admin";
+const REVIEWER = "issue1579-reviewer";
 const path = "/api/v2/catalog/definition-replacements";
 
 describe("#1309 zero-project identity correction through the real API role", () => {
   let harness: MigrationHarness, api: ReturnType<typeof createPostgresDatabase>;
   const token = `zero_correction_${randomUUID().slice(0, 8)}`;
-  const app = () => createWiseEffServer({ db: api, objectStore: harness.objectStore,
+  const app = (principalId = ADMIN) => createWiseEffServer({ db: api, objectStore: harness.objectStore,
     auth: { mode: "production", verifier: { verify: async () => makeTestAuthContext({ organizationId: ORG,
-      userId: ADMIN, roles: [{ roleId: "guest", projectId: null }] }) } } });
+      userId: principalId, roles: [{ roleId: "guest", projectId: null }] }) } } });
   const pin = async () => (await captureCurrentCatalogPin(harness.pool))!;
-  const post = async (suffix: string, body: unknown, fingerprint?: string) => requestJson(app(), `${path}${suffix}`, {
+  const post = async (suffix: string, body: unknown, fingerprint?: string, organizationId?: string) => requestJson(app(),
+    `${path}${suffix}${organizationId ? `?organizationId=${encodeURIComponent(organizationId)}` : ""}`, {
     method: "POST", headers: { authorization: "Bearer administrator", "X-WiseEff-Catalog-Release": (await pin()).id,
       "Idempotency-Key": `http:${randomUUID()}`, ...(fingerprint ? { "If-Match": fingerprint } : {}) }, body: JSON.stringify(body) });
   const activate = () => runPublicationManagerOnce({ db: harness.db, pool: harness.pool, installer: createCatalogInstaller(harness.pool),
@@ -35,14 +39,15 @@ describe("#1309 zero-project identity correction through the real API role", () 
     if (!definition) throw new Error("Missing unused Definition fixture");
     return definition;
   };
-  const reference = async (definition: { definitionId: string; revisionId: string }, organizationId: string, label: string) => {
+  const reference = async (definition: { definitionId: string; revisionId: string }, organizationId: string, label: string, newPropertyKey?: string) => {
     await harness.refreshCatalog();
     await harness.seedOrganization(organizationId);
     await harness.seedProject(organizationId, `zero-project-${label}`, label);
     const registrationId = await harness.registerSubject({ organizationId, subjectId: PREDECESSOR_SUBJECT_ID,
       subjectKind: "driver", moduleId: `zero-module-${label}` });
     return harness.seedBindingValue({ organizationId, projectId: `zero-project-${label}`, logicalNodeId: `zero-node-${label}`,
-      registrationId, ...definition, sources: [{ sourceRef: `${label}.dts`, configRevisionId: `zero-revision-${label}` }], values: [5] });
+      registrationId, ...definition, ...(newPropertyKey ? { propertyKeys: [newPropertyKey] } : {}),
+      sources: [{ sourceRef: `${label}.dts`, configRevisionId: `zero-revision-${label}` }], values: [5] });
   };
 
   beforeAll(async () => {
@@ -51,6 +56,8 @@ describe("#1309 zero-project identity correction through the real API role", () 
     await harness.db.query("insert into users(id,organization_id,name,title,is_active) values ($1,$2,'Zero administrator','Admin',true)", [ADMIN, ORG]);
     for (const role of ["admin", "platform-admin"]) await harness.db.query(
       "insert into user_role_bindings(id,user_id,organization_id,role_id) values ($1,$2,$3,$4)", [`zero-${role}`, ADMIN, ORG, role]);
+    await harness.db.query("insert into users(id,organization_id,name,title,is_active) values ($1,$2,'Reviewer','Admin',true)", [REVIEWER, ORG]);
+    await harness.db.query("insert into user_role_bindings(id,user_id,organization_id,role_id) values ($1,$1,$2,'platform-admin')", [REVIEWER, ORG]);
     const runtime = await provisionPublicationRuntimeLogins(harness.database.url, { mode: "lab", runToken: token });
     api = createPostgresDatabase(runtime.apiUrl);
   }, 120_000);
@@ -167,6 +174,150 @@ describe("#1309 zero-project identity correction through the real API role", () 
       existingDefinitionId: PREDECESSOR_DEFINITION_ID, subjectId: PREDECESSOR_SUBJECT_ID } } });
   }, 120_000);
 
+  it("diagnoses invalid deprecation successors through the publication preview", async () => {
+    const source = await unused("deprecated_source");
+    for (const [successorDefinitionId, diagnostic] of [
+      ["pdef_missing", "definition-successor-missing"],
+      [source.definitionId, "definition-successor-invalid"],
+    ]) {
+      const response = await requestJson(app(), "/api/v2/catalog/publication-candidates", {
+        method: "POST", headers: { authorization: "Bearer administrator", "X-WiseEff-Catalog-Release": (await pin()).id },
+        body: JSON.stringify({ changeSet: [{ op: "revise-definition", definitionId: source.definitionId,
+          class: "semantic", successorDefinitionId }] }) });
+      expect(response.status, response.bodyText).toBe(400);
+      expect(response.body).toMatchObject({ error: { details: { field: diagnostic } } });
+    }
+  }, 120_000);
+
+  it("publishes, redirects and withdraws deprecation with a distinct reviewer while preserving pinned project values", async () => {
+    const source = await unused("lifecycle_source");
+    const target = await unused("lifecycle_target");
+    const terminal = await unused("lifecycle_terminal");
+    const originalBinding = await reference(source, "org-lifecycle-project", "lifecycle");
+    const definitionPath = `/api/v2/catalog/definitions/${source.definitionId}`;
+    const projectPath = "/api/v2/projects/zero-project-lifecycle/parameter-bindings?organizationId=org-lifecycle-project";
+    const read = (path: string) => requestJson(app(), path, { headers: { authorization: "Bearer administrator" } });
+    const lifecycleCandidate = async (definitionId: string, successorDefinitionId: string | null) => requestJson<{ item: { id: string } }>(
+      app(), "/api/v2/catalog/publication-candidates", {
+        method: "POST", headers: { authorization: "Bearer administrator", "X-WiseEff-Catalog-Release": (await pin()).id },
+        body: JSON.stringify({ changeSet: [{ op: "revise-definition", definitionId, class: "semantic", successorDefinitionId,
+          reason: "Publish issue 1579 lifecycle revision" }] }) },
+    );
+    const applyLifecycle = async (definitionId: string, successorId: string | null, checkSeparation = false) => {
+      const candidate = await lifecycleCandidate(definitionId, successorId);
+      expect(candidate.status, candidate.bodyText).toBe(201);
+      expect(candidate.body).toMatchObject({ item: { riskClass: "high", impactSummary: {
+        definitionSuccessorChange: { definitionId, successorDefinitionId: successorId },
+      } } });
+      const publish = async (actor: string) => requestJson(app(actor), `/api/v2/catalog/publication-candidates/${candidate.body.item.id}/publish`, {
+        method: "POST", headers: { authorization: "Bearer administrator", "X-WiseEff-Catalog-Release": (await pin()).id },
+        body: JSON.stringify({ idempotencyKey: randomUUID() }) });
+      if (checkSeparation) {
+        const refused = await publish(ADMIN);
+        expect(refused.status, refused.bodyText).toBe(403);
+        expect(refused.body).toMatchObject({ error: { details: { reason: "publication-self-approval-forbidden" } } });
+      }
+      const queued = await publish(REVIEWER);
+      expect(queued.status, queued.bodyText).toBe(201);
+      expect(await activate()).toBe("claimed");
+    };
+    await harness.db.query("delete from user_role_bindings where id='zero-admin'");
+    try {
+      await applyLifecycle(source.definitionId, target.definitionId, true);
+      const first = await read(definitionPath);
+      expect(first.body).toMatchObject({ item: { lifecycle: "deprecated", currentRevision: { successorDefinitionId: target.definitionId },
+        recommendedDefinition: { id: target.definitionId, propertyKey: "lifecycle_target" } } });
+      expect((await read(projectPath)).body).toMatchObject({ items: [{ definitionId: source.definitionId,
+        effectiveRevisionId: source.revisionId, currentValueId: originalBinding.valueId,
+        effectiveValue: { groups: [[{ value: "5" }]] } }] });
+      const cycle = await lifecycleCandidate(target.definitionId, source.definitionId);
+      expect(cycle.body).toMatchObject({ error: { details: { field: "definition-successor-cycle" } } });
+      await applyLifecycle(target.definitionId, terminal.definitionId);
+      expect((await read(definitionPath)).body).toMatchObject({ item: { recommendedDefinition: { id: terminal.definitionId } } });
+      await applyLifecycle(source.definitionId, terminal.definitionId);
+      expect((await read(definitionPath)).body).toMatchObject({ item: { currentRevision: { successorDefinitionId: terminal.definitionId } } });
+      await applyLifecycle(source.definitionId, null);
+      expect((await read(definitionPath)).body).toMatchObject({ item: { lifecycle: "active" } });
+      const original = await read(`${definitionPath}/revisions/${source.revisionId}`);
+      expect(original.body).toMatchObject({ item: { id: source.revisionId, displayName: "lifecycle_source" } });
+      expect(original.body).not.toMatchObject({ item: { successorDefinitionId: expect.anything() } });
+    } finally { await harness.db.query("insert into user_role_bindings(id,user_id,organization_id,role_id) values ('zero-admin',$1,$2,'admin')", [ADMIN, ORG]); }
+  }, 120_000);
+
+  it("merges into an existing definition only after explicit resolution of both pinned values", async () => {
+    const source = await unused("merge_source");
+    const target = await unused("merge_target");
+    const projectId = "merge-project";
+    const organizationId = "org-merge-values";
+    await harness.seedOrganization(organizationId);
+    await harness.seedProject(organizationId, projectId, "Merge project");
+    const remainingProjectId = "merge-remaining-project";
+    await harness.seedProject(organizationId, remainingProjectId, "Remaining project");
+    const registrationId = await harness.registerSubject({ organizationId, subjectId: PREDECESSOR_SUBJECT_ID,
+      subjectKind: "driver", moduleId: "merge-module" });
+    const fixture = { organizationId, projectId, registrationId, logicalNodeId: "merge-node",
+      sources: [{ sourceRef: "merge.dts", configRevisionId: "merge-revision" }] };
+    const oldBinding = await harness.seedBindingValue({ ...fixture, ...source, propertyKeys: ["merge_target"], values: [5] });
+    const targetBinding = await harness.seedBindingValue({ ...fixture, ...target, values: [7] });
+    await harness.seedBindingValue({ ...fixture, ...source, projectId: remainingProjectId, logicalNodeId: "merge-remaining-node",
+      sources: [{ sourceRef: "merge-remaining.dts", configRevisionId: "merge-remaining-revision" }], propertyKeys: ["merge_target"], values: [5] });
+    const draft = { oldDefinitionId: source.definitionId, newSubjectId: PREDECESSOR_SUBJECT_ID,
+      newPropertyKey: "merge_target", mergeIntoDefinitionId: target.definitionId,
+      ...integerContent("Unused proposed content", 0), projectIds: [projectId], reason: "Resolve duplicate definitions" };
+    const preview = await post("/preview", draft, undefined, organizationId);
+    expect(preview.status, preview.bodyText).toBe(201);
+    const frozen = catalogReplacementPreviewResponseSchema.parse(preview.body).item;
+    expect(frozen.remainingProjects).toEqual([{ id: remainingProjectId, name: "Remaining project" }]);
+    expect(frozen.projects).toMatchObject([{ projectId, blockerReason: "merge-choice-required",
+      oldBindingId: oldBinding.bindingId, mergeConflict: { sourceValue: 5, targetValue: 7, targetBindingId: targetBinding.bindingId } }]);
+    const command = { previewId: frozen.previewId, previewFingerprint: frozen.previewFingerprint, idempotencyKey: "unresolved-merge" };
+    expect((await post("", command, frozen.previewFingerprint, organizationId)).status).toBe(400);
+    const approved = await post("/preview", { ...draft, mergeChoices: { [projectId]: "target" } }, undefined, organizationId);
+    expect(approved.status, approved.bodyText).toBe(201);
+    const resolved = catalogReplacementPreviewResponseSchema.parse(approved.body).item;
+    const competingPreview = await post("/preview", { ...draft, mergeChoices: { [projectId]: "target" } }, undefined, organizationId);
+    const competing = catalogReplacementPreviewResponseSchema.parse(competingPreview.body).item;
+    const before = await pin();
+    const apply = () => post("", { previewId: resolved.previewId, previewFingerprint: resolved.previewFingerprint,
+      idempotencyKey: "resolved-merge" }, resolved.previewFingerprint, organizationId);
+    expect((await setPublicationFreeze(harness.db, { frozen: true, actorPrincipalId: ADMIN })).ok).toBe(true);
+    try {
+      const frozen = await apply();
+      expect(frozen.body).toMatchObject({ error: { details: { reason: "publication-frozen" } } });
+    } finally {
+      expect((await setPublicationFreeze(harness.db, { frozen: false, actorPrincipalId: ADMIN })).ok).toBe(true);
+    }
+    const applied = await apply();
+    expect(applied.status, applied.bodyText).toBe(202);
+    expect(applied.body).toMatchObject({ item: { status: "completed", candidateId: null, projects: [
+      { projectId, status: "completed", oldBindingId: oldBinding.bindingId, newBindingId: targetBinding.bindingId },
+    ] } });
+    expect((await apply()).body).toEqual(applied.body);
+    const bindingPath = `/api/v2/projects/${projectId}/parameter-bindings?organizationId=${organizationId}`;
+    const current = await requestJson(app(), bindingPath, { headers: { authorization: "Bearer administrator" } });
+    expect(current.body).toMatchObject({ items: [{ id: targetBinding.bindingId, currentValueId: targetBinding.valueId,
+      effectiveValue: { groups: [[{ value: "7" }]] } }] });
+    const historyPath = `/api/v2/projects/${projectId}/parameter-bindings/${oldBinding.bindingId}/export`;
+    const historical = await requestJson(app(), `${historyPath}?organizationId=${organizationId}&projectValueId=${oldBinding.valueId}`,
+      { headers: { authorization: "Bearer administrator" } });
+    expect(historical.status, historical.bodyText).toBe(200);
+    expect(historical.body).toMatchObject({ item: { bindingId: oldBinding.bindingId, currentValueId: oldBinding.valueId,
+      definitionId: source.definitionId, definitionRevisionId: source.revisionId, configRevisionId: "merge-revision",
+      files: [expect.objectContaining({ content: expect.stringContaining("merge_source = <5>;") })] } });
+    const stale = await post("", { previewId: competing.previewId, previewFingerprint: competing.previewFingerprint,
+      idempotencyKey: "competing-merge" }, competing.previewFingerprint, organizationId);
+    expect(stale.status, stale.bodyText).toBe(202);
+    expect(stale.body).toMatchObject({ item: { status: "blocked", projects: [{ projectId, blockerReason: "stale-preview" }] } });
+    const subsequent = await post("/preview", { ...draft, projectIds: [remainingProjectId] }, undefined, organizationId);
+    const remaining = catalogReplacementPreviewResponseSchema.parse(subsequent.body).item;
+    expect(remaining.remainingProjects).toEqual([]);
+    const completed = await post("", { previewId: remaining.previewId, previewFingerprint: remaining.previewFingerprint,
+      idempotencyKey: "remaining-merge" }, remaining.previewFingerprint, organizationId);
+    expect(completed.status, completed.bodyText).toBe(202);
+    expect(completed.body).toMatchObject({ item: { status: "completed", projects: [{ projectId: remainingProjectId, status: "completed" }] } });
+    expect(await pin()).toEqual(before);
+  }, 120_000);
+
   it("keeps the real selected-project migration available to a dual-role administrator", async () => {
     const definition = await unused("zero_selected_source"), projectId = "zero-selected-project";
     await harness.seedProject(ORG, projectId, "Actual selected project");
@@ -191,14 +342,86 @@ describe("#1309 zero-project identity correction through the real API role", () 
     expect(continued.status, continued.bodyText).toBe(202);
   }, 120_000);
 
-  it("rechecks revoked platform authority at activation and does not grant project migration to a platform-only actor", async () => {
+  it("allows a pure platform administrator to migrate within an explicitly selected organization", async () => {
+    const definition = await unused("platform_selected_source");
+    const targetOrganization = "org-platform-selected";
+    await reference(definition, targetOrganization, "platform-selected", "platform_selected_corrected");
+    await reference(definition, "org-platform-other", "platform-other");
+    const draft = { oldDefinitionId: definition.definitionId, newSubjectId: PREDECESSOR_SUBJECT_ID,
+      newPropertyKey: "platform_selected_corrected", ...integerContent("Selected project", 0),
+      projectIds: ["zero-project-platform-selected"], reason: "Correct the selected organization's project" };
+    const scopedPost = (suffix: string, body: unknown, fingerprint?: string) => post(suffix, body, fingerprint, targetOrganization);
+    await harness.db.query("delete from user_role_bindings where id='zero-admin'");
+    try {
+      const foreign = await scopedPost("/preview", { ...draft, projectIds: ["zero-project-platform-other"] });
+      expect(foreign.status, foreign.bodyText).toBe(400);
+      expect(foreign.body).toMatchObject({ error: { details: { field: "cross-organization-project" } } });
+      const preview = await scopedPost("/preview", draft);
+      expect(preview.status, preview.bodyText).toBe(201);
+      const frozen = catalogReplacementPreviewResponseSchema.parse(preview.body).item;
+      expect(frozen.organizationId).toBe(targetOrganization);
+      expect(frozen.projects.map(project => project.projectId)).toEqual(draft.projectIds);
+      const command = { previewId: frozen.previewId, previewFingerprint: frozen.previewFingerprint, idempotencyKey: "platform-selected-execute" };
+      expect((await post("", command, frozen.previewFingerprint)).status).toBe(404);
+      expect((await scopedPost("", command, frozen.previewFingerprint)).status).toBe(503);
+      expect(await activate()).toBe("claimed");
+      const migrated = await scopedPost("", command, frozen.previewFingerprint);
+      expect(migrated.status, migrated.bodyText).toBe(202);
+      expect(migrated.body).toMatchObject({ item: { organizationId: targetOrganization,
+        projects: [{ projectId: draft.projectIds[0], status: "completed" }] } });
+    } finally { await harness.db.query("insert into user_role_bindings(id,user_id,organization_id,role_id) values ('zero-admin',$1,$2,'admin')", [ADMIN, ORG]); }
+  }, 120_000);
+
+  it("finalizes a selected-project replacement after the shared Candidate is published by its independent reviewer", async () => {
+    const definition = await unused("independent_project_source");
+    const targetOrganization = "org-independent-project";
+    await reference(definition, targetOrganization, "independent-project", "independent_project_target");
+    const client = await harness.pool.connect();
+    await harness.db.query("delete from user_role_bindings where id='zero-admin'");
+    try {
+      await enablePublicationPolicy(client as unknown as import("pg").Client, { publicationEnabled: true, lowRiskSingleActorPublish: false });
+      const preview = await post("/preview", {
+        oldDefinitionId: definition.definitionId, newSubjectId: PREDECESSOR_SUBJECT_ID,
+        newPropertyKey: "independent_project_target", ...integerContent("Independently reviewed", 0),
+        projectIds: ["zero-project-independent-project"], reason: "Review before migrating one project",
+      }, undefined, targetOrganization);
+      expect(preview.status, preview.bodyText).toBe(201);
+      const frozen = catalogReplacementPreviewResponseSchema.parse(preview.body).item;
+      expect(frozen.publicationCandidateId).toBeTruthy();
+      const command = { previewId: frozen.previewId, previewFingerprint: frozen.previewFingerprint, idempotencyKey: "independent-project-execute" };
+      const refused = await post("", command, frozen.previewFingerprint, targetOrganization);
+      expect(refused.status, refused.bodyText).toBe(403);
+      expect(refused.body).toMatchObject({ error: { details: { reason: "publication-self-approval-forbidden" } } });
+      const candidatePath = `/api/v2/catalog/publication-candidates/${frozen.publicationCandidateId}`;
+      const reviewed = await requestJson(app(REVIEWER), candidatePath, { headers: { authorization: "Bearer reviewer" } });
+      expect(reviewed.body).toMatchObject({ item: { impactSummary: { definitionReplacement: {
+        definitionId: definition.definitionId, propertyKey: "independent_project_target",
+      } } } });
+      const published = await requestJson(app(REVIEWER), `${candidatePath}/publish`, {
+        method: "POST", headers: { authorization: "Bearer reviewer", "X-WiseEff-Catalog-Release": (await pin()).id },
+        body: JSON.stringify({ idempotencyKey: "independent-project-publish" }),
+      });
+      expect(published.status, published.bodyText).toBe(201);
+      expect(await activate()).toBe("claimed");
+      const completed = await post("", command, frozen.previewFingerprint, targetOrganization);
+      expect(completed.status, completed.bodyText).toBe(202);
+      expect(completed.body).toMatchObject({ item: { status: "completed", organizationId: targetOrganization,
+        projects: [{ projectId: "zero-project-independent-project", status: "completed" }] } });
+    } finally {
+      await enablePublicationPolicy(client as unknown as import("pg").Client, { publicationEnabled: true, lowRiskSingleActorPublish: true });
+      client.release();
+      await harness.db.query("insert into user_role_bindings(id,user_id,organization_id,role_id) values ('zero-admin',$1,$2,'admin')", [ADMIN, ORG]);
+    }
+  }, 120_000);
+
+  it("rechecks revoked platform authority at activation and refuses a project outside the selected organization", async () => {
     const definition = await unused("zero_authority_source");
     const draft = { oldDefinitionId: definition.definitionId, newSubjectId: PREDECESSOR_SUBJECT_ID,
       newPropertyKey: "zero_authority_corrected", ...integerContent("Authority", 0), projectIds: [], reason: "Use current authority" };
     await harness.db.query("delete from user_role_bindings where id='zero-admin'");
     try {
       const denied = await post("/preview", { ...draft, projectIds: ["a-project-the-platform-actor-does-not-administer"] });
-      expect(denied.status, denied.bodyText).toBe(403);
+      expect(denied.status, denied.bodyText).toBe(400);
     } finally { await harness.db.query("insert into user_role_bindings(id,user_id,organization_id,role_id) values ('zero-admin',$1,$2,'admin')", [ADMIN, ORG]); }
     const preview = await post("/preview", draft);
     expect(preview.status, preview.bodyText).toBe(201);

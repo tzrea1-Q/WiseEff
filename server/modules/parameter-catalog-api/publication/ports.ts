@@ -1,4 +1,4 @@
-import { catalogApiFailureReasonSchema, catalogOwnerDeclarationSchema } from "../../contracts/dtoSchemas/parameterCatalog";
+import { catalogApiFailureReasonSchema, catalogDefinitionReplacementSummarySchema, catalogDefinitionSuccessorChangeSummarySchema, catalogOwnerDeclarationSchema } from "../../contracts/dtoSchemas/parameterCatalog";
 import { planClaimedOwners } from "../../catalog-publication/claimedOwners";
 import {
   CatalogCandidateId,
@@ -98,6 +98,8 @@ const impactSummaryOf = (
     ? record.addedSubjectIds.filter((id): id is string => typeof id === "string")
     : allocatedIds;
   const owners = catalogOwnerDeclarationSchema.array().safeParse(record?.ownerDeclarations);
+  const successorChange = catalogDefinitionSuccessorChangeSummarySchema.safeParse(record?.definitionSuccessorChange);
+  const replacement = catalogDefinitionReplacementSummarySchema.safeParse(record?.definitionReplacement);
   return {
     addedDefinitionCount,
     changedDefinitionCount,
@@ -105,6 +107,8 @@ const impactSummaryOf = (
     ...(addedSubjectIds.length > 0 ? { addedSubjectIds } : {}),
     ...(owners.success ? { ownerDeclarations: owners.data } : {}),
     ...(typeof record?.ownerPublicationOnly === "boolean" ? { ownerPublicationOnly: record.ownerPublicationOnly } : {}),
+    ...(successorChange.success ? { definitionSuccessorChange: successorChange.data } : {}),
+    ...(replacement.success ? { definitionReplacement: replacement.data } : {}),
   };
 };
 
@@ -329,7 +333,8 @@ export function bindCatalogPublicationCommands(input: {
         markdownSource: plan?.source,
       });
       if (!previewed.ok) {
-        return { ok: false, error: mapPreviewError(previewed.error.kind) };
+        return { ok: false, error: mapPreviewError(previewed.error.kind,
+          previewed.error.kind === "invalid-input" ? previewed.error.reason : undefined) };
       }
       if (plan?.changeSet) {
         const facts = previewed.value.impactFacts;

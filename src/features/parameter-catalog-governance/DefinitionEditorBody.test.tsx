@@ -243,6 +243,52 @@ describe("DefinitionEditorBody", () => {
     expect(publish).not.toHaveBeenCalled();
   });
 
+  it("lets a platform administrator revise shared content from a retired organization registration", async () => {
+    const user = userEvent.setup();
+    const registration = { ...registeredSubject.registration, status: "retired" as const, id: "registration-retired" };
+    const { catalog } = renderDialog(undefined, undefined, {
+      actor: "platform-admin",
+      definition: { ...activeDefinition, registration },
+      subjects: [{ ...registeredSubject, registration }],
+      domainState: { kind: "retired", target: "registration", catalogReleaseId: CATALOG_RELEASE_ID, writesEnabled: false }
+    });
+    const publicationPreview = vi.spyOn(catalog, "createPublicationCandidate");
+    await user.clear(screen.getByLabelText("显示名"));
+    await user.type(screen.getByLabelText("显示名"), "共享定义名称");
+    await user.type(screen.getByLabelText("修改原因"), "纠正共享定义");
+    await user.click(screen.getByRole("button", { name: "保存内容修订" }));
+    await waitFor(() => expect(publicationPreview).toHaveBeenCalledWith({ changeSet: [expect.objectContaining({
+      op: "revise-definition", definitionId: activeDefinition.id, content: expect.objectContaining({ displayName: "共享定义名称" })
+    })] }, expect.anything()));
+  });
+
+  it("previews withdrawal of deprecation for independent review without submitting publication", async () => {
+    const user = userEvent.setup();
+    const { catalog } = renderDialog(undefined, undefined, {
+      actor: "platform-admin",
+      definition: { ...activeDefinition, lifecycle: "deprecated", currentRevision: {
+        ...activeDefinition.currentRevision, successorDefinitionId: "pdef_successor"
+      } },
+      domainState: { kind: "retired", target: "definition", catalogReleaseId: CATALOG_RELEASE_ID, writesEnabled: false }
+    });
+    const candidate = vi.spyOn(catalog, "createPublicationCandidate").mockResolvedValue({ item: {
+      id: "ccand_withdrawal", expectedBaseReleaseId: CATALOG_RELEASE_ID, expectedBaseReleaseDigest: "sha256:base",
+      riskClass: "high", capabilityContract: { revision: "test", allowListId: "test" },
+      impactSummary: { addedDefinitionCount: 0, changedDefinitionCount: 1, addedSubjectCount: 0,
+        definitionSuccessorChange: { definitionId: activeDefinition.id, successorDefinitionId: null, successorLabel: null, reason: "撤销误弃用" } }
+    } });
+    const publish = vi.spyOn(catalog, "publishPublicationCandidate");
+    await user.click(screen.getByRole("checkbox", { name: "弃用此定义" }));
+    await user.type(screen.getByLabelText("修改原因"), "撤销误弃用");
+    await user.click(screen.getByRole("button", { name: "预览弃用修订" }));
+    expect(await screen.findByRole("region", { name: "定义发布候选" })).toHaveTextContent("ccand_withdrawal");
+    expect(candidate).toHaveBeenCalledWith({ changeSet: [{
+      op: "revise-definition", definitionId: activeDefinition.id, class: "semantic",
+      successorDefinitionId: null, reason: "撤销误弃用"
+    }] }, { catalogReleaseId: CATALOG_RELEASE_ID });
+    expect(publish).not.toHaveBeenCalled();
+  });
+
   it("allows an author to preview an active unregistered definition without publication authority", async () => {
     const user = userEvent.setup();
     const { preview } = renderDialog(undefined, undefined, {
@@ -807,7 +853,8 @@ describe("DefinitionEditorBody", () => {
       .mockRejectedValueOnce(
         new WiseEffApiError("CONFLICT", "The catalog release changed.", { reason: "release-drift" }, "req-2")
       )
-      .mockResolvedValue({ item: { id: "drep_retry", status: "completed", projects: [], etag: '"drep_retry-v1"', version: 1 } } as never);
+      .mockResolvedValue({ item: { id: "drep_retry", organizationId: "org_acme", oldIdentity: { propertyKey: activeDefinition.propertyKey },
+        newIdentity: { propertyKey: "gpio-int-v3" }, status: "completed", projects: [], etag: '"drep_retry-v1"', version: 1 } } as never);
     const refresh = vi.spyOn(ports.catalog, "getCatalog").mockResolvedValue({
       item: { catalogReleaseId: "crel_successor" }
     } as never);

@@ -72,9 +72,9 @@ Three layers reject a write that names a binding which has been replaced:
 
 The database is therefore the last line: even a writer that bypassed the port and lock layers cannot append a current value to a replaced binding.
 
-### 5. Exactly one current successor per old definition
+### 5. A replacement publication reserves one successor per old definition
 
-A partial unique index — `definition_replacements_current_successor_unique` on `(old_definition_id)` `where status in ('pending','executing','completed','blocked')` — admits at most one non-`failed` replacement per old definition. A `failed` row is excluded so a fresh preview may retry after a genuine failure. A `blocked` row deliberately **holds the slot**: continuation of the blocked replacement, not a second replacement, is the correction path for that old definition.
+The partial unique index `definition_replacements_current_successor_unique` admits one replacement publication per old definition in `pending`, `executing`, `completed` or `blocked` state. A failed row allows a fresh preview. A blocked publication retains its slot for continuation. Existing-target merges follow the scoped rule in section 11.
 
 ### 6. Confirmed defaults
 
@@ -118,6 +118,14 @@ Issue #1309 extends the existing replacement flow with an empty manifest for an 
 
 The publication transaction locks the old permanent Definition and rechecks global current references and the administrators' current authority before inserting its immutable Activation Receipt. A failed check rolls back materialization, receipt and pointer together. That receipt proves absence at activation: a reference created afterwards does not invalidate same-command finalization. An exact Candidate/job/Authorization/actor receipt also permits zero-project finalization after a later release advances, provided the actual replacement identity remains in the current Catalog. Completion records the proven activation without moving the current pointer backwards. The old identity and revisions stay unchanged and active. Independent retirement uses fresh global evidence, and its own publication transaction refuses retirement if references have appeared.
 
+### 11. Scoped corrections, existing targets, and deprecation (#1579)
+
+A Platform Admin can select an operating Organization and then select projects in that Organization. The API rechecks the actor's actual role, the preview's Organization and author, and the ownership of every selected project. The preview lists remaining projects within that Organization. For corrections that need an independent reviewer, the reviewer publishes the shared Candidate and the preview author executes the selected project migration after activation. Zero-project correction continues to use the platform-wide reference check and the actor's home Organization.
+
+An explicitly selected existing target uses a merge preview pinned to the published source and target revisions. Migration `0343` keeps the single-successor slot for identity publication and permits additional scoped merge manifests. A completed edge is unique for its source Binding. When both Definitions have a Binding in the same project, the operator chooses a value for the same owned source occurrence. Choosing the target keeps its existing value and source pin. To keep a different source value, use the project's reviewed source-edit workflow to set the target value and preview again. The migration result retains both binding and value IDs for exact historical export. A current source or target change requires a new preview. A later manifest can cover the remaining projects.
+
+Deprecation and retirement have different publication semantics. An authorized revision can publish `deprecated` with an effective successor, redirect the successor, or publish `active` to withdraw deprecation. Existing projects read their pinned values and can see the current Catalog's recommendation when editing. The normal publication policy applies, including independent review and the maintenance freeze. Platform Admins can revise shared definitions from an operating Organization whose registration is retired. Its local registration and recognition continue to apply.
+
 ## Consequences
 
 ### Historical identity and the two history events
@@ -132,14 +140,14 @@ Publication of the replacement identity and migration of references are separate
 
 Recovery is an explicit HTTP `continue` through the governance boundary, not a second scheduler and not a background manager step. A manager job would need its own authorization re-check and would duplicate `installPublishedRelease`'s transaction ownership. Execution and continuation are idempotent per organization-scoped `parameter_catalog.governance_command_idempotency` family — `definition-replacement-execute` and `definition-replacement-continue` — keyed by `(organization_id, command_family, idempotency_key)` with a `request_fingerprint` over the canonical command model. A replayed command reports `outcome: "replayed"` with unchanged row counts; the same key with a different body is a typed conflict. Committed projects stay committed, uncommitted projects stay `pending`, and a restart duplicates nothing.
 
-### Deprecation is a separate evidence-gated act
+### Retirement is a separate evidence-gated act
 
-Retiring the old definition is not part of migration. Deprecation is a distinct governance act offered only after authoritative evidence shows the relevant current references are migrated. A usage count computed over a project scope cannot prove global completion, so a scoped count alone is refused, and the old definition stays `active` while any current reference outside the counted scope may exist.
+Retiring the old definition requires authoritative evidence of global completion. A scoped count cannot establish retirement eligibility. Deprecation with a published successor is available while old bindings still have references.
 
 ### Trade-offs
 
 - **The old definition keeps its current-reference count until every project is migrated.** Until the last project commits, the old identity remains genuinely current somewhere. That is why usage counts and catalog read surfaces must count only the current-binding view: counting raw `project_parameter_bindings` would keep a phantom count on the old definition after migration.
-- **A blocked replacement holds the single-current-successor slot.** Because the partial unique index includes `blocked`, a different correction for the same old definition cannot start until the blocked replacement is continued to completion or explicitly failed and superseded. This is deliberate — two competing replacements for one identity would be worse than a serialized one — but it makes continuation a required operator action rather than an optional one.
+- **A blocked replacement publication retains its successor slot.** Continue its frozen manifest to complete the remaining work. An existing-target merge can cover additional current bindings after a fresh preview.
 - **Current reads pay one projection lookup.** Every current-binding read gains a lookup against the replacement projection. The design keeps this to one view predicate or one exact-identity helper call rather than a join chain, and confines the cost to current reads, since historical and pinned reads are untouched.
 
 ## Required verification owners
