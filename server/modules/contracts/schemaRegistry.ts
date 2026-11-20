@@ -1082,6 +1082,7 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
 
   "logs.listIntegrationCredentials": { summary: "List organization integration credentials (logs:admin-domains)", tags: ["logs"], responseBody: "LogIntegrationCredentialListResponse" },
   "logs.issueIntegrationCredential": { summary: "Issue integration credential; secret returned once (logs:admin-domains)", tags: ["logs"], requestBody: "IssueLogIntegrationCredentialRequest", responseBody: "LogIntegrationCredentialSecretResponse", successStatus: 201 },
+  "logs.renameIntegrationCredential": { summary: "Correct the display name of an active or revoked integration credential (logs:admin-domains)", tags: ["logs"], requestBody: "RenameLogIntegrationCredentialRequest", responseBody: "LogIntegrationCredentialResponse" },
   "logs.rotateIntegrationCredential": { summary: "Rotate integration credential immediately; secret returned once (logs:admin-domains)", tags: ["logs"], responseBody: "LogIntegrationCredentialSecretResponse" },
   "logs.revokeIntegrationCredential": { summary: "Revoke integration credential (logs:admin-domains)", tags: ["logs"], responseBody: "LogIntegrationCredentialResponse" },
   "logs.uploadFile": {
@@ -1213,6 +1214,8 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
   "logs.listSourceSnapshots": { summary: "List source snapshot metadata", tags: ["logs"], responseBody: "LogSourceSnapshotListResponse" },
   "logs.listSourceVersions": { summary: "List ready source version labels (logs:view or logs:upload)", tags: ["logs"], responseBody: "LogSourceVersionListResponse", additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" } },
   "logs.uploadSourceSnapshot": { summary: "Upload a version-labelled source archive", tags: ["logs"], requestBody: "LogSourceSnapshotUploadRequest", responseBody: "LogSourceSnapshotResponse", successStatus: 201 },
+  "logs.previewSourceSnapshotLabel": { summary: "Preview sourceVersion selection before and after a label correction", tags: ["logs"], requestBody: "LogSourceSnapshotLabelPreviewRequest", responseBody: "LogSourceSnapshotLabelPreviewResponse" },
+  "logs.updateSourceSnapshotLabel": { summary: "Correct a source snapshot label under the same snapshot identity", tags: ["logs"], requestBody: "LogSourceSnapshotLabelUpdateRequest", responseBody: "LogSourceSnapshotResponse", additionalResponses: { "409": "ErrorResponse" } },
   "logs.defaultSourceSnapshot": { summary: "Set the skill draft default source snapshot", tags: ["logs"], responseBody: "LogSkillResponse" },
   "logs.archiveSourceSnapshot": { summary: "Archive a source snapshot", tags: ["logs"], responseBody: "LogSourceSnapshotResponse" },
   "logs.locateSourceStatement": { summary: "Locate log statements in a ready source snapshot (logs:admin-domains)", tags: ["logs"], requestBody: "LogSourceLocateRequest", responseBody: "LogSourceLocateResponse", additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" } },

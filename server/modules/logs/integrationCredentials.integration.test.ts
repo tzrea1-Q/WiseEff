@@ -139,6 +139,43 @@ describe.skipIf(!process.env.DATABASE_URL && !process.env.TEST_DATABASE_URL)("in
     expect(audit.every(event => event.actorUserId === platform.user.id && event.organizationId === organizations[1] && event.metadata.actorHomeOrganizationId === organizations[0] && event.metadata.operatingOrganizationId === organizations[1])).toBe(true);
   }, 120_000);
 
+  it("renames only the display name in the selected organization and keeps the original credential working", async () => {
+    const path = "/api/v1/log-integration-credentials";
+    const scope = `?organizationId=${organizations[1]}`;
+    const skill = await request<{ item: Skill }>("POST", "/api/v1/log-skills", { name: "Rename-bound skill" }, "user-1");
+    expect(skill.status).toBe(201);
+    const old = await issue("Old display name", skill.body.item.id, "user-1");
+    const route = `${path}/${old.item.id}`;
+    const initial = await upload(old.token, skill.body.item);
+    expect(initial.status).toBe(201);
+    expect(await processLogAnalysisJobById({ db, objectStore, jobId: initial.body.job.id })).toMatchObject({ status: "processed" });
+    const listed = await request<{ items: Credential[] }>("GET", `${path}${scope}`, undefined, "platform");
+    const original = listed.body.items.find(item => item.id === old.item.id);
+    expect(original).toBeDefined();
+    const update = { name: "  Corrected display name  " };
+    expect((await request("PATCH", `${route}${scope}`, update)).status).toBe(403);
+    expect([401, 403]).toContain((await request("PATCH", `${route}${scope}`, update, old.token)).status);
+    expect((await request("PATCH", route, update, "platform")).status).toBe(404);
+    expect((await request("PATCH", `${route}${scope}`, { ...update, skillId: null }, "platform")).status).toBe(400);
+    const renamed = await request("PATCH", `${route}${scope}`, update, "platform");
+    expect(renamed).toEqual({ status: 200, body: { item: { ...original, name: "Corrected display name" } } });
+    expect((await upload(old.token, skill.body.item)).status).toBe(201);
+    expect(await request("GET", ownPath(initial.body.log.id), undefined, old.token)).toMatchObject({
+      status: 200, body: { item: { id: initial.body.log.id, status: "complete", reportId: expect.any(String) } }
+    });
+    expect((await request("POST", `${route}/revoke${scope}`, {}, "platform")).status).toBe(200);
+    expect(await request("PATCH", `${route}${scope}`, { name: "Retired display name" }, "platform")).toMatchObject({
+      status: 200, body: { item: { id: old.item.id, name: "Retired display name", skillId: skill.body.item.id, status: "revoked" } }
+    });
+    expect((await upload(old.token)).status).toBe(401);
+    const events = (await request<{ items: Array<{ kind: string; actorUserId: string; organizationId: string; metadata: Record<string, unknown> }> }>(
+      "GET", `/api/v1/audit-events?targetId=${old.item.id}`, undefined, "user-1")).body.items;
+    const renames = events.filter(event => event.kind === "log-integration-credential-rename");
+    expect(renames).toHaveLength(2);
+    expect(renames).toContainEqual(expect.objectContaining({ actorUserId: platform.user.id, organizationId: organizations[1],
+      metadata: { beforeName: "Old display name", afterName: "Corrected display name", initiator: "user", actorHomeOrganizationId: organizations[0], operatingOrganizationId: organizations[1] } }));
+  }, 120_000);
+
   it("uploads through both endpoints, reads its own report/files, preserves provenance, isolates owners and rotates/revokes immediately", async () => {
     const primary = await issue("Build pipeline");
     const sibling = await issue("Other pipeline");

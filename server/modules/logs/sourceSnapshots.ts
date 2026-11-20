@@ -3,7 +3,8 @@ import { randomUUID } from "node:crypto";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { withAuditedWrite, type AuditedWriteContext } from "../audit/auditedWrite";
-import { type TrustedInvocationContext } from "../auth/trustedInvocation";
+import type { TrustedInvocationContext } from "../auth/trustedInvocation";
+import { requireUserInitiatedInvocation } from "../auth/trustedInvocationPolicy";
 import { requireLogAdminDomains, requireLogView } from "./policy";
 import { getLogDomainById } from "./domainsRepository";
 import type { ObjectStore } from "./objectStore";
@@ -25,6 +26,8 @@ const snapshotSelect = `select id, skill_id as "skillId", version_label as "vers
   files_processed as "filesProcessed", files_total as "filesTotal", file_count as "fileCount",
   skipped_count as "skippedCount", skipped_files as "skippedFiles", error, created_at as "createdAt"
   from log_source_snapshots`;
+type SourceSnapshotReference = Pick<SourceSnapshotDto, "id" | "versionLabel" | "status">;
+const snapshotConflictMessage = "该版本标签已被其他快照占用，请更换标签或归档占用项。";
 
 function requireOrganization(auth: LogAccessContext) {
   if (auth.user.organizationId !== auth.organization.id) throw new ApiError("FORBIDDEN", "无权访问此组织的日志。");
@@ -44,6 +47,76 @@ async function getSnapshot(db: Queryable, organizationId: string, skillId: strin
 function audit(id: string, kind: string, skillId: string) {
   return { app: "log-analysis", kind, action: kind, severity: "Medium" as const, projectId: null,
     targetType: "log-source-snapshot", targetId: id, metadata: { skillId } };
+}
+
+async function findActiveSnapshot(db: Queryable, organizationId: string, skillId: string, label: string) {
+  return (await db.query<SourceSnapshotReference>(`select id, version_label as "versionLabel", status
+    from log_source_snapshots where organization_id=$1 and skill_id=$2 and version_label=$3 and status<>'archived'`,
+  [organizationId, skillId, label])).rows[0] ?? null;
+}
+
+export async function previewSourceSnapshotLabel(db: Database, auth: LogAccessContext, skillId: string, id: string, versionLabel: string) {
+  requireOrganization(auth);
+  requireLogAdminDomains(auth);
+  const organizationId = logOrganizationId(auth);
+  return db.transaction(async (tx) => {
+    await lockSkill(tx, organizationId, skillId);
+    const { versionLabel: currentLabel, status } = await getSnapshot(tx, organizationId, skillId, id);
+    const archived = status === "archived";
+    const oldMatch = await findActiveSnapshot(tx, organizationId, skillId, currentLabel);
+    const newMatch = currentLabel === versionLabel ? oldMatch : await findActiveSnapshot(tx, organizationId, skillId, versionLabel);
+    const published = (await tx.query<{ snapshot: SourceSnapshotReference | null }>(`select case when s.id is not null then
+      jsonb_build_object('id', s.id, 'versionLabel', s.version_label, 'status', s.status) end as snapshot
+      from log_skill_revisions r left join log_source_snapshots s on s.id=r.spec->>'defaultSourceSnapshotId'
+        and s.organization_id=r.organization_id and (s.skill_id=r.skill_id or s.skill_id is null)
+      where r.organization_id=$1 and r.skill_id=$2 and r.status='published'`, [organizationId, skillId])).rows[0];
+    const conflictingSnapshot = newMatch?.id === id ? null : newMatch;
+    const canRename = archived || !conflictingSnapshot;
+    const fallback = published?.snapshot ?? null;
+    const relabel = (snapshot: SourceSnapshotReference | null) => snapshot?.id === id ? { ...snapshot, versionLabel } : snapshot;
+    const resolve = (match: SourceSnapshotReference | null, defaultSnapshot: SourceSnapshotReference | null) => {
+      if (published && match) return { selection: "matched_version" as const, snapshot: match };
+      if (defaultSnapshot) return { selection: "default" as const, snapshot: defaultSnapshot };
+      return { selection: "none" as const, snapshot: null };
+    };
+    return {
+      versionLabel: currentLabel, nextVersionLabel: versionLabel, archived, conflictingSnapshot,
+      hasPublishedRevision: Boolean(published),
+      oldResolution: { before: resolve(oldMatch, fallback), after: canRename
+        ? resolve(oldMatch?.id === id && currentLabel !== versionLabel ? null : oldMatch, relabel(fallback)) : null },
+      newResolution: { before: resolve(newMatch, fallback), after: canRename
+        ? resolve(archived ? newMatch : { id, versionLabel, status }, relabel(fallback)) : null }
+    };
+  });
+}
+
+export async function updateSourceSnapshotLabel(db: Database, auth: LogAccessContext, skillId: string, id: string,
+  input: { versionLabel: string; expectedVersionLabel: string; expectedArchived: boolean },
+  invocation: TrustedInvocationContext, context: AuditedWriteContext) {
+  requireUserInitiatedInvocation(invocation);
+  assertLogInvocation(auth, invocation, "Correct source snapshot label");
+  requireOrganization(auth);
+  requireLogAdminDomains(auth);
+  const organizationId = logOrganizationId(auth);
+  return withAuditedWrite(db, invocation, context, async (tx) => {
+    await lockSkill(tx, organizationId, skillId);
+    const snapshot = await getSnapshot(tx, organizationId, skillId, id);
+    const archived = snapshot.status === "archived";
+    if (snapshot.versionLabel !== input.expectedVersionLabel || archived !== input.expectedArchived) {
+      throw new ApiError("CONFLICT", "快照标签或归档状态已变化，请重新预览。", { snapshotId: id, versionLabel: snapshot.versionLabel, status: snapshot.status });
+    }
+    if (snapshot.versionLabel === input.versionLabel) return { result: snapshot, audit: null };
+    if (!archived) {
+      const conflictingSnapshot = await findActiveSnapshot(tx, organizationId, skillId, input.versionLabel);
+      if (conflictingSnapshot) throw new ApiError("CONFLICT", snapshotConflictMessage, { conflictingSnapshot });
+    }
+    await tx.query(`update log_source_snapshots set version_label=$4, updated_at=now()
+      where organization_id=$1 and skill_id=$2 and id=$3`, [organizationId, skillId, id, input.versionLabel]);
+    const event = audit(id, "log-source-snapshot-rename", skillId);
+    return { result: await getSnapshot(tx, organizationId, skillId, id), audit: {
+      ...event, metadata: { ...event.metadata, beforeVersionLabel: snapshot.versionLabel, afterVersionLabel: input.versionLabel }
+    } };
+  });
 }
 
 /** Metadata only: there is deliberately no source-file/content route in this slice. */
@@ -84,10 +157,8 @@ export async function uploadSourceSnapshot(db: Database, objectStore: ObjectStor
   try {
     return await db.transaction((transaction) => withAuditedWrite(transaction, invocation, context, async (tx) => {
       await lockSkill(tx, logOrganizationId(auth), skillId);
-      if ((await tx.query(`select id from log_source_snapshots where organization_id = $1 and skill_id = $2
-        and version_label = $3 and status <> 'archived'`, [logOrganizationId(auth), skillId, versionLabel])).rows.length) {
-        throw new ApiError("CONFLICT", "此技能已存在同名源码版本。");
-      }
+      const conflictingSnapshot = await findActiveSnapshot(tx, logOrganizationId(auth), skillId, versionLabel);
+      if (conflictingSnapshot) throw new ApiError("CONFLICT", "此技能已存在同名源码版本。", { conflictingSnapshot });
       const id = randomUUID();
       const revisions = await listSkillRevisions(tx, logOrganizationId(auth), skillId);
       const revision = revisions.find((item) => item.status === "draft") ?? revisions.find((item) => item.status === "published");
@@ -174,10 +245,8 @@ export async function restoreSourceSnapshot(db: Database, store: ObjectStore, au
     await lockSkill(tx, logOrganizationId(auth), skillId);
     const snapshot = await getSnapshot(tx, logOrganizationId(auth), skillId, id);
     if (snapshot.status !== "archived") throw new ApiError("CONFLICT", "仅已归档的源码快照可恢复，请刷新状态。", { snapshotId: id, status: snapshot.status });
-    const conflict = (await tx.query<{ id: string; versionLabel: string; status: string }>(`select id,version_label as "versionLabel",status
-      from log_source_snapshots where organization_id=$1 and skill_id=$2 and version_label=$3 and status<>'archived' and id<>$4`,
-    [logOrganizationId(auth), skillId, snapshot.versionLabel, id])).rows[0];
-    if (conflict) throw new ApiError("CONFLICT", "该版本标签已被其他快照占用，请先归档占用项后重试。", { conflictingSnapshot: conflict });
+    const conflictingSnapshot = await findActiveSnapshot(tx, logOrganizationId(auth), skillId, snapshot.versionLabel);
+    if (conflictingSnapshot) throw new ApiError("CONFLICT", snapshotConflictMessage, { conflictingSnapshot });
     const key = (await tx.query<{ storage_key: string }>("select storage_key from log_source_snapshots where organization_id=$1 and skill_id=$2 and id=$3", [logOrganizationId(auth), skillId, id])).rows[0]!.storage_key;
     try {
       let readable = false;

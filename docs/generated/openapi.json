@@ -16951,6 +16951,68 @@
         }
       }
     },
+    "/api/v1/log-integration-credentials/{credentialId}": {
+      "patch": {
+        "operationId": "logs.renameIntegrationCredential",
+        "summary": "Correct the display name of an active or revoked integration credential (logs:admin-domains)",
+        "tags": [
+          "logs"
+        ],
+        "parameters": [
+          {
+            "name": "credentialId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "organizationId",
+            "in": "query",
+            "required": false,
+            "description": "Explicit operating Organization; cross-Organization access requires a platform super administrator. Omitting it preserves the endpoint's existing scope.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RenameLogIntegrationCredentialRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LogIntegrationCredentialResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
     "/api/v1/log-integration-credentials/{credentialId}/rotate": {
       "post": {
         "operationId": "logs.rotateIntegrationCredential",
@@ -19208,6 +19270,149 @@
             "$ref": "#/components/responses/ErrorResponse"
           },
           "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/log-skills/{skillId}/source-snapshots/{snapshotId}/version-label/preview": {
+      "post": {
+        "operationId": "logs.previewSourceSnapshotLabel",
+        "summary": "Preview sourceVersion selection before and after a label correction",
+        "tags": [
+          "logs"
+        ],
+        "parameters": [
+          {
+            "name": "skillId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "snapshotId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "organizationId",
+            "in": "query",
+            "required": false,
+            "description": "Explicit operating Organization; cross-Organization access requires a platform super administrator. Omitting it preserves the endpoint's existing scope.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LogSourceSnapshotLabelPreviewRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LogSourceSnapshotLabelPreviewResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/log-skills/{skillId}/source-snapshots/{snapshotId}": {
+      "patch": {
+        "operationId": "logs.updateSourceSnapshotLabel",
+        "summary": "Correct a source snapshot label under the same snapshot identity",
+        "tags": [
+          "logs"
+        ],
+        "parameters": [
+          {
+            "name": "skillId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "snapshotId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "organizationId",
+            "in": "query",
+            "required": false,
+            "description": "Explicit operating Organization; cross-Organization access requires a platform super administrator. Omitting it preserves the endpoint's existing scope.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LogSourceSnapshotLabelUpdateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LogSourceSnapshotResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
             "$ref": "#/components/responses/ErrorResponse"
           },
           "500": {
@@ -51330,6 +51535,19 @@
         "additionalProperties": false,
         "x-wiseeff-schema": "LogIntegrationCredentialSecretResponse"
       },
+      "RenameLogIntegrationCredentialRequest": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "RenameLogIntegrationCredentialRequest"
+      },
       "LogIntegrationCredentialResponse": {
         "type": "object",
         "properties": {
@@ -65827,6 +66045,136 @@
         ],
         "additionalProperties": false,
         "x-wiseeff-schema": "LogSourceSnapshotUploadRequest"
+      },
+      "LogSourceSnapshotLabelPreviewRequest": {
+        "type": "object",
+        "properties": {
+          "versionLabel": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "versionLabel"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "LogSourceSnapshotLabelPreviewRequest"
+      },
+      "LogSourceSnapshotLabelPreviewResponse": {
+        "type": "object",
+        "properties": {
+          "versionLabel": {
+            "type": "string"
+          },
+          "nextVersionLabel": {
+            "type": "string"
+          },
+          "archived": {
+            "type": "boolean"
+          },
+          "hasPublishedRevision": {
+            "type": "boolean"
+          },
+          "conflictingSnapshot": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "versionLabel": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "queued",
+                  "indexing",
+                  "ready",
+                  "failed",
+                  "archived"
+                ]
+              }
+            },
+            "required": [
+              "id",
+              "versionLabel",
+              "status"
+            ],
+            "additionalProperties": false
+          },
+          "oldResolution": {
+            "type": "object",
+            "properties": {
+              "before": {
+                "type": "object"
+              },
+              "after": {
+                "type": [
+                  "object",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "before",
+              "after"
+            ],
+            "additionalProperties": false
+          },
+          "newResolution": {
+            "type": "object",
+            "properties": {
+              "before": {
+                "type": "object"
+              },
+              "after": {
+                "type": [
+                  "object",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "before",
+              "after"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "versionLabel",
+          "nextVersionLabel",
+          "archived",
+          "hasPublishedRevision",
+          "conflictingSnapshot",
+          "oldResolution",
+          "newResolution"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "LogSourceSnapshotLabelPreviewResponse"
+      },
+      "LogSourceSnapshotLabelUpdateRequest": {
+        "type": "object",
+        "properties": {
+          "versionLabel": {
+            "type": "string"
+          },
+          "expectedVersionLabel": {
+            "type": "string"
+          },
+          "expectedArchived": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "versionLabel",
+          "expectedVersionLabel",
+          "expectedArchived"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "LogSourceSnapshotLabelUpdateRequest"
       },
       "LogSourceLocateRequest": {
         "type": "object",

@@ -525,6 +525,12 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     required: true
   },
   {
+    id: "LOG-SKILL-CORRECTIONS-001",
+    workflow: "D",
+    title: "Platform Admin corrects source version labels and credential display names in the selected organization while retaining report identity.",
+    required: true
+  },
+  {
     id: "LOG-DOMAIN-KNOWLEDGE-001",
     workflow: "D",
     title: "Admin links published knowledge entries to a log domain in /log-admin; only published entries are selectable and the link set is audited.",

@@ -1090,6 +1090,18 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     deferralReason: "The focused browser spec is authored, but mandatory 1440x900 browser evidence remains pending: native Chromium bootstrap failed with MachPortRendezvous PermissionDenied, and CUA origin approval was explicitly user-declined. No browser interactions or screenshots were obtained. Actual retrieved revision provenance is asserted by PostgreSQL integration tests, not a deterministic browser model."
   },
   {
+    id: "LOG-SKILL-CORRECTIONS-001",
+    priority: "P1",
+    area: "logs",
+    route: "/log-admin/skills/:skillId",
+    roles: ["Admin", "Platform Admin"],
+    action: "Preview sourceVersion resolution and correct source labels and integration credential names in the selected organization.",
+    coverage: "automated",
+    acceptanceIds: ["LOG-SKILL-CORRECTIONS-001"],
+    specFiles: ["e2e/acceptance/log-skill-corrections.acceptance.spec.ts", "server/modules/logs/sourceSnapshotRestore.integration.test.ts", "server/modules/logs/integrationCredentials.integration.test.ts"],
+    assertions: ["ui", "api", "db", "audit"]
+  },
+  {
     id: "LOG-DOMAIN-KNOWLEDGE-001",
     priority: "P1",
     area: "logs",

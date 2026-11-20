@@ -26,7 +26,7 @@ export function IntegrationCredentials({ skill, repository, apiMode, canEdit, ca
   const [name, setName] = useState("");
   const [bound, setBound] = useState(Boolean(skill));
   const [skillFilter, setSkillFilter] = useState("all");
-  const [action, setAction] = useState<{ kind: "rotate" | "revoke"; item: IntegrationCredential } | null>(null);
+  const [action, setAction] = useState<{ kind: "rename" | "rotate" | "revoke"; item: IntegrationCredential } | null>(null);
   const [reveal, setReveal] = useState<IntegrationCredentialSecret | null>(null);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
@@ -37,7 +37,7 @@ export function IntegrationCredentials({ skill, repository, apiMode, canEdit, ca
     onBusyChange(pending || !!reveal);
     return () => onBusyChange(false);
   }, [onBusyChange, pending, reveal]);
-  useEffect(() => { if (!canEdit || disabled) { setIssuing(false); setAction(null); } }, [canEdit, disabled]);
+  useEffect(() => { if (!canEdit) { setIssuing(false); setAction(null); } }, [canEdit]);
   useEffect(() => {
     if (!apiMode || !canView || !repository?.listIntegrationCredentials) { setLoading(false); return; }
     let active = true;
@@ -48,11 +48,12 @@ export function IntegrationCredentials({ skill, repository, apiMode, canEdit, ca
     return () => { active = false; };
   }, [apiMode, canView, repository, reload]);
   const save = async () => {
-    if (pending || !canEdit || disabled) return;
+    if (pending || !canEdit || disabled || ((!action || action.kind === "rename") && !name.trim())) return;
     setPending(true); setError("");
     try {
-      if (action?.kind === "revoke") {
-        const item = await repository!.revokeIntegrationCredential!(action.item.id);
+      if (action?.kind === "rename" || action?.kind === "revoke") {
+        const item = action.kind === "rename" ? await repository!.renameIntegrationCredential!(action.item.id, name.trim())
+          : await repository!.revokeIntegrationCredential!(action.item.id);
         setItems((previous) => previous.map((old) => old.id === item.id ? item : old));
       } else {
         const result = action ? await repository!.rotateIntegrationCredential!(action.item.id)
@@ -65,6 +66,8 @@ export function IntegrationCredentials({ skill, repository, apiMode, canEdit, ca
     finally { setPending(false); }
   };
   const supported = !!repository?.listIntegrationCredentials && !!repository.issueIntegrationCredential && !!repository.rotateIntegrationCredential && !!repository.revokeIntegrationCredential;
+  const renaming = action?.kind === "rename";
+  const closeNameDialog = () => { setAction(null); setIssuing(false); };
   return <section aria-label="集成凭据">
     <div className="skill-credential-toolbar"><h3>集成凭据</h3>
       {!skill && apiMode && canView && repository?.listIntegrationCredentials ? <SelectControl ariaLabel="筛选绑定技能" value={skillFilter} onValueChange={setSkillFilter} disabled={pending || loading} options={[
@@ -89,17 +92,26 @@ export function IntegrationCredentials({ skill, repository, apiMode, canEdit, ca
               <span className="block break-words text-xs text-muted-foreground">{item.skillId ? `绑定：${item.skillName ?? skill?.name ?? item.skillId}` : "未绑定"} · <time className="whitespace-nowrap" title={formatAbsolute(item.createdAt).slice(0, 16).replaceAll("-", "/")}>创建于 {formatAbsolute(item.createdAt).slice(0, 16).replaceAll("-", "/")}</time></span></> },
             { key: "status", header: "状态", widthClass: "w-20", className: "px-2", render: (item) => <Badge variant="outline" className={item.status === "active" ? "text-[var(--success)] bg-[var(--success-soft)]" : "text-muted-foreground bg-muted"}>{item.status === "active" ? "有效" : "已撤销"}</Badge> },
             { key: "used", header: "最近使用", widthClass: "w-36", className: "px-2 whitespace-nowrap", render: (item) => item.lastUsedAt ? <time title={formatAbsolute(item.lastUsedAt).slice(0, 16).replaceAll("-", "/")}>{formatAbsolute(item.lastUsedAt).slice(0, 16).replaceAll("-", "/")}</time> : "尚未使用" },
-            { key: "actions", header: "操作", widthClass: "w-24", className: "px-2", render: (item) => canEdit && supported && item.status === "active" ? <RowActionMenu label={`凭据 ${item.name}`} items={(["rotate", "revoke"] as const).map((kind) => ({ id: kind, label: kind === "rotate" ? "轮换" : "撤销", destructive: true, disabled, onRequestConfirmation: () => { setError(""); setAction({ kind, item }); } }))} /> : <span className="text-muted-foreground">—</span> }
+            { key: "actions", header: "操作", widthClass: "w-24", className: "px-2", render: (item) => {
+              const lifecycleActions = supported && item.status === "active" ? (["rotate", "revoke"] as const).map((kind) => ({ id: kind, label: kind === "rotate" ? "轮换" : "撤销", destructive: true, disabled,
+                onRequestConfirmation: () => { setError(""); setAction({ kind, item }); } })) : [];
+              const renameActions = repository.renameIntegrationCredential ? [{ id: "rename", label: "更正名称", disabled, onSelect: () => {
+                setError(""); setName(item.name); setAction({ kind: "rename", item });
+              } }] : [];
+              return canEdit && (lifecycleActions.length || renameActions.length) ? <RowActionMenu label={`凭据 ${item.name}`} items={[...renameActions, ...lifecycleActions]} /> : <span className="text-muted-foreground">—</span>;
+            } }
           ]} />}
       </>}
-    <ModalDialog open={issuing && canEdit && !disabled} initialFocusRef={nameRef} onDismiss={pending ? undefined : () => setIssuing(false)} className="skill-publish-dialog">
-      {({ titleId }) => <><h2 id={titleId}>签发集成凭据</h2><label>凭据名称<Input ref={nameRef} value={name} maxLength={120} disabled={pending} onChange={(event) => setName(event.target.value)} /></label>
-        {skill ? <label className="skill-credential-checkbox"><input type="checkbox" checked={bound} disabled={pending} onChange={(event) => setBound(event.target.checked)} />绑定到当前技能</label> : null}
-        {!bound ? <p>未绑定凭据可向本组织的其他技能上传日志。</p> : null}
+    <ModalDialog open={(issuing || renaming) && canEdit} initialFocusRef={nameRef} onDismiss={pending ? undefined : closeNameDialog} className="skill-publish-dialog">
+      {({ titleId }) => <form className="grid gap-3" onSubmit={(event) => { event.preventDefault(); void save(); }}><h2 id={titleId}>{renaming ? "更正集成凭据名称" : "签发集成凭据"}</h2><label>凭据名称<Input ref={nameRef} value={name} maxLength={120} disabled={pending} onChange={(event) => setName(event.target.value)} /></label>
+        {renaming ? <p>新名称仅用于显示，已有调用可继续使用原密钥。</p> : <>
+          {skill ? <label className="skill-credential-checkbox"><input type="checkbox" checked={bound} disabled={pending} onChange={(event) => setBound(event.target.checked)} />绑定到当前技能</label> : null}
+          {!bound ? <p>未绑定凭据可向本组织的其他技能上传日志。</p> : null}
+        </>}
         {error ? <p role="alert" className="skill-field-error">{error}</p> : null}
-        <div className="dialog-actions"><Button variant="outline" disabled={pending} onClick={() => setIssuing(false)}>取消</Button><Button disabled={pending || !name.trim()} onClick={() => void save()}>签发</Button></div></>}
+        <div className="dialog-actions"><Button type="button" variant="outline" disabled={pending} onClick={closeNameDialog}>取消</Button><Button type="submit" disabled={disabled || pending || !name.trim() || (renaming && name.trim() === action.item.name)}>{renaming ? "保存名称" : "签发"}</Button></div></form>}
     </ModalDialog>
-    <ConfirmDialog open={!!action && canEdit && !disabled} title={action?.kind === "rotate" ? "轮换集成凭据" : "撤销集成凭据"}
+    <ConfirmDialog open={!!action && !renaming && canEdit} title={action?.kind === "rotate" ? "轮换集成凭据" : "撤销集成凭据"}
       description={action?.kind === "rotate" ? `轮换「${action.item.name}」后，旧密钥立即失效。请更新调用方。` : `撤销「${action?.item.name ?? ""}」后，该凭据立即失效且无法恢复。`}
       confirmLabel={action?.kind === "rotate" ? "轮换凭据" : "撤销凭据"} tone="danger" pending={pending} error={error}
       onConfirm={() => void save()} onCancel={() => setAction(null)} />
