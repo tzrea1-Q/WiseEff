@@ -39,7 +39,7 @@ import { SectionEmpty, SectionError, SectionSkeleton } from "@/components/common
 import { ModalDialog } from "@/components/common/ModalDialog";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { formatAbsolute, formatRelativeOrAbsolute } from "@/domain/format/formatDateTime";
-import { renderMarkdownPreview } from "@/domain/knowledge/markdown";
+import { DefinitionDocumentation } from "@/components/parameters/DefinitionDocumentation";
 import { toggleFilterValue } from "@/components/tableFilterUtils";
 import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 import type {
@@ -1112,7 +1112,7 @@ export function CatalogPage({
                   {reading.recommendedDefinition ? <p>此定义已弃用。推荐使用 <a
                     href={withOrganizationScope(`${CATALOG_READ_PAGE_PATH}?${new URLSearchParams({ definitionId: reading.recommendedDefinition.id })}`, organizationId)}>
                     {reading.recommendedDefinition.displayName}</a>。</p> : null}
-                  {revision.documentation ? <div className="knowledge-markdown-preview" dangerouslySetInnerHTML={{ __html: renderMarkdownPreview(revision.documentation) }} /> : <p className="parameter-catalog__muted">该定义暂未提供说明。</p>}
+                  <DefinitionDocumentation documentation={revision.documentation} empty={<p className="parameter-catalog__muted">该定义暂未提供说明。</p>} />
                 </section>
                 <section className="parameter-library-detail__section"><h2>示例</h2>
                   <p className="parameter-catalog__muted">仅用于理解定义，并非默认配置或推荐值。</p>
@@ -1330,7 +1330,7 @@ export function CatalogPage({
               <DefinitionTable rows={definitions} columns={libraryMode ? [
                 { key: "name", header: "名称 / 属性键", headerFilter: columns[4]?.headerFilter, render: (row) => <><strong>{row.currentRevision.displayName || row.propertyKey}</strong><br /><code>{row.propertyKey}</code>{row.lifecycle !== "active" ? <span className="parameter-catalog__badge">{catalogLifecycleLabel(row.lifecycle)}</span> : null}</> },
                 { key: "subject", header: "主体 / 类型", headerFilter: columns[3]?.headerFilter, render: (row) => <>{row.subject.canonicalName}<br /><span className="parameter-catalog__muted">{catalogSubjectTypeLabel(row.subject.type)} · <span data-row-status>{catalogRegistrationLabel(row.registration.status)}</span></span></> },
-                { key: "documentation", header: "说明", render: (row) => <span className="parameter-library-preview">{row.currentRevision.documentation || "未说明"}</span> },
+                { key: "documentation", header: "说明", render: (row) => <div className="parameter-library-preview"><DefinitionDocumentation documentation={row.currentRevision.documentation} empty="未说明" /></div> },
                 { key: "shape", header: "类型 / 单位", render: (row) => <>{catalogValueShapeLabel(row.currentRevision.valueShape.schema as { type?: unknown })} · {row.currentRevision.unit?.symbol ?? "未说明"}</> },
                 { key: "configuredProjects", header: "项目数", align: "right", render: (row) => row.configurationSummary?.configuredProjectCount ?? "不可用" },
                 { key: "configuredInstances", header: "实例数", align: "right", render: (row) => row.configurationSummary?.configuredInstanceCount ?? "不可用" }
@@ -1551,7 +1551,7 @@ function CatalogDetailBody({
         <dt>单位</dt>
         <dd>{revision.unit?.symbol ?? "未设置"}</dd>
         <dt>说明</dt>
-        <dd>{revision.documentation ?? "无"}</dd>
+        <dd><DefinitionDocumentation documentation={revision.documentation} empty="无" /></dd>
         <dt>使用</dt>
         <dd>
           {definition.usageSummary.policyCount === null
@@ -1619,8 +1619,10 @@ export function CatalogHistoryBody({
                   <thead><tr><th>字段</th><th>该修订</th>{currentRevision ? <th>当前修订</th> : null}</tr></thead>
                   <tbody>{revisionFields(item).map(([label, value], index) => {
                     const currentValue = currentRevision ? revisionFields(currentRevision)[index][1] : undefined;
+                    const renderValue = (text: string | undefined) => label === "说明"
+                      ? <DefinitionDocumentation documentation={text} empty="无" /> : <pre>{text}</pre>;
                     return <tr key={label} data-changed={currentValue !== undefined && value !== currentValue ? "true" : undefined}>
-                      <th scope="row">{label}</th><td><pre>{value}</pre></td>{currentRevision ? <td><pre>{currentValue}</pre></td> : null}
+                      <th scope="row">{label}</th><td>{renderValue(value)}</td>{currentRevision ? <td>{renderValue(currentValue)}</td> : null}
                     </tr>;
                   })}</tbody>
                 </table>
@@ -1647,7 +1649,7 @@ export function CatalogHistoryBody({
 function revisionFields(revision: RevisionItem): [string, string][] {
   return [
     ["显示名", revision.displayName || "未设置"],
-    ["说明", revision.documentation || "无"],
+    ["说明", revision.documentation ?? ""],
     ["单位", revision.unit?.symbol ?? "未设置"],
     ["取值约束", JSON.stringify(revision.valueShape.schema, null, 2)],
     ["示例", revision.examples?.length ? JSON.stringify(revision.examples, null, 2) : "未说明"]

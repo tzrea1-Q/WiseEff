@@ -12,6 +12,7 @@ import {
 import { type ParameterValueKind } from "@/powerManagementConfig";
 import { riskLabels } from "@/workbenchUi";
 import { ArrowRight } from "lucide-react";
+import { DefinitionDocumentation } from "@/components/parameters/DefinitionDocumentation";
 
 export function isComplexSubmissionHistoryItem(item: ParameterSubmissionItem) {
   return shouldSummarizeReviewChange({
@@ -197,12 +198,14 @@ export function ReviewDetailSummary({
   request,
   moduleName,
   moduleDescription,
-  parameterDescription
+  parameterDescription,
+  parameterDocumentation
 }: {
   request: ChangeRequest;
   moduleName?: string;
   moduleDescription?: string;
   parameterDescription?: string;
+  parameterDocumentation?: string;
 }) {
   const supplementalSummary = request.aiSummary.trim();
   const showSupplementalSummary =
@@ -210,16 +213,17 @@ export function ReviewDetailSummary({
   const reasons = request.aiSuggestion?.reasons?.filter(shouldShowReviewDetailReason) ?? [];
   const resolvedModuleName = moduleName?.trim() || request.module;
   const resolvedModuleDescription = moduleDescription?.trim() || "";
-  const resolvedParameterDescription = parameterDescription?.trim() || "";
+  const parameterMeaning = parameterDescription?.trim() || (parameterDocumentation?.trim()
+    ? <DefinitionDocumentation documentation={parameterDocumentation} /> : null);
 
   return (
     <div className="review-detail-summary">
       {showSupplementalSummary ? (
         <p className="review-detail-summary__supplement">{supplementalSummary}</p>
       ) : null}
-      {resolvedModuleDescription || resolvedParameterDescription || reasons.length > 0 ? <details>
+      {resolvedModuleDescription || parameterMeaning || reasons.length > 0 ? <details>
         <summary>背景与风险说明</summary>
-      {resolvedModuleDescription || resolvedParameterDescription ? (
+      {resolvedModuleDescription || parameterMeaning ? (
         <dl className="review-identity-intros review-identity-intros--compact" aria-label="模块与参数介绍">
           {resolvedModuleDescription ? (
             <div className="review-identity-intros__item">
@@ -230,12 +234,12 @@ export function ReviewDetailSummary({
               </dd>
             </div>
           ) : null}
-          {resolvedParameterDescription ? (
+          {parameterMeaning ? (
             <div className="review-identity-intros__item">
               <dt>参数含义</dt>
               <dd aria-label={`${request.title} 参数含义`}>
                 <span className="review-identity-intros__name">{request.title}</span>
-                {resolvedParameterDescription}
+                {parameterMeaning}
               </dd>
             </div>
           ) : null}

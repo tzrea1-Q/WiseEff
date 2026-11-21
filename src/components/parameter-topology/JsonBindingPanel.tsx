@@ -1,6 +1,7 @@
 import { NavigatorWorkbench } from "@/components/layout/NavigatorWorkbench";
 import { withOrganizationScope } from "@/infrastructure/http/organizationScope";
 import { SectionEmpty } from "@/components/common/SectionState";
+import { DefinitionDocumentation } from "@/components/parameters/DefinitionDocumentation";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { ArrowUpRight, Boxes, CircleX, Download, FileCode } from "lucide-react";
 import type {
@@ -825,8 +826,8 @@ export function JsonBindingPanel({
                      {visibleLatestDefinition?.recommendedDefinition ? <p>此定义已弃用。推荐使用 <a
                        href={withOrganizationScope(`/parameters/definitions?${new URLSearchParams({ definitionId: visibleLatestDefinition.recommendedDefinition.id })}`, organizationId)}>
                        {visibleLatestDefinition.recommendedDefinition.displayName}</a>。</p> : null}
-                     {visibleLatestDefinition ? (visibleLatestDefinition.documentation ? <p>{visibleLatestDefinition.documentation}</p> : null)
-                       : activeViewBinding.description || activeViewBinding.documentation ? <p>{activeViewBinding.description || activeViewBinding.documentation}</p> : null}
+                     {!visibleLatestDefinition && activeViewBinding.description ? <p>{activeViewBinding.description}</p>
+                       : <DefinitionDocumentation documentation={visibleLatestDefinition ? visibleLatestDefinition.documentation : activeViewBinding.documentation} />}
                      {visibleLatestDefinition?.examples?.length ? <div><strong>最新目录示例（仅供参考）</strong><pre>{JSON.stringify(visibleLatestDefinition.examples, null, 2)}</pre></div> : null}
                     <pre className="json-binding-card__preview-code">{prettyJson(activeViewBinding.rawValue)}</pre>
                     <p className="json-binding-detail__hint">类型：JSON · {activeViewBinding.schemaState === "valid" ? "有效配置" : "待校验"}</p>

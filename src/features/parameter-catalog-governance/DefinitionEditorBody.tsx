@@ -1,4 +1,5 @@
 import { SelectControl } from "@/components/common/SelectControl";
+import { DefinitionDocumentation } from "@/components/parameters/DefinitionDocumentation";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 
 import type { CatalogActorKind } from "@/application/parameter-catalog/authority";
@@ -882,7 +883,7 @@ export function DefinitionEditorBody({
                   <dt>单位</dt>
                   <dd>{definition.currentRevision.unit?.symbol ?? "未设置"}</dd>
                   <dt>说明</dt>
-                  <dd className="parameter-text-content" aria-label="已发布参数说明">{definition.currentRevision.documentation ?? "无"}</dd>
+                  <dd aria-label="已发布参数说明"><DefinitionDocumentation documentation={definition.currentRevision.documentation} empty="无" /></dd>
                   <dt>使用</dt>
                   <dd>
                     {definition.usageSummary.policyCount === null
@@ -1021,7 +1022,7 @@ export function DefinitionEditorBody({
               <dt>当前修订</dt>
               <dd>{`修订 #${definition.currentRevision.revisionNumber}`}</dd>
               <dt>说明</dt>
-              <dd className="parameter-text-content" aria-label="已发布参数说明">{definition.currentRevision.documentation ?? "无"}</dd>
+              <dd aria-label="已发布参数说明"><DefinitionDocumentation documentation={definition.currentRevision.documentation} empty="无" /></dd>
               <dt>使用</dt>
               <dd>
                 {definition.usageSummary.policyCount === null

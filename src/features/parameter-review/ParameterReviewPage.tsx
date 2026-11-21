@@ -340,7 +340,6 @@ export function ParameterReviewPage({
   const selectedParameterDescription =
     selected?.parameterDescription?.trim() ||
     selectedReviewParameter?.description?.trim() ||
-    selectedReviewParameter?.explanation?.trim() ||
     "";
   const selectedInitializationSubmitter = selectedInitialization
     ? resolveRetainedUserName(state.users, selectedInitialization.review.submittedBy, selectedInitialization.review.submittedByName)
@@ -792,6 +791,7 @@ export function ParameterReviewPage({
                 moduleName={selected.module}
                 moduleDescription={selectedModuleDescription}
                 parameterDescription={selectedParameterDescription}
+                parameterDocumentation={selectedReviewParameter?.explanation}
               />
               {canExpandSubmission ? (
                 <Button

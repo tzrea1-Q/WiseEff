@@ -8,6 +8,7 @@ import { toInitializationUiCandidate, type InitializationUiCandidate } from "@/a
 import { HorizontalDragScroll } from "@/components/HorizontalDragScroll";
 import { ModalDialog } from "@/components/common/ModalDialog";
 import { SearchField } from "@/components/common/SearchField";
+import { DefinitionDocumentation } from "@/components/parameters/DefinitionDocumentation";
 import { filterItems } from "@/lib/search";
 import { projectAdminSearchProfile } from "@/lib/search/profiles";
 import { ColumnFilter } from "./components/ColumnFilter";
@@ -994,7 +995,7 @@ export function ProjectParameterInitializationWizard({ state, dispatch, onClose,
             {detailParameter?.explanation ? (
               <div className="project-init-parameter-detail__note">
                 <span>说明</span>
-                <p>{detailParameter.explanation}</p>
+                <DefinitionDocumentation documentation={detailParameter.explanation} />
               </div>
             ) : null}
           </aside>

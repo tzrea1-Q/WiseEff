@@ -799,7 +799,7 @@ describe("CatalogPage", { timeout: 15_000 }, () => {
     const user = userEvent.setup();
     const ports = createMockCatalogPorts({ scenario: "ready" });
     const base = await ports.catalog.getDefinition(CATALOG_DEFINITION_ID);
-    const previous = { ...base.item.currentRevision, id: "revision-old", revisionNumber: 1, displayName: "原显示名称" };
+    const previous = { ...base.item.currentRevision, id: "revision-old", revisionNumber: 1, displayName: "原显示名称", documentation: "- **原说明**" };
     const revisions = vi.spyOn(ports.catalog, "listDefinitionRevisions").mockImplementation(async (_id, query) => ({
       catalogReleaseId: CATALOG_RELEASE_ID, totalCount: 2,
       items: [query?.cursor ? previous : base.item.currentRevision],
@@ -814,6 +814,9 @@ describe("CatalogPage", { timeout: 15_000 }, () => {
     expect(compare).toHaveTextContent("原显示名称");
     expect(compare).toHaveTextContent(base.item.currentRevision.displayName);
     expect(within(compare).getByText("原显示名称").closest("tr")).toHaveAttribute("data-changed", "true");
+    const documentationRow = within(compare).getByRole("rowheader", { name: "说明" }).closest("tr")!;
+    expect(documentationRow).toHaveAttribute("data-changed", "true");
+    expect(within(documentationRow).getByRole("listitem").querySelector("strong")).toHaveTextContent("原说明");
     expect(revisions).toHaveBeenLastCalledWith(CATALOG_DEFINITION_ID, expect.objectContaining({ cursor: "revision-page-2", catalogReleaseId: CATALOG_RELEASE_ID }));
     expect(timeline).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole("button", { name: "加载更多历史" })).not.toBeInTheDocument();

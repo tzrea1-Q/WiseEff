@@ -1,0 +1,52 @@
+.definition-documentation {
+  min-inline-size: 0;
+  max-inline-size: 100%;
+  overflow-x: auto;
+  overflow-wrap: anywhere;
+  white-space: normal;
+  line-height: var(--leading-base);
+}
+
+.definition-documentation > * {
+  margin: 0;
+}
+
+.definition-documentation > * + * {
+  margin-block-start: var(--space-2);
+}
+
+.definition-documentation > :is(h1, h2, h3, h4, h5, h6) {
+  font-size: var(--text-base);
+  font-weight: 600;
+}
+
+.definition-documentation > :is(ol, ul) {
+  padding-inline-start: var(--space-5);
+}
+
+.definition-documentation > ul { list-style: disc; }
+.definition-documentation > ol { list-style: decimal; }
+
+.definition-documentation > pre {
+  max-inline-size: 100%;
+  overflow: auto;
+  overflow-wrap: normal;
+  white-space: pre;
+  padding: var(--space-2);
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunken);
+  font: var(--text-sm) / var(--leading-base) var(--font-mono);
+}
+
+.definition-documentation code { font-family: var(--font-mono); }
+
+.definition-documentation > table {
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+}
+
+.definition-documentation :is(th, td) {
+  border: var(--stroke-hairline) solid var(--border);
+  padding: var(--space-1) var(--space-2);
+  text-align: start;
+}

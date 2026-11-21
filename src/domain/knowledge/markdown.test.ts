@@ -17,6 +17,20 @@ describe("renderMarkdownPreview", () => {
     expect(html).toContain("<pre><code>const x = 1 &lt; 2;</code></pre>");
   });
 
+  it("preserves code indentation and blank lines inside a fence with an info string", () => {
+    const html = renderMarkdownPreview("```dts\n\n\tnode {\n\n  value = <1>;  \n};\n  ``` \t\nAfter the fence");
+    expect(html).toBe("<pre><code>\n\tnode {\n\n  value = &lt;1&gt;;  \n};</code></pre>\n<p>After the fence</p>");
+  });
+
+  it("renders a compact pipe table with inline formatting and escaped HTML", () => {
+    const html = renderMarkdownPreview("| **Value** | Meaning |\n| --- | --- |\n| `1` | <script>alert(1)</script> |\n2 | Disabled\n### Power | Modes");
+    expect(html).toBe(
+      '<table><thead><tr><th scope="col"><strong>Value</strong></th><th scope="col">Meaning</th></tr></thead>' +
+      "<tbody><tr><td><code>1</code></td><td>&lt;script&gt;alert(1)&lt;/script&gt;</td></tr>" +
+      "<tr><td>2</td><td>Disabled</td></tr></tbody></table>\n<h3>Power | Modes</h3>"
+    );
+  });
+
   it("renders inline emphasis, code, and safe links", () => {
     const html = renderMarkdownPreview("**加粗** *斜体* `code` [文档](https://example.com)");
     expect(html).toContain("<strong>加粗</strong>");
