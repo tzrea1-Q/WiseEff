@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import {
   catalogActorForRole,
@@ -7,7 +7,7 @@ import {
   type CatalogAuthorizedAction,
   type CatalogDomainState
 } from "@/application/parameter-catalog";
-import { buildCatalogHref, parseCatalogUrlAnchor } from "@/application/parameter-catalog/urlAnchor";
+import { buildCatalogHref, parseCatalogUrlAnchor, readLegacyCatalogBookmark } from "@/application/parameter-catalog/urlAnchor";
 import { mayRegisterInOrganization } from "@/application/parameter-catalog/authority";
 import type { ParameterCatalogGovernanceRepository } from "@/application/ports/ParameterCatalogGovernanceRepository";
 import type { ParameterCatalogRepository } from "@/application/ports/ParameterCatalogRepository";
@@ -36,7 +36,7 @@ import { catalogPendingWorkLabel } from "../parameter-catalog/copy";
 import { RegistrationDialog, type RegistrationModuleOption } from "./RegistrationDialog";
 import { ModalDialog } from "@/components/common/ModalDialog";
 import { SectionError, SectionSkeleton } from "@/components/common/SectionState";
-import { listAllCanonicalPages } from "@/components/parameter-admin-next/CanonicalSubjectPlacementPanel";
+import { useCatalogNavigator } from "../parameter-catalog/useCatalogNavigator";
 import { modulePathSegments } from "@/components/admin/moduleManagementTreeUtils";
 import { toAttributionFlatNodes } from "@/components/parameter-topology/moduleAttributionTreeUtils";
 
@@ -163,34 +163,22 @@ export function CatalogOrganizationSurface({
     if (anchor.reviewItemId || reviewQueueRequested) setPendingWorkOpen(true);
   }, [anchor.reviewItemId, reviewQueueRequested]);
   const subjectId = anchor.subjectId ?? "";
-  const [catalogSubjects, setCatalogSubjects] = useState<
-    Awaited<ReturnType<ParameterCatalogRepository["listSubjects"]>>["items"]
-  >([]);
-  const [subjectLoad, setSubjectLoad] = useState<"loading" | "ready" | "error">("loading");
-  const [subjectReadEpoch, setSubjectReadEpoch] = useState(0);
-  const [reviewModules, setReviewModules] = useState<RegistrationModuleOption[]>([]);
-  const [reviewModulesError, setReviewModulesError] = useState(false);
-  const [reviewModulesEpoch, setReviewModulesEpoch] = useState(0);
-  const reviewContextGeneration = useRef(0);
-  useEffect(() => () => { reviewContextGeneration.current += 1; },
-    [catalog, moduleRegistry, organizationId, catalogReleaseId, pendingWorkOpen]);
-
-  useEffect(() => {
-    let cancelled = false;
-    setReviewModules([]);
-    setReviewModulesError(false);
-    if (!pendingWorkOpen || !reviewQueueAllowed || !moduleRegistry) return;
-    void moduleRegistry.getRegistry().then((registry) => {
-      if (!cancelled) {
-        const nodes = toAttributionFlatNodes(registry.modules);
-        setReviewModules(registry.modules.filter((module) => module.kind === "business" || (module.kind === "unclassified" && module.parentId === null)).map((module) => ({
-          id: module.id, displayName: modulePathSegments(module, nodes).join(" / "), kind: module.kind,
-          impactSummary: `该模块已有 ${module.definitionCount ?? 0} 条定义。`
-        })));
-      }
-    }).catch(() => { if (!cancelled) setReviewModulesError(true); });
-    return () => { cancelled = true; };
-  }, [moduleRegistry, organizationId, pendingWorkOpen, reviewModulesEpoch, reviewQueueAllowed, surfaceEpoch]);
+  const navigator = useCatalogNavigator({
+    repository: catalog, moduleRegistry, organizationId, releaseId: anchor.catalogReleaseId, refreshEpoch: surfaceEpoch,
+    enabled: Boolean(anchor.definitionId || anchor.subjectId || !readLegacyCatalogBookmark(search))
+  });
+  const subjectLoad = navigator.pending ? "loading" : navigator.error !== undefined ? "error" : "ready";
+  const catalogSubjects = subjectLoad === "ready" ? navigator.data?.subjects?.items ?? [] : [];
+  const modules = subjectLoad === "ready" ? navigator.data?.modules : undefined;
+  const reviewModules = useMemo<RegistrationModuleOption[]>(() => {
+    if (!modules) return [];
+    const nodes = toAttributionFlatNodes(modules);
+    return modules.filter(module => module.kind === "business" || (module.kind === "unclassified" && module.parentId === null))
+      .map(module => ({
+        id: module.id, displayName: modulePathSegments(module, nodes).join(" / "), kind: module.kind,
+        impactSummary: `该模块已有 ${module.definitionCount ?? 0} 条定义。`
+      }));
+  }, [modules]);
 
   const handleAction = useCallback(
     (next: CatalogAuthorizedAction, context?: { subjectId?: string | null; registrationId?: string | null }) => {
@@ -206,30 +194,6 @@ export function CatalogOrganizationSurface({
     },
     []
   );
-
-  useEffect(() => {
-    let cancelled = false;
-    setCatalogSubjects([]);
-    setSubjectLoad("loading");
-    void (async () => {
-      try {
-        const subjects = await listAllCanonicalPages((query) => catalog.listSubjects(query));
-        if (!cancelled) {
-          setCatalogSubjects(subjects);
-          setSubjectLoad("ready");
-        }
-      } catch {
-        if (!cancelled) {
-          setCatalogSubjects([]);
-          setSubjectLoad("error");
-        }
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [catalog, surfaceEpoch, subjectReadEpoch]);
-
 
   useEffect(() => {
     let cancelled = false;
@@ -305,6 +269,7 @@ export function CatalogOrganizationSurface({
     <div className="parameter-catalog-organization">
       <CatalogPage
         refreshEpoch={surfaceEpoch}
+        navigatorRead={navigator}
         reviewCountOverride={reviewCount}
         taskContent={taskContent}
         notice={publicationSurfaceLoad === "error" || surfaceStatus || pendingCleanup.length > 0 || cleanupError ? <>
@@ -363,7 +328,7 @@ export function CatalogOrganizationSurface({
           ? () => setClaimedOwnersOpen(true) : undefined}
         onOpenUnregisteredSubjects={registrationAllowed && organizationId && catalogReleaseId ? () => { setBatchEntry({}); setBatchEpoch((value) => value + 1); } : undefined}
         onOpenPendingWork={reviewQueueAllowed ? () => setPendingWorkOpen(true) : undefined}
-        onEditorClosed={() => setSurfaceEpoch((value) => value + 1)}
+        onEditorClosed={(changed) => { if (changed) setSurfaceEpoch(value => value + 1); }}
         onDefinitionDeleted={() => setCleanupEpoch(value => value + 1)}
         organizationId={organizationId}
         listReviewItems={
@@ -396,7 +361,7 @@ export function CatalogOrganizationSurface({
           {subjectLoad === "error" ? (
             <SectionError
               message="无法读取主体列表，请重试。"
-              onRetry={() => setSubjectReadEpoch((value) => value + 1)}
+              onRetry={() => void navigator.reload()}
             />
           ) : null}
           <DefinitionEditorBody
@@ -414,12 +379,12 @@ export function CatalogOrganizationSurface({
             createIdempotencyKey={createGovernanceIdempotencyKey}
             // Refresh the release anchor after activation, keeping the result
             // panel mounted while subsequent reads use the applied revision.
-            onCompleted={() => undefined}
-            onRefreshEvidence={async () => { await refreshCurrentCatalog(); }}
+            onCompleted={history.onChanged}
+            onRefreshEvidence={async () => { history.onChanged?.(); await refreshCurrentCatalog(); }}
             authoringAllowed={publicationSurfaceAllowsAuthoring(publicationSurface)}
             publishingAllowed={publicationSurfaceAllowsPublishing(publicationSurface)}
             reviewHighRiskAllowed={publicationSurface?.reviewHighRiskAllowed}
-            onRequestHistory={history.onRequestHistory}
+            onHistoryOpenChange={history.onHistoryOpenChange}
             onClose={history.onClose}
             onRetireDefinition={canPublishDefinitionLifecycle ? () => {
               history.onClose?.();
@@ -457,8 +422,8 @@ export function CatalogOrganizationSurface({
             <>
               <h2 ref={reviewTitle} tabIndex={-1} id={titleId}>{reviewEditorActive ? "处理审核" : catalogPendingWorkLabel}</h2>
               <div id={descriptionId} className="confirm-dialog__scroll">
-                {subjectLoad === "error" ? <SectionError message="主体信息读取失败，登记前请重新读取。" onRetry={() => setSubjectReadEpoch((value) => value + 1)} /> : null}
-                {reviewModulesError ? <SectionError message="目标模块读取失败，已禁止默认选择。" onRetry={() => setReviewModulesEpoch((value) => value + 1)} /> : null}
+                {subjectLoad === "error" ? <SectionError message={navigator.registryFailed ? "目标模块读取失败，已禁止默认选择。"
+                  : "主体信息读取失败，登记前请重新读取。"} onRetry={() => void navigator.reload()} /> : null}
                 <ReviewQueue
                   embedded
                   onEditorActiveChange={setReviewEditorActive}
@@ -485,23 +450,9 @@ export function CatalogOrganizationSurface({
                   }}
                   onSelectReviewItem={handleSelectReviewItem}
                   onRefreshEvidence={async () => {
-                    const request = ++reviewContextGeneration.current;
-                    const [document, subjects, registry] = await Promise.all([
-                      catalog.getCatalog(),
-                      listAllCanonicalPages((query) => catalog.listSubjects({ ...query, catalogReleaseId })),
-                      moduleRegistry?.getRegistry()
-                    ]);
-                    if (request !== reviewContextGeneration.current || document.item?.catalogReleaseId !== catalogReleaseId) throw new Error("审核上下文或目录发布已变化");
-                    setCatalogSubjects(subjects);
-                    setSubjectLoad("ready");
-                    if (registry) {
-                      const nodes = toAttributionFlatNodes(registry.modules);
-                      setReviewModules(registry.modules.filter((module) => module.kind === "business" || (module.kind === "unclassified" && module.parentId === null)).map((module) => ({
-                        id: module.id, displayName: modulePathSegments(module, nodes).join(" / "), kind: module.kind,
-                        impactSummary: `该模块已有 ${module.definitionCount ?? 0} 条定义。`
-                      })));
-                      setReviewModulesError(false);
-                    }
+                    if (navigator.pending) throw new Error("正在读取审核上下文");
+                    const evidence = await navigator.reload(catalogReleaseId);
+                    if (!evidence) throw new Error("审核上下文或目录发布已变化");
                   }}
                 />
               </div>

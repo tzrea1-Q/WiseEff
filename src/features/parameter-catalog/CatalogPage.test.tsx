@@ -402,6 +402,71 @@ function renderCatalog(
 
 // These tests page through 101-subject inventories with user events; CI runners need more than the 5s default.
 describe("CatalogPage", { timeout: 15_000 }, () => {
+  it("reads only the changed Catalog data and keeps the previous page usable during paging", async () => {
+    const ports = createMockCatalogPorts({ scenario: "ready" });
+    const registry = moduleRegistry([]);
+    const catalog = vi.spyOn(ports.catalog, "getCatalog");
+    const subjects = vi.spyOn(ports.catalog, "listSubjects");
+    const review = vi.spyOn(ports.governance, "listReviewItems");
+    const definition = vi.spyOn(ports.catalog, "getDefinition");
+    const owner = vi.spyOn(ports.catalog, "getSubject");
+    const revisions = vi.spyOn(ports.catalog, "listDefinitionRevisions");
+    const timeline = vi.spyOn(ports.catalog, "listDefinitionTimeline");
+    const first = { items: [activeDefinition], catalogReleaseId: CATALOG_RELEASE_ID,
+      totalCount: 2, hasMore: true, nextCursor: "page-2" };
+    const second = { ...first, items: [{ ...activeDefinition, propertyKey: "second-page-key" }], hasMore: false, nextCursor: null };
+    const pageGate = deferred<typeof second>();
+    const list = vi.spyOn(ports.catalog, "listDefinitions").mockImplementation(async query =>
+      query?.cursor === "page-2" ? pageGate.promise : first);
+    const props: PageProps = { repository: ports.catalog, moduleRegistry: registry, organizationId: CATALOG_ORGANIZATION_ID,
+      actor: "org-admin", listReviewItems: review, definitionAuthoringAllowed: true, renderDefinitionEditor: (_item, history) => <>
+        <button onClick={() => history.onHistoryOpenChange(true)}>打开测试历史</button>
+        <button onClick={() => history.onHistoryOpenChange(false)}>关闭测试历史</button>
+        {history.timeline ? <p>历史已加载</p> : null}
+      </> };
+    const counts = () => [catalog, subjects, registry.getRegistry, list, definition, owner, revisions, timeline, review]
+      .map(read => read.mock.calls.length);
+    const view = render(<CatalogHarness {...props} />);
+    const user = userEvent.setup();
+    const row = await screen.findByRole("button", { name: `编辑 ${activeDefinition.propertyKey}` });
+    expect(counts()).toEqual([1, 2, 1, 1, 0, 0, 0, 0, 1]);
+
+    await user.type(screen.getByRole("searchbox", { name: "搜索参数定义" }), "gpio");
+    await waitFor(() => expect(list).toHaveBeenLastCalledWith(expect.objectContaining({ search: "gpio" })));
+    expect(counts()).toEqual([1, 2, 1, 2, 0, 0, 0, 0, 1]);
+
+    await user.click(row);
+    const dialog = await screen.findByRole("dialog", { name: `编辑 ${activeDefinition.propertyKey}` });
+    expect(counts()).toEqual([1, 2, 1, 2, 1, 1, 0, 0, 1]);
+    await user.click(within(dialog).getByRole("button", { name: "打开测试历史" }));
+    await within(dialog).findByText("历史已加载");
+    expect(counts()).toEqual([1, 2, 1, 2, 1, 1, 1, 1, 1]);
+    await user.click(within(dialog).getByRole("button", { name: "关闭测试历史" }));
+    expect(within(dialog).queryByText("历史已加载")).not.toBeInTheDocument();
+    expect(counts()).toEqual([1, 2, 1, 2, 1, 1, 1, 1, 1]);
+    await user.click(within(dialog).getByRole("button", { name: "关闭" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(counts()).toEqual([1, 2, 1, 2, 1, 1, 1, 1, 1]);
+
+    await user.click(screen.getByRole("button", { name: "下一页" }));
+    expect(counts()).toEqual([1, 2, 1, 3, 1, 1, 1, 1, 1]);
+    expect(row).toBeVisible();
+    expect(row).toBeEnabled();
+    expect(row.closest("[aria-busy]")).toHaveAttribute("aria-busy", "true");
+    expect(screen.getByRole("button", { name: "下一页" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "上一页" })).toBeDisabled();
+    await act(async () => pageGate.resolve(second));
+    const newRow = await screen.findByRole("button", { name: "编辑 second-page-key" });
+    expect(newRow.closest("[aria-busy]")).toHaveAttribute("aria-busy", "false");
+    expect(screen.queryByRole("button", { name: `编辑 ${activeDefinition.propertyKey}` })).not.toBeInTheDocument();
+
+    await user.click(newRow);
+    await screen.findByRole("dialog");
+    expect(counts()).toEqual([1, 2, 1, 3, 2, 2, 1, 1, 1]);
+    view.rerender(<CatalogHarness {...props} refreshEpoch={1} />);
+    await waitFor(() => expect(counts()).toEqual([2, 4, 2, 4, 3, 3, 1, 1, 2]));
+  });
+
   it("exports the selected active definitions and reports skipped IDs", async () => {
     const user = userEvent.setup();
     const repository = lifecycleInventory();
@@ -748,15 +813,15 @@ describe("CatalogPage", { timeout: 15_000 }, () => {
     expect(screen.getByRole("button", { name: /^Root\s*1$/ })).toHaveAttribute("aria-pressed", "true");
   });
 
-  it("ignores a late retired-subject response after switching to an active subject", async () => {
+  it("ignores a late retired owner response after switching to another definition", async () => {
     const repository = lifecycleInventory();
     const gate = deferred<{ item: typeof historicalSubject }>();
     const getSubject = vi.spyOn(repository, "getSubject").mockImplementation(async (id) =>
       id === historicalSubject.id ? gate.promise : { item: registeredSubject });
     const props = { repository, actor: "user" as const };
-    const view = render(<CatalogPage {...props} search={`?subjectId=${historicalSubject.id}`} />);
+    const view = render(<CatalogPage {...props} search={`?definitionId=${historicalDefinition.id}`} />);
     await waitFor(() => expect(getSubject).toHaveBeenCalledWith(historicalSubject.id, expect.anything()));
-    view.rerender(<CatalogPage {...props} search={`?subjectId=${registeredSubject.id}`} />);
+    view.rerender(<CatalogPage {...props} search={`?definitionId=${activeDefinition.id}`} />);
     await waitFor(() => expect(screen.getByRole("region", { name: "参数定义目录" })).toHaveAttribute("data-catalog-state", "ready"));
     await act(async () => { gate.resolve({ item: historicalSubject }); });
     expect(screen.getByRole("region", { name: "参数定义目录" })).toHaveAttribute("data-catalog-state", "ready");
@@ -1087,7 +1152,7 @@ describe("CatalogPage", { timeout: 15_000 }, () => {
     gate.resolve(inventory.second);
     expect(await screen.findByRole("button", { name: /^Inventory module 0\s*101$/ })).toBeVisible();
     expect(screen.getByText("已选模块子树 · 101 个主体")).toBeVisible();
-    expect(within(screen.getByRole("table", { name: "参数定义列表" })).getByText("gpio-int")).toBeVisible();
+    expect(within(await screen.findByRole("table", { name: "参数定义列表" })).getByText("gpio-int")).toBeVisible();
     expect(inventory.listSubjects.mock.calls.slice(0, 3)).toEqual([
       [{ catalogReleaseId: CATALOG_RELEASE_ID, limit: 100 }],
       [{ catalogReleaseId: CATALOG_RELEASE_ID, limit: 100, lifecycle: "retired" }],
@@ -1143,7 +1208,7 @@ describe("CatalogPage", { timeout: 15_000 }, () => {
       search: `?catalogReleaseId=${CATALOG_RELEASE_ID}&moduleNodeId=module_inventory_0` });
     expect(await screen.findByRole("button", { name: /^Inventory module 0\s*2$/ })).toBeVisible();
     expect(screen.getByText("已选模块子树 · 2 个主体")).toBeVisible();
-    expect(within(screen.getByRole("table", { name: "参数定义列表" })).getByText("gpio-int")).toBeVisible();
+    expect(within(await screen.findByRole("table", { name: "参数定义列表" })).getByText("gpio-int")).toBeVisible();
     expect(inventory.listDefinitions).toHaveBeenCalledWith(expect.objectContaining({
       placementModuleId: "module_inventory_0"
     }));
@@ -1190,16 +1255,15 @@ describe("CatalogPage", { timeout: 15_000 }, () => {
   });
 
   it("keeps the previous complete snapshot read-only if a later subject page fails", async () => {
-    const user = userEvent.setup();
     const inventory = pagedInventory();
-    renderCatalog({ ...inventory, search: `?catalogReleaseId=${CATALOG_RELEASE_ID}` });
+    const props = { ...inventory, actor: "user" as const, search: `?catalogReleaseId=${CATALOG_RELEASE_ID}` };
+    const view = render(<CatalogPage {...props} />);
     expect(await screen.findByRole("button", { name: /^Inventory module 0\s*101$/ })).toBeVisible();
-    await user.click(screen.getByRole("button", { name: "展开 Inventory module 0" }));
     inventory.listSubjects.mockImplementation(async (query) => {
       if (query?.cursor) throw new Error("refresh second page failed");
       return inventory.first;
     });
-    await user.click(screen.getByRole("button", { name: /^Inventory module 100\s*1$/ }));
+    view.rerender(<CatalogPage {...props} refreshEpoch={1} />);
     await waitFor(() => expect(screen.getByRole("region", { name: "参数定义目录" }))
       .toHaveAttribute("data-catalog-state", "error"));
     expect(screen.getByRole("region", { name: "参数定义目录" })).toHaveAttribute("data-writes-enabled", "false");
@@ -1224,6 +1288,7 @@ describe("CatalogPage", { timeout: 15_000 }, () => {
     renderCatalog();
 
     const page = await screen.findByRole("region", { name: "参数定义目录" });
+    await within(page).findByRole("table", { name: "参数定义列表" });
     expect(page).toHaveAttribute("data-catalog-layout", "desktop");
     expect(page).toHaveAttribute("data-catalog-release", CATALOG_RELEASE_ID);
     expect(within(page).getByRole("region", { name: "目录列表" })).toBeVisible();
@@ -1301,7 +1366,7 @@ describe("CatalogPage", { timeout: 15_000 }, () => {
 
     await user.click(await screen.findByRole("button", { name: /查看历史/ }));
     const timeline = await screen.findByRole("region", { name: "定义时间线" });
-    expect(within(timeline).getByText("目录发布")).toBeInTheDocument();
+    expect(await within(timeline).findByText("目录发布")).toBeInTheDocument();
     expect(within(timeline).getByText("Published")).toBeInTheDocument();
   });
 
@@ -1389,13 +1454,13 @@ describe("CatalogPage", { timeout: 15_000 }, () => {
       search: unregisteredSearch
     });
     const page = await screen.findByRole("region", { name: "参数定义目录" });
-    expect(page).toHaveAttribute("data-catalog-state", "unregistered");
+    await waitFor(() => expect(page).toHaveAttribute("data-catalog-state", "unregistered"));
     expect(screen.getByRole("button", { name: "登记主体" })).toBeEnabled();
     expect(screen.queryByRole("button", { name: "调整放置" })).not.toBeInTheDocument();
     unmount();
 
     renderCatalog({ actor: "user", scenario: "unregistered", search: unregisteredSearch });
-    await screen.findByRole("region", { name: "参数定义目录" });
+    await screen.findAllByText(/尚未登记/);
     expect(screen.queryByRole("button", { name: "登记主体" })).not.toBeInTheDocument();
     expect(screen.getAllByText(/尚未登记/).length).toBeGreaterThan(0);
   });
@@ -1448,7 +1513,7 @@ describe("CatalogPage", { timeout: 15_000 }, () => {
     // The review queue itself is disclosed by the host dialog; this page reports
     // the empty reason and offers the single count-bearing entry point.
     expect(await screen.findByRole("button", { name: /待审核事项/ })).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "参数定义目录" })).toHaveAttribute("data-empty-reason", "no-review-work");
+    await waitFor(() => expect(screen.getByRole("region", { name: "参数定义目录" })).toHaveAttribute("data-empty-reason", "no-review-work"));
   });
 
   it("keeps retired history readable and disables prohibited new actions", async () => {
@@ -1493,13 +1558,13 @@ describe("CatalogPage", { timeout: 15_000 }, () => {
         return ready.getCatalog();
       }
     };
-    const user = userEvent.setup();
-    renderCatalog({ repository });
-    await user.click(await screen.findByRole("button", { name: "展开 Root" }));
+    const props = { repository, actor: "org-admin" as const, search: `?catalogReleaseId=${CATALOG_RELEASE_ID}`,
+      moduleRegistry: moduleRegistry([{ id: CATALOG_MODULE_ID, name: "Root", parentId: null, sortOrder: 0 }]) };
+    const view = render(<CatalogPage {...props} />);
+    await userEvent.click(await screen.findByRole("button", { name: "展开 Root" }));
     await screen.findByRole("button", { name: "选择主体 southchip,sc8562" });
     blocked = true;
-    // A scope change reloads the collection; there is no refresh button.
-    await selectControlOption(screen.getByLabelText("每页条数"), "20");
+    view.rerender(<CatalogPage {...props} refreshEpoch={1} />);
     const page = screen.getByRole("region", { name: "参数定义目录" });
     await waitFor(() => expect(page).toHaveAttribute("data-catalog-state", "loading"));
     expect(page).toHaveAttribute("data-writes-enabled", "false");

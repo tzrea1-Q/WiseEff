@@ -74,7 +74,7 @@ export type DefinitionEditorBodyProps = {
   /** Read-only history the page loaded for this definition. */
   history: ReactNode;
   /** Ask the page to load revisions and the timeline for this definition. */
-  onRequestHistory?: () => void;
+  onHistoryOpenChange?: (open: boolean) => void;
   /** Close callback to dismiss the host dialog. */
   onClose?: () => void;
   onRetireDefinition?: () => void;
@@ -232,7 +232,7 @@ export function DefinitionEditorBody({
   onCompleted,
   onRefreshEvidence,
   history,
-  onRequestHistory,
+  onHistoryOpenChange,
   onClose,
   onRetireDefinition,
   authoringAllowed,
@@ -948,7 +948,7 @@ export function DefinitionEditorBody({
                     onClick={() => {
                       const next = !historyOpen;
                       setHistoryOpen(next);
-                      if (next) onRequestHistory?.();
+                      onHistoryOpenChange?.(next);
                     }}
                   >
                     {historyOpen ? catalogHistoryCloseLabel : catalogHistoryOpenLabel}
@@ -1078,7 +1078,7 @@ export function DefinitionEditorBody({
                   onClick={() => {
                     const next = !historyOpen;
                     setHistoryOpen(next);
-                    if (next) onRequestHistory?.();
+                    onHistoryOpenChange?.(next);
                   }}
                 >
                   {historyOpen ? catalogHistoryCloseLabel : catalogHistoryOpenLabel}
