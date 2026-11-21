@@ -1,5 +1,5 @@
 import { stripDtsComments } from "../dts/comments";
-import { decodeDtsString } from "../dts/dtsValueClient";
+import { decodeDtsString } from "../dts/dtsString";
 import { parseDtsValue } from "../parameter-topology/parseDtsValue";
 import type { DtsCell, DtsValue } from "../parameter-topology/types";
 

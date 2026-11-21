@@ -2,6 +2,8 @@ import type { DtsValueType } from "@/application/ports/DtsStructuredRepository";
 import { dtsValueTypeLabel } from "@/domain/dts/dtsValueTypeLabels";
 import { parseDtsValue } from "@/domain/parameter-topology/parseDtsValue";
 import type { DtsCell, DtsValue } from "@/domain/parameter-topology/types";
+import { decodeDtsString } from "./dtsString";
+export { decodeDtsString };
 
 export type ClassifiedDtsValue = {
   valueType: DtsValueType;
@@ -173,15 +175,6 @@ export function parseStringListValues(rawText: string): string[] {
 }
 
 /** AST string values retain source escapes; input controls edit decoded text. */
-export function decodeDtsString(value: string): string {
-  const escapes: Record<string, string> = { a: "\x07", b: "\b", t: "\t", n: "\n", v: "\v", f: "\f", r: "\r", '"': '"', "\\": "\\", "?": "?" };
-  return value.replace(/\\(x[0-9A-Fa-f]{1,2}|[0-7]{1,3}|[\s\S])/g, (raw: string, token: string) => {
-    if (token.startsWith("x") && token.length > 1) return String.fromCharCode(Number.parseInt(token.slice(1), 16));
-    if (/^[0-7]+$/.test(token)) return String.fromCharCode(Number.parseInt(token, 8));
-    return escapes[token] ?? raw;
-  });
-}
-
 export function encodeDtsString(value: string): string {
   const escapes: Record<string, string> = { "\x07": "\\a", "\b": "\\b", "\t": "\\t", "\n": "\\n", "\v": "\\v", "\f": "\\f", "\r": "\\r", '"': '\\"', "\\": "\\\\" };
   return Array.from(value, (character) => escapes[character]
