@@ -39,7 +39,7 @@ import { SectionEmpty, SectionError, SectionSkeleton } from "@/components/common
 import { ModalDialog } from "@/components/common/ModalDialog";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { formatAbsolute, formatRelativeOrAbsolute } from "@/domain/format/formatDateTime";
-import { DefinitionDocumentation } from "@/components/parameters/DefinitionDocumentation";
+import { DefinitionDocumentation, definitionDocumentationExcerpt } from "@/components/parameters/DefinitionDocumentation";
 import { toggleFilterValue } from "@/components/tableFilterUtils";
 import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 import type {
@@ -1330,7 +1330,7 @@ export function CatalogPage({
               <DefinitionTable rows={definitions} columns={libraryMode ? [
                 { key: "name", header: "名称 / 属性键", headerFilter: columns[4]?.headerFilter, render: (row) => <><strong>{row.currentRevision.displayName || row.propertyKey}</strong><br /><code>{row.propertyKey}</code>{row.lifecycle !== "active" ? <span className="parameter-catalog__badge">{catalogLifecycleLabel(row.lifecycle)}</span> : null}</> },
                 { key: "subject", header: "主体 / 类型", headerFilter: columns[3]?.headerFilter, render: (row) => <>{row.subject.canonicalName}<br /><span className="parameter-catalog__muted">{catalogSubjectTypeLabel(row.subject.type)} · <span data-row-status>{catalogRegistrationLabel(row.registration.status)}</span></span></> },
-                { key: "documentation", header: "说明", render: (row) => <div className="parameter-library-preview"><DefinitionDocumentation documentation={row.currentRevision.documentation} empty="未说明" /></div> },
+                { key: "documentation", header: "说明", render: (row) => <span className="parameter-library-preview">{definitionDocumentationExcerpt(row.currentRevision.documentation) || "未说明"}</span> },
                 { key: "shape", header: "类型 / 单位", render: (row) => <>{catalogValueShapeLabel(row.currentRevision.valueShape.schema as { type?: unknown })} · {row.currentRevision.unit?.symbol ?? "未说明"}</> },
                 { key: "configuredProjects", header: "项目数", align: "right", render: (row) => row.configurationSummary?.configuredProjectCount ?? "不可用" },
                 { key: "configuredInstances", header: "实例数", align: "right", render: (row) => row.configurationSummary?.configuredInstanceCount ?? "不可用" }

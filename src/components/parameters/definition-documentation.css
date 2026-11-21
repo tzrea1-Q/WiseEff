@@ -1,38 +1,49 @@
+/* Doubled class: host surfaces (e.g. .parameter-inspector h3/pre) must not restyle documentation blocks. */
 .definition-documentation {
   min-inline-size: 0;
   max-inline-size: 100%;
-  overflow-x: auto;
   overflow-wrap: anywhere;
   white-space: normal;
+  font-size: var(--text-base);
   line-height: var(--leading-base);
 }
 
-.definition-documentation > * {
+.definition-documentation.definition-documentation > * {
   margin: 0;
 }
 
-.definition-documentation > * + * {
+.definition-documentation.definition-documentation > * + * {
   margin-block-start: var(--space-2);
 }
 
-.definition-documentation > :is(h1, h2, h3, h4, h5, h6) {
+.definition-documentation.definition-documentation > * + :is(h1, h2, h3, h4, h5, h6) {
+  margin-block-start: var(--space-3);
+}
+
+.definition-documentation.definition-documentation > :is(h1, h2, h3, h4, h5, h6) {
   font-size: var(--text-base);
+  line-height: var(--leading-base);
   font-weight: 600;
 }
 
-.definition-documentation > :is(ol, ul) {
+.definition-documentation.definition-documentation > :is(p, ul, ol, blockquote) {
+  font-size: inherit;
+  line-height: inherit;
+}
+
+.definition-documentation.definition-documentation > :is(ol, ul) {
   padding-inline-start: var(--space-5);
 }
 
 .definition-documentation > ul { list-style: disc; }
 .definition-documentation > ol { list-style: decimal; }
 
-.definition-documentation > pre {
+.definition-documentation.definition-documentation > pre {
   max-inline-size: 100%;
   overflow: auto;
   overflow-wrap: normal;
   white-space: pre;
-  padding: var(--space-2);
+  padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-sm);
   background: var(--surface-sunken);
   font: var(--text-sm) / var(--leading-base) var(--font-mono);
@@ -40,7 +51,11 @@
 
 .definition-documentation code { font-family: var(--font-mono); }
 
-.definition-documentation > table {
+.definition-documentation.definition-documentation > table {
+  display: block;
+  max-inline-size: 100%;
+  inline-size: max-content;
+  overflow-x: auto;
   border-collapse: collapse;
   font-size: var(--text-sm);
 }
@@ -49,4 +64,15 @@
   border: var(--stroke-hairline) solid var(--border);
   padding: var(--space-1) var(--space-2);
   text-align: start;
+  overflow-wrap: normal;
+}
+
+.definition-documentation.definition-documentation > pre > code {
+  display: block;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  white-space: inherit;
+  overflow-wrap: normal;
 }

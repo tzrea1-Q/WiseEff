@@ -1,6 +1,6 @@
 import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { DefinitionDocumentation } from "./DefinitionDocumentation";
+import { DefinitionDocumentation, definitionDocumentationExcerpt } from "./DefinitionDocumentation";
 
 describe("DefinitionDocumentation", () => {
   it("renders paragraphs, lists and verbatim fenced code", () => {
@@ -18,5 +18,11 @@ describe("DefinitionDocumentation", () => {
   it("keeps the caller's empty state", () => {
     render(<DefinitionDocumentation documentation={null} empty="尚无参数说明。" />);
     expect(screen.getByText("尚无参数说明。")).toBeInTheDocument();
+  });
+
+  it("collapses Markdown into a plain-text excerpt for list previews", () => {
+    expect(definitionDocumentationExcerpt("### 作用\n- **电流** 上限\n\n| 温度 | 电流 |\n| --- | --- |\n| 0 | 500 |\n```dts\nx = <1>;\n```"))
+      .toBe("作用 电流 上限 温度 · 电流 0 · 500 x = <1>;");
+    expect(definitionDocumentationExcerpt(null)).toBe("");
   });
 });
