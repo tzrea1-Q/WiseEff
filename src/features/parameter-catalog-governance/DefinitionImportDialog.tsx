@@ -96,8 +96,10 @@ export function DefinitionImportDialog(props: DefinitionImportDialogProps) {
     ? "模拟模式不支持导入预览，请使用 API 模式。" : null;
   const canPreview = !unavailable && props.publicationSurface?.authoringAllowed === true
     && canExecutePublicationAction(actor, "preview-publication", domainState, sessionPermissions);
-  const canPublish = props.publicationSurface?.publishingAllowed === true
-    && canExecutePublicationAction(actor, "publish-publication", domainState, sessionPermissions);
+  const canPublish = (props.publicationSurface?.reviewHighRiskAllowed === true
+    && canExecutePublicationAction(actor, "review-high-risk-publication", domainState, sessionPermissions))
+    || (candidate?.riskClass === "low" && props.publicationSurface?.publishingAllowed === true
+      && canExecutePublicationAction(actor, "publish-publication", domainState, sessionPermissions));
   const previewStale = Boolean(candidate && (!flow.candidateVerified
     || candidate.expectedBaseReleaseId !== catalogReleaseId
     || (flow.previewFingerprint !== null && flow.previewFingerprint !== fingerprint)));
@@ -459,7 +461,7 @@ export function DefinitionImportDialog(props: DefinitionImportDialogProps) {
             <div><dt>{publicationCopy.addedSubjects}</dt><dd>{candidate.impactSummary.addedSubjectCount}</dd></div>
             <div><dt>{publicationCopy.risk}</dt>
               <dd>{candidate.riskClass === "high" ? publicationCopy.riskHigh : publicationCopy.riskLow}</dd></div>
-            <div><dt>{publicationCopy.approval}</dt><dd>{publicationApprovalCopy(candidate.riskClass, actor)}</dd></div>
+            <div><dt>{publicationCopy.approval}</dt><dd>{publicationApprovalCopy(candidate.riskClass)}</dd></div>
             <div><dt>{publicationCopy.scope}</dt><dd>{publicationCopy.sharedScope}</dd></div>
           </dl> : null}
         </div></div>
@@ -493,7 +495,7 @@ export function DefinitionImportDialog(props: DefinitionImportDialogProps) {
         onClick={() => void prepareChildRegistration(childRegistration.owner.id)}>重新读取登记信息</button> : null}
       onConfirm={() => void registerChildren()} onCancel={() => { setChildRegistration(null); setRegistrationError(""); }} />
     <PublicationConfirmation confirm={confirm} allowed={confirm === "publish" ? canPublish : canPreview}
-      risk={candidate?.riskClass ?? "high"} actor={actor} pending={pending}
+      risk={candidate?.riskClass ?? "high"} pending={pending}
       onPreview={() => void runPreview()} onPublish={() => void runPublish()} onCancel={() => setConfirm(null)} />
     <ConfirmDialog open={leaveConfirm} title="离开未保存的编写"
       description={<p>当前正文尚未发布。离开将保留本机定位，但不把未保存内容当作已生效。</p>}

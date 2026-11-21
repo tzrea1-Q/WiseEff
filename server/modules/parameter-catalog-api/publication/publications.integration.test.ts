@@ -29,6 +29,7 @@ import {
   enablePublicationPolicy,
   persistHandBuiltCandidate,
   publisherPermissions,
+  reviewerPermissions,
   authorPermissions,
   PUBLISHER,
   AUTHOR,
@@ -739,8 +740,8 @@ it("publishes a mixed Markdown create and revision in one Candidate", async () =
   try {
     const predecessor = await bootstrapFirstAcme(pool);
     await persistPredecessorArtifact(client, predecessor);
-    await enablePublicationPolicy(client, { publicationEnabled: true, lowRiskSingleActorPublish: true });
-    const auth = makeTestAuthContext({ userId: PUBLISHER, organizationId: ORG, permissions: [...publisherPermissions, ...authorPermissions], roleId: "admin" });
+    await enablePublicationPolicy(client, { publicationEnabled: true, lowRiskSingleActorPublish: false });
+    const auth = makeTestAuthContext({ userId: PUBLISHER, organizationId: ORG, permissions: [...reviewerPermissions, ...authorPermissions], roleId: "admin" });
     let pin = { id: predecessor.compiled.release.id, digest: predecessor.compiled.release.digest };
     const ports: CatalogPublicationPorts = {
       authenticate: async () => ({ ok: true, scope: { principalId: PUBLISHER, organizationId: ORG, actorKind: "org-admin", permissions: auth.permissions, trustedActor: createUserInvocation(auth) } }),
@@ -770,7 +771,7 @@ it("publishes a mixed Markdown create and revision in one Candidate", async () =
     expect(plan.entries[1]).toMatchObject({ outcome: "create" });
     const published = await post(`/api/v2/catalog/publication-candidates/${plan.candidate!.id}/publish`, { idempotencyKey: "md-revision" });
     expect(published.status).toBe(201);
-    expect(await runPublicationManagerOnce({ db, pool, installer: createCatalogInstaller(pool), resolvePublisherActor: async () => userActor(PUBLISHER, publisherPermissions), ownerId: "markdown-revision-test" })).toBe("claimed");
+    expect(await runPublicationManagerOnce({ db, pool, installer: createCatalogInstaller(pool), resolvePublisherActor: async () => userActor(PUBLISHER, reviewerPermissions), ownerId: "markdown-revision-test" })).toBe("claimed");
     const pointer = await readCurrentCatalogPointer(pool);
     if (pointer.kind !== "installed") throw new Error("publication did not install a release");
     expect(pointer.current.id).not.toBe(predecessor.compiled.release.id);
@@ -790,7 +791,7 @@ it("publishes a mixed Markdown create and revision in one Candidate", async () =
     const clearPlan = catalogMarkdownImportResponseSchema.parse(clearPreview.body).item;
     expect(clearPlan).toMatchObject({ candidate: { riskClass: "high" }, entries: [{ outcome: "revise", riskClass: "high" }] });
     expect((await post(`/api/v2/catalog/publication-candidates/${clearPlan.candidate!.id}/publish`, { idempotencyKey: "md-clear" })).status).toBe(201);
-    expect(await runPublicationManagerOnce({ db, pool, installer: createCatalogInstaller(pool), resolvePublisherActor: async () => userActor(PUBLISHER, publisherPermissions), ownerId: "markdown-clear-test" })).toBe("claimed");
+    expect(await runPublicationManagerOnce({ db, pool, installer: createCatalogInstaller(pool), resolvePublisherActor: async () => userActor(PUBLISHER, reviewerPermissions), ownerId: "markdown-clear-test" })).toBe("claimed");
     const clearedPointer = await readCurrentCatalogPointer(pool);
     if (clearedPointer.kind !== "installed") throw new Error("clear did not install a release");
     pin = clearedPointer.current;
@@ -804,7 +805,7 @@ it("publishes a mixed Markdown create and revision in one Candidate", async () =
     expect(retired.status).toBe(201);
     const retiredId = (retired.body as { item: { id: string } }).item.id;
     expect((await post(`/api/v2/catalog/publication-candidates/${retiredId}/publish`, { idempotencyKey: "md-retire" })).status).toBe(201);
-    expect(await runPublicationManagerOnce({ db, pool, installer: createCatalogInstaller(pool), resolvePublisherActor: async () => userActor(PUBLISHER, publisherPermissions), ownerId: "markdown-retire-test" })).toBe("claimed");
+    expect(await runPublicationManagerOnce({ db, pool, installer: createCatalogInstaller(pool), resolvePublisherActor: async () => userActor(PUBLISHER, reviewerPermissions), ownerId: "markdown-retire-test" })).toBe("claimed");
     const retiredPointer = await readCurrentCatalogPointer(pool);
     if (retiredPointer.kind !== "installed") throw new Error("retirement did not install a release");
     pin = retiredPointer.current;
@@ -918,9 +919,10 @@ it.each([
   try {
     const predecessor = await bootstrapFirstAcme(pool);
     await persistPredecessorArtifact(client, predecessor);
-    await enablePublicationPolicy(client, { publicationEnabled: true, lowRiskSingleActorPublish: true });
+    await enablePublicationPolicy(client, { publicationEnabled: true, lowRiskSingleActorPublish: false });
     let currentRelease = { id: predecessor.compiled.release.id, digest: predecessor.compiled.release.digest };
-    const auth = makeTestAuthContext({ userId: PUBLISHER, organizationId: ORG, permissions: [...publisherPermissions, ...authorPermissions], roleId: "admin" });
+    const approvalPermissions = newSubject ? reviewerPermissions : publisherPermissions;
+    const auth = makeTestAuthContext({ userId: PUBLISHER, organizationId: ORG, permissions: [...approvalPermissions, ...authorPermissions], roleId: "admin" });
     const ports: CatalogPublicationPorts = {
       authenticate: async () => ({ ok: true, scope: { principalId: PUBLISHER, organizationId: ORG, actorKind: "org-admin", permissions: auth.permissions, trustedActor: createUserInvocation(auth) } }),
       currentRelease: async () => currentRelease,
@@ -948,7 +950,7 @@ it.each([
     const published = await post(`/api/v2/catalog/publication-candidates/${candidateId}/publish`, { idempotencyKey: "md-three" });
     expect(published.status).toBe(201);
     const jobId = catalogPublicationJobResponseSchema.parse(published.body).item.id;
-    expect(await runPublicationManagerOnce({ db, pool, installer: createCatalogInstaller(pool), resolvePublisherActor: async () => userActor(PUBLISHER, publisherPermissions), ownerId: "markdown-test" })).toBe("claimed");
+    expect(await runPublicationManagerOnce({ db, pool, installer: createCatalogInstaller(pool), resolvePublisherActor: async () => userActor(PUBLISHER, approvalPermissions), ownerId: "markdown-test" })).toBe("claimed");
     const receipt = await withPublicationCoordinator(db, (tx) => getReceiptByJobId(tx, PublicationJobId(jobId)));
     expect(receipt.ok).toBe(true);
     const pointer = await readCurrentCatalogPointer(pool);
@@ -1002,9 +1004,9 @@ it("publishes batch retire and restore atomically and rejects a batch with a fai
   try {
     const predecessor = await bootstrapFirstAcme(pool);
     await persistPredecessorArtifact(client, predecessor);
-    await enablePublicationPolicy(client, { publicationEnabled: true, lowRiskSingleActorPublish: true });
+    await enablePublicationPolicy(client, { publicationEnabled: true, lowRiskSingleActorPublish: false });
     let currentRelease = { id: predecessor.compiled.release.id, digest: predecessor.compiled.release.digest };
-    const auth = makeTestAuthContext({ userId: PUBLISHER, organizationId: ORG, permissions: [...publisherPermissions, ...authorPermissions], roleId: "admin" });
+    const auth = makeTestAuthContext({ userId: PUBLISHER, organizationId: ORG, permissions: [...reviewerPermissions, ...authorPermissions], roleId: "admin" });
     const server = await listenCatalogPublicationHttpServer({
       authenticate: async () => ({ ok: true, scope: { principalId: PUBLISHER, organizationId: ORG, actorKind: "org-admin", permissions: auth.permissions, trustedActor: createUserInvocation(auth) } }),
       currentRelease: async () => currentRelease,
@@ -1021,7 +1023,7 @@ it("publishes batch retire and restore atomically and rejects a batch with a fai
       const candidateId = catalogPublicationCandidateResponseSchema.parse(candidate.body).item.id;
       const result = await post(`/api/v2/catalog/publication-candidates/${candidateId}/publish`, { idempotencyKey: key });
       expect(result.status).toBe(201);
-      expect(await runPublicationManagerOnce({ db, pool, installer: createCatalogInstaller(pool), resolvePublisherActor: async () => userActor(PUBLISHER, publisherPermissions), ownerId: "batch-lifecycle-test" })).toBe("claimed");
+      expect(await runPublicationManagerOnce({ db, pool, installer: createCatalogInstaller(pool), resolvePublisherActor: async () => userActor(PUBLISHER, reviewerPermissions), ownerId: "batch-lifecycle-test" })).toBe("claimed");
       const pointer = await readCurrentCatalogPointer(pool);
       if (pointer.kind !== "installed") throw new Error("publication did not install a release");
       currentRelease = pointer.current;

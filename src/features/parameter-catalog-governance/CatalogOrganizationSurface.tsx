@@ -149,6 +149,9 @@ export function CatalogOrganizationSurface({
   const catalogReleaseId = domainState?.catalogReleaseId ?? anchor.catalogReleaseId ?? "";
   const canImportDefinitions = Boolean(actor !== "agent" && sessionPermissions?.includes("catalog:author")
     && publicationSurfaceAllowsAuthoring(publicationSurface) && domainState && organizationId && catalogReleaseId);
+  const canPublishDefinitionLifecycle = actor !== "agent" && publicationSurfaceAllowsAuthoring(publicationSurface)
+    && publicationSurface?.reviewHighRiskAllowed === true && sessionPermissions?.includes("catalog:author") === true
+    && sessionPermissions.includes("catalog:review-high-risk");
   useEffect(() => {
     if (importOpen || !canImportDefinitions || !organizationId) return;
     const document = takeDefinitionImportHandoff(organizationId, currentPersonId);
@@ -366,7 +369,7 @@ export function CatalogOrganizationSurface({
         listReviewItems={
           organizationId && reviewQueueAllowed ? (orgId, query) => governance.listReviewItems(orgId, query) : undefined
         }
-        definitionPublishingAllowed={publicationSurfaceAllowsPublishing(publicationSurface)}
+        definitionPublishingAllowed={canPublishDefinitionLifecycle}
         definitionAuthoringAllowed={publicationSurfaceAllowsAuthoring(publicationSurface)}
         definitionDeletionAllowed={definitionDeletionAllowed}
         definitionAuthoringDisabledReason={publicationSurfaceLoad === "error"
@@ -380,7 +383,7 @@ export function CatalogOrganizationSurface({
           if (command === "correct-identity") return;
           setLifecycle({ intent: command, mode: "single", definitions: [definition], ownerState });
         }}
-        onBatchDefinitionCommand={actor !== "agent" && sessionPermissions?.includes("catalog:author") && sessionPermissions.includes("catalog:publish")
+        onBatchDefinitionCommand={canPublishDefinitionLifecycle
           ? (intent, definitions, ownerState) => {
             const definition = definitions[0];
             if (definition) setLifecycle({ intent, mode: "batch", definitions, ownerState });
@@ -399,7 +402,6 @@ export function CatalogOrganizationSurface({
           <DefinitionEditorBody
             actor={actor}
             organizationId={organizationId}
-            organizationAdmin={sessionRoles?.some(role => role.roleId === "admin" && role.projectId === null)}
             sessionPermissions={sessionPermissions}
             domainState={history.domainState}
             catalog={catalog}
@@ -416,12 +418,13 @@ export function CatalogOrganizationSurface({
             onRefreshEvidence={async () => { await refreshCurrentCatalog(); }}
             authoringAllowed={publicationSurfaceAllowsAuthoring(publicationSurface)}
             publishingAllowed={publicationSurfaceAllowsPublishing(publicationSurface)}
+            reviewHighRiskAllowed={publicationSurface?.reviewHighRiskAllowed}
             onRequestHistory={history.onRequestHistory}
             onClose={history.onClose}
-            onRetireDefinition={() => {
+            onRetireDefinition={canPublishDefinitionLifecycle ? () => {
               history.onClose?.();
               setLifecycle({ intent: "retire-definition", mode: "single", definitions: [definition], ownerState: history.domainState });
-            }}
+            } : undefined}
             history={
               <CatalogHistoryBody
                 timeline={history.timeline}

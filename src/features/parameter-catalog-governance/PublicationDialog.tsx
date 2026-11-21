@@ -112,9 +112,6 @@ export function PublicationDialog({
     canExecutePublicationAction(actor, "preview-publication", domainState, sessionPermissions);
   const canSaveDraft =
     surfaceAllowsAuthoring && canSavePublicationDraft(actor, domainState, sessionPermissions);
-  const canPublish =
-    surfaceAllowsPublishing &&
-    canExecutePublicationAction(actor, "publish-publication", domainState, sessionPermissions);
   const flow = usePublicationFlow({
     catalog, catalogReleaseId, currentPersonId, organizationId,
     createIdempotencyKey, onCompleted, onRefreshEvidence,
@@ -123,6 +120,10 @@ export function PublicationDialog({
     candidate, candidateVerified, previewFingerprint, job, pending, setPending,
     failure, setFailure, confirm, setConfirm, gateRef, pollJob,
   } = flow;
+  const canPublish = (publicationSurface?.reviewHighRiskAllowed === true
+    && canExecutePublicationAction(actor, "review-high-risk-publication", domainState, sessionPermissions))
+    || (candidate?.riskClass === "low" && surfaceAllowsPublishing
+      && canExecutePublicationAction(actor, "publish-publication", domainState, sessionPermissions));
   const formId = useId();
   const initialDraft = (): PublicationDraft => ({ ...emptyPublicationDraft(), mode: intent, subjectId: initialSubjectId,
     ...(intent === "create-subject" ? { nature: "", cardinality: "", selectorValue: sourcePrefill?.compatible ?? "",
@@ -669,7 +670,7 @@ export function PublicationDialog({
                     </div>
                     <div>
                       <dt>{publicationCopy.approval}</dt>
-                      <dd>{publicationApprovalCopy(candidate.riskClass, actor)}</dd>
+                      <dd>{publicationApprovalCopy(candidate.riskClass)}</dd>
                     </div>
                     <div>
                       <dt>{publicationCopy.scope}</dt>
@@ -782,7 +783,7 @@ export function PublicationDialog({
         )}
       </ModalDialog>
       <PublicationConfirmation confirm={confirm} allowed={targetAllowed && (confirm === "publish" ? canPublish : canPreview)}
-        risk={candidate?.riskClass ?? "high"} actor={actor} pending={pending}
+        risk={candidate?.riskClass ?? "high"} pending={pending}
         onPreview={() => void runPreview()} onPublish={() => void runPublish()} onCancel={() => setConfirm(null)} />
       <ConfirmDialog
         open={leaveConfirm}

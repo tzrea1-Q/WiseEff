@@ -10,7 +10,6 @@ import {
   reviewerPermissions,
   PUBLISHER,
   AUTHOR,
-  REVIEWER,
 } from "../../catalog-publication/authorization/testHarness";
 import {
   bootstrapFirstAcme,
@@ -127,7 +126,7 @@ describe("CP-10 M2 publication HTTP", () => {
     pinId = predecessor.compiled.release.id;
     await enablePublicationPolicy(client, {
       publicationEnabled: true,
-      lowRiskSingleActorPublish: true,
+      lowRiskSingleActorPublish: false,
     });
     scope = scopeFor(PUBLISHER, [...publisherPermissions, ...authorPermissions]);
     const ports: CatalogPublicationPorts = {
@@ -193,10 +192,10 @@ describe("CP-10 M2 publication HTTP", () => {
     expect(legacy.status).toBe(400);
     const { id } = (created.body as { item: { id: string } }).item;
     authenticateAs(scopeFor(AUTHOR, [...authorPermissions, ...publisherPermissions, ...reviewerPermissions], "user"));
-    const denied = await request("POST", `/api/v2/catalog/publication-candidates/${id}/publish`, {
-      headers: { [CATALOG_RELEASE_HEADER]: pinId }, body: { idempotencyKey: "standalone-self-approve" },
+    const published = await request("POST", `/api/v2/catalog/publication-candidates/${id}/publish`, {
+      headers: { [CATALOG_RELEASE_HEADER]: pinId }, body: { idempotencyKey: `standalone-${kind}-self-approve` },
     });
-    expect(denied.status).toBe(403);
+    expect(published.status).toBe(201);
   });
 
   it("accepts explicit optional-content removal through the HTTP candidate contract", async () => {
@@ -323,22 +322,20 @@ describe("CP-10 M2 publication HTTP", () => {
     expect(item.riskClass).toBe("high");
     expect(item.impactSummary.addedSubjectCount).toBe(1);
 
-    authenticateAs(scopeFor(AUTHOR, [...authorPermissions, ...publisherPermissions, ...reviewerPermissions], "user"));
-    const selfPublish = await request("POST", `/api/v2/catalog/publication-candidates/${item.id}/publish`, {
+    authenticateAs(scopeFor(AUTHOR, [...authorPermissions, ...publisherPermissions], "user"));
+    const denied = await request("POST", `/api/v2/catalog/publication-candidates/${item.id}/publish`, {
+      headers: { [CATALOG_RELEASE_HEADER]: pinId },
+      body: { idempotencyKey: "key-no-high-risk-review" },
+    });
+    expect(denied.status).toBe(403);
+    expect(denied.body).toMatchObject({ error: { details: { reason: "publication-capability-missing" } } });
+
+    authenticateAs(scopeFor(AUTHOR, [...authorPermissions, ...reviewerPermissions], "user"));
+    const published = await request("POST", `/api/v2/catalog/publication-candidates/${item.id}/publish`, {
       headers: { [CATALOG_RELEASE_HEADER]: pinId },
       body: { idempotencyKey: "key-self-high" },
     });
-    expect(selfPublish.status).toBe(403);
-    expect((selfPublish.body as { error: { details: { reason: string } } }).error.details.reason).toBe(
-      "publication-self-approval-forbidden",
-    );
-
-    authenticateAs(scopeFor(REVIEWER, [...reviewerPermissions]));
-    const reviewed = await request("POST", `/api/v2/catalog/publication-candidates/${item.id}/publish`, {
-      headers: { [CATALOG_RELEASE_HEADER]: pinId },
-      body: { idempotencyKey: "key-review-high" },
-    });
-    expect(reviewed.status).toBe(201);
+    expect(published.status).toBe(201);
   });
 
   it("denies Agent and org-admin without catalog:publish", async () => {
