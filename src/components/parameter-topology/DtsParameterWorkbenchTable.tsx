@@ -420,7 +420,7 @@ export function DtsParameterWorkbenchTable({
               <span role="cell" data-label="当前值">
                 {displayLines.length > 1 ? (
                   <span className="dts-parameter-workbench-table__value-summary" title={row.rawValue ?? displayRaw}>
-                    <code>{displayLines[0]}…</code>
+                    <code>{displayRaw.replace(/\s+/g, " ")}</code>
                     <small>共 {displayLines.length} 行</small>
                   </span>
                 ) : <code title={displayRaw}>{displayRaw}</code>}

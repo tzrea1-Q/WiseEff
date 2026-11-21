@@ -1,3 +1,4 @@
+import { dtsValuesEquivalent } from "./dtsValueEquality";
 export type BindingComparePeer = {
   valueState?: "present" | "deleted" | null;
   /** Canonical binding instance identity. */
@@ -299,7 +300,7 @@ export function buildBindingCompareOverview(
     };
     if (row.valueState === "deleted" || (row.rawValue.trim() === "" && row.valueState !== "present")) {
       missing.push(project);
-    } else if (row.rawValue === baseRawValue) {
+    } else if (dtsValuesEquivalent(row.rawValue, baseRawValue)) {
       same.push(project);
     } else {
       changed.push(project);

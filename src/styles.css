@@ -22276,14 +22276,20 @@ button.dts-topology-navigator__disclosure:focus-visible {
   display: flex;
   align-items: baseline;
   gap: var(--space-2);
+  min-width: 0;
   white-space: nowrap;
 }
 
 .dts-parameter-workbench-table__row [data-label="当前值"] .dts-parameter-workbench-table__value-summary code {
   display: block;
   min-width: 0;
+  overflow: hidden;
   white-space: inherit;
   text-overflow: ellipsis;
+}
+
+.dts-parameter-workbench-table__value-summary small {
+  flex: none;
 }
 
 .dts-parameter-workbench-table__value-summary small {
