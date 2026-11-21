@@ -3,6 +3,7 @@ import { CircleX, FlaskConical } from "lucide-react";
 import { ModalDialog } from "@/components/common/ModalDialog";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { ParameterValueDiff } from "@/components/ParameterValueDiff";
+import { DefinitionDocumentation } from "@/components/parameters/DefinitionDocumentation";
 import { ViewSwitch } from "@/components/ui/view-switch";
 import { TabPanel } from "@/components/ui/tab-panel";
 import { Button } from "@/components/ui/button";
@@ -143,7 +144,7 @@ export function DtsBindingDetailDialog({
                   {currentDefinition.recommendedDefinition.displayName}</a>。</p> : null}
                 {latestStatus === "loading" ? <p role="status">正在读取最新目录说明…</p> : null}
                 {latestStatus === "error" ? <p role="status">最新目录说明暂不可用，当前展示项目固定修订。</p> : null}
-                {description ? <p>{description}</p> : null}{documentation ? <p>{documentation}</p> : null}
+                {description ? <p>{description}</p> : null}<DefinitionDocumentation documentation={documentation} />
                 {currentDefinition?.examples?.length ? <div><strong>最新目录示例（仅供参考）</strong><pre>{JSON.stringify(currentDefinition.examples, null, 2)}</pre></div> : null}
                 {specDetailStatus === "loading" ? <p role="status">正在加载规格详情…</p> : null}
                 {specDetailStatus === "error" ? <div role="alert" aria-label="规格详情加载失败"><p>{specDetailErrorMessage || "参数说明加载失败，当前配置仍可查看。"}</p><Button variant="outline" onClick={onRetrySpecDetail}>重试规格详情</Button></div> : null}

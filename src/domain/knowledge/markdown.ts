@@ -3,7 +3,7 @@
  * Input is escaped before any markup is generated, so arbitrary HTML in entry
  * content cannot reach the DOM. Covers the subset engineers actually use in
  * knowledge notes: headings, emphasis, inline code, fenced code, lists, quotes,
- * links, and paragraphs. Anything else renders as plain text.
+ * links, pipe tables, and paragraphs. Anything else renders as plain text.
  */
 
 function escapeHtml(value: string): string {
@@ -33,6 +33,11 @@ function renderInline(escaped: string): string {
   return html;
 }
 
+function splitTableRow(line: string): string[] {
+  return line.trim().replace(/^\||(?<!\\)\|$/g, "").split(/(?<!\\)\|/)
+    .map((cell) => cell.trim().replaceAll("\\|", "|"));
+}
+
 export function renderMarkdownPreview(markdown: string): string {
   const lines = markdown.replace(/\r\n/g, "\n").split("\n");
   const blocks: string[] = [];
@@ -40,6 +45,7 @@ export function renderMarkdownPreview(markdown: string): string {
   let listItems: string[] = [];
   let listKind: "ul" | "ol" | null = null;
   let codeLines: string[] | null = null;
+  let fenceLength = 0;
 
   const flushParagraph = () => {
     if (paragraph.length > 0) {
@@ -56,9 +62,11 @@ export function renderMarkdownPreview(markdown: string): string {
     }
   };
 
-  for (const line of lines) {
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
     if (codeLines !== null) {
-      if (line.trimEnd() === "```") {
+      const closingFence = line.trim();
+      if (closingFence.length >= fenceLength && /^`+$/.test(closingFence)) {
         blocks.push(`<pre><code>${codeLines.map(escapeHtml).join("\n")}</code></pre>`);
         codeLines = null;
       } else {
@@ -67,14 +75,16 @@ export function renderMarkdownPreview(markdown: string): string {
       continue;
     }
 
-    if (line.trimStart().startsWith("```")) {
+    const openingFence = line.trimStart().match(/^(`{3,})[^`]*$/);
+    if (openingFence) {
       flushParagraph();
       flushList();
       codeLines = [];
+      fenceLength = openingFence[1].length;
       continue;
     }
 
-    const headingMatch = line.match(/^(#{1,4})\s+(.*)$/);
+    const headingMatch = line.match(/^(#{1,6})\s+(.*)$/);
     if (headingMatch) {
       flushParagraph();
       flushList();
@@ -117,6 +127,27 @@ export function renderMarkdownPreview(markdown: string): string {
       flushParagraph();
       flushList();
       continue;
+    }
+
+    if (/(?<!\\)\|/.test(line) && index + 1 < lines.length) {
+      const headers = splitTableRow(line);
+      const separator = splitTableRow(lines[index + 1]);
+      if (headers.length === separator.length && separator.every((cell) => /^:?-+:?$/.test(cell))) {
+        flushParagraph();
+        flushList();
+        const head = headers.map((cell) => `<th scope="col">${renderInline(escapeHtml(cell))}</th>`).join("");
+        const rows: string[] = [];
+        index += 1;
+        while (index + 1 < lines.length) {
+          const row = lines[index + 1];
+          if (!/(?<!\\)\|/.test(row) || /^\s*(?:#{1,6}\s|>|[-*]\s|\d+\.\s|`{3,})/.test(row)) break;
+          const cells = splitTableRow(row);
+          rows.push(`<tr>${headers.map((_, column) => `<td>${renderInline(escapeHtml(cells[column] ?? ""))}</td>`).join("")}</tr>`);
+          index += 1;
+        }
+        blocks.push(`<table><thead><tr>${head}</tr></thead>${rows.length ? `<tbody>${rows.join("")}</tbody>` : ""}</table>`);
+        continue;
+      }
     }
 
     flushList();

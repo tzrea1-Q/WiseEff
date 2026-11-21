@@ -200,7 +200,9 @@ describe("DefinitionEditorBody", () => {
   });
 
   it.each([true, false])("preserves complete multiline published documentation with authoring=%s", (authoringAllowed) => {
-    const documentation = `first documentation line ${"x".repeat(300)}\nlast documentation line`;
+    const firstLine = `first documentation line ${"x".repeat(300)}`;
+    const lastLine = "last documentation line";
+    const documentation = `${firstLine}\n${lastLine}`;
     const ports = createMockCatalogPorts({ scenario: "ready" });
     render(<DefinitionEditorBody authoringAllowed={authoringAllowed} publishingAllowed actor="org-admin" history={null}
       sessionPermissions={["catalog:author", "catalog:publish"]} domainState={ready}
@@ -208,7 +210,10 @@ describe("DefinitionEditorBody", () => {
       definition={{ ...activeDefinition, currentRevision: { ...activeDefinition.currentRevision, documentation } }}
       subjects={[registeredSubject]} />);
     const content = screen.getByLabelText("已发布参数说明");
-    expect(content.textContent).toBe(documentation);
+    const paragraph = content.querySelector("p");
+    expect(paragraph?.textContent).toBe(firstLine + lastLine);
+    expect(paragraph?.querySelector("br")?.previousSibling?.textContent).toBe(firstLine);
+    expect(paragraph?.querySelector("br")?.nextSibling?.textContent).toBe(lastLine);
   });
 
   it.each([
