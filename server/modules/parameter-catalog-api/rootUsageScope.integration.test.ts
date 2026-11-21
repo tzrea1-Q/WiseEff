@@ -270,7 +270,8 @@ describe("R2-SCOPE actual role bindings → root HTTP → PostgreSQL usage", () 
     expect(body.items).toHaveLength(3);
     expect(body.items.filter((item: { projectId: string }) => item.projectId === "scope-project-b")).toHaveLength(2);
     const instances = body.items.filter((item) => item.kind === "instance");
-    expect(instances.every((item) => item.valuePreview === "<1001>")).toBe(true);
+    // Previews keep each pinned source spelling of the same value 1001.
+    expect(instances.map((item) => item.valuePreview).sort()).toEqual(["<(1000 + 1)>", "<0x3e9>", "<0x3e9>"]);
     const bindingId = instances[0]!.bindingId;
     const selected = await fetch(`${baseUrl}/api/v2/catalog/definitions/${definitionId}/project-configurations?selectedBindingId=${bindingId}&limit=1`, {
       headers: { authorization: "Bearer scope-only-a" },

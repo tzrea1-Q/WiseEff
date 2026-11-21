@@ -154,7 +154,7 @@ describe("disposable acceptance post-cutover DTS upload", () => {
     expect(first.configSetId).not.toBe(second.configSetId);
     expect(first.rawValue).toBe("<0x6e>");
     expect(second.rawValue).toBe("<0x6f>");
-    for (const [binding, rawValue] of [[first, "<110>"], [second, "<111>"]] as const) {
+    for (const [binding, rawValue] of [[first, "<0x6e>"], [second, "<0x6f>"]] as const) {
       const pinned = await request.get(apiRoute(`/api/v2/projects/aurora/parameter-bindings?revisionId=${binding.revisionId}`), {
         headers: authHeadersForRole("admin")
       });
