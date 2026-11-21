@@ -1164,10 +1164,10 @@ describe("CatalogPage", { timeout: 15_000 }, () => {
     expect(screen.queryByRole("button", { name: "全部定义" })).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /^Inventory module 0\s*101$/ }));
     await waitFor(() => expect(screen.queryByText("已选模块子树 · 101 个主体")).not.toBeInTheDocument());
-    expect(within(screen.getByRole("table", { name: "参数定义列表" })).getByText("gpio-int")).toBeVisible();
+    expect(await within(await screen.findByRole("table", { name: "参数定义列表" })).findByText("gpio-int")).toBeVisible();
     await user.click(screen.getByRole("button", { name: /^Inventory module 100\s*1$/ }));
     await waitFor(() => expect(screen.getByText("已选模块子树 · 1 个主体")).toBeVisible());
-    expect(within(screen.getByRole("table", { name: "参数定义列表" })).getByText("gpio-int")).toBeVisible();
+    expect(await within(await screen.findByRole("table", { name: "参数定义列表" })).findByText("gpio-int")).toBeVisible();
     await user.click(screen.getByRole("button", { name: "选择主体 inventory-subject-100" }));
     await waitFor(() => expect(inventory.repository.listSubjectDefinitions).toHaveBeenCalledWith(
       inventory.last.id, expect.objectContaining({ catalogReleaseId: CATALOG_RELEASE_ID })
@@ -1259,6 +1259,8 @@ describe("CatalogPage", { timeout: 15_000 }, () => {
     const props = { ...inventory, actor: "user" as const, search: `?catalogReleaseId=${CATALOG_RELEASE_ID}` };
     const view = render(<CatalogPage {...props} />);
     expect(await screen.findByRole("button", { name: /^Inventory module 0\s*101$/ })).toBeVisible();
+    const initialTable = await screen.findByRole("table", { name: "参数定义列表" });
+    expect(await within(initialTable).findByText("gpio-int")).toBeVisible();
     inventory.listSubjects.mockImplementation(async (query) => {
       if (query?.cursor) throw new Error("refresh second page failed");
       return inventory.first;
@@ -1295,7 +1297,7 @@ describe("CatalogPage", { timeout: 15_000 }, () => {
     // The detail is disclosed in a dialog, never inline on the page.
     expect(within(page).queryByRole("region", { name: "定义详情" })).not.toBeInTheDocument();
     // The module navigator owns the side rail and the table keeps the rest.
-    expect(within(page).getByRole("navigation", { name: "参数定义模块树" })).toBeVisible();
+    expect(await within(page).findByRole("navigation", { name: "参数定义模块树" })).toBeVisible();
     expect(within(page).getByRole("status", { name: catalogResultCountLabel })).toHaveTextContent(/共 \d+ 项/);
     expect(within(page).getByRole("navigation", { name: "分页" })).toBeVisible();
     // History and pending work open on demand instead of owning the workspace.

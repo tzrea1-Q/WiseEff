@@ -47,6 +47,7 @@ describe("CatalogOrganizationSurface Organization Review Queue permission", () =
     await within(dialog).findByRole("table");
     await waitFor(() => expect(screen.getByRole("button", { name: /待审核事项/ })).toHaveTextContent("1"));
     await userEvent.click(within(dialog).getByRole("button", { name: "关闭" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: /待审核事项/ })).toHaveTextContent("1"));
     list.mockResolvedValue({ items: [catalogReviewItem], nextCursor: "next", totalCount: 4, hasMore: true,
       catalogReleaseId: catalogReviewItem.catalogReleaseId });
     const callsBeforeSearch = list.mock.calls.length;
@@ -73,7 +74,9 @@ describe("CatalogOrganizationSurface Organization Review Queue permission", () =
     const openReview = await within(review).findByRole("button", { name: "处理审核" });
     expect(moduleRegistry.getRegistry).toHaveBeenCalledTimes(1);
     await userEvent.click(openReview);
-    await userEvent.click(screen.getByRole("combobox", { name: "审核登记目标模块" }));
+    const targetModule = await screen.findByRole("combobox", { name: "审核登记目标模块" });
+    await waitFor(() => expect(targetModule).toBeEnabled());
+    await userEvent.click(targetModule);
     expect(await screen.findByRole("option", { name: "充电 / 控制器" })).toBeVisible();
     expect(screen.getByRole("option", { name: "电池 / 控制器" })).toBeVisible();
     // The resolution editor checks fresh evidence before it permits a write.

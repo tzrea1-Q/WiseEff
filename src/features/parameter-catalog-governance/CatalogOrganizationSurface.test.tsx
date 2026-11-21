@@ -62,7 +62,7 @@ function surface(catalog: ParameterCatalogRepository, onAnchorChange = vi.fn()) 
 }
 
 async function readSubjectOptions() {
-  await userEvent.click(screen.getByRole("combobox", { name: "主体" }));
+  await userEvent.click(await screen.findByRole("combobox", { name: "主体" }));
   const options = within(await screen.findByRole("listbox")).queryAllByRole("option");
   await userEvent.keyboard("{Escape}");
   return options;
@@ -166,12 +166,12 @@ describe("CatalogOrganizationSurface editor subject collection", () => {
     render(surface(ports.catalog));
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: "打开定义编辑器" }));
-    expect(screen.getByRole("status", { name: "正在读取主体列表" })).toBeVisible();
+    expect(await screen.findByRole("status", { name: "正在读取主体列表" })).toBeVisible();
     expect(screen.queryByRole("combobox", { name: "主体" })).not.toBeInTheDocument();
     expect(screen.queryByRole("textbox", { name: "属性键" })).not.toBeInTheDocument();
     expect(screen.getByRole("region", { name: "定义详情" })).toHaveTextContent(activeDefinition.subject.canonicalName);
     await act(async () => second.resolve(lastPage));
-    const select = screen.getByRole("combobox", { name: "主体" });
+    const select = await screen.findByRole("combobox", { name: "主体" });
     const options = await readSubjectOptions();
     expect(options.find((option) => option.textContent === laterSubject.canonicalName)).toHaveAttribute("data-value", laterSubject.id);
     expect(options).toHaveLength(101);

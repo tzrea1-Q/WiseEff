@@ -46,7 +46,7 @@ describe("Catalog definition action capability", () => {
     render(<Harness />);
     await userEvent.click(await screen.findByRole("button", { name: /^(编辑|查看) gpio-int$/ }));
     const dialog = await screen.findByRole("dialog");
-    expect(within(dialog).getByRole("region", { name: "定义详情" })).toHaveTextContent(registeredSubject.canonicalName);
+    expect(await within(dialog).findByRole("region", { name: "定义详情" })).toHaveTextContent(registeredSubject.canonicalName);
     await userEvent.click(within(dialog).getByRole("button", { name: "关闭" }));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(document).toHaveBeenCalledTimes(1);
