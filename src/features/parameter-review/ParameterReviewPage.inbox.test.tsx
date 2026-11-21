@@ -2,8 +2,11 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import { afterEach, expect, it, vi } from "vitest";
 import { initialState } from "@/mockData";
 import type { AppRuntime } from "@/app/appRuntime";
-import { useLayoutEffect } from "react";
+import { useLayoutEffect, useMemo, useReducer } from "react";
 import { ParameterReviewPage } from "./ParameterReviewPage";
+import { createParameterRuntimeActions } from "@/application/parameters/parameterRuntime";
+import { appReducer } from "@/application/state/appState";
+import { createTestParameterRepository } from "@/test/harness/createTestAppPorts";
 
 vi.mock("@/application/parameters/parameterFileRuntime", () => ({
   resolveParameterFileRepository: () => ({ listSourceRevisionRequests: async () => [] })
@@ -12,6 +15,40 @@ vi.mock("@/application/parameters/parameterFileRuntime", () => ({
 afterEach(() => {
   cleanup();
   window.history.replaceState(null, "", "/parameter-review");
+});
+
+it("loads names for a review project's requests without refetching the queue when names arrive", async () => {
+  const projectId = "nebula";
+  const listProjectValueChangeRequests = vi.fn().mockResolvedValue({ items: [{
+    id: "review-binding", bindingId: "nebula-binding", reason: "校准电压", action: "set", targetValue: "4600",
+    projectId, status: "pending", submitterUserId: "author", assignedToUserId: null, reviewerUserId: null,
+    createdAt: "2026-10-16T00:00:00Z", updatedAt: "2026-10-16T00:00:00Z"
+  }] });
+  const listProtectedProjectBindings = vi.fn().mockResolvedValue({
+    items: [{ id: "nebula-binding", propertyKey: "nebula_actual_voltage", rawValue: "4500", driverModule: "电源" }]
+  });
+  const repository = createTestParameterRepository({ listChangeRequests: vi.fn().mockResolvedValue([]),
+    listSubmissionRounds: vi.fn().mockResolvedValue([]), listDrafts: vi.fn().mockResolvedValue([]) });
+  const canonicalRepository = { listProjectValueChangeRequests, listProtectedProjectBindings };
+  const runtime = { parameterRepository: repository, parameterCatalogRepository: canonicalRepository } as unknown as AppRuntime;
+
+  function Review() {
+    const [state, dispatch] = useReducer(appReducer, { ...initialState, parameters: [], parameterDrafts: [],
+      projectParameterStatuses: {}, parameterInitializationReviews: [], activeRoleId: "admin" });
+    const actions = useMemo(() => createParameterRuntimeActions({
+      runtimeMode: "api", dispatch, repository, canonicalRepository
+    }), [dispatch]);
+    return <ParameterReviewPage state={state} dispatch={dispatch} onNavigate={vi.fn()}
+      parameterActions={actions} runtime={runtime} runtimeMode="api" search="?project=nebula" />;
+  }
+
+  render(<Review />);
+  const queue = await screen.findByRole("table", { name: "审阅队列" });
+  expect(await within(queue).findByText("nebula_actual_voltage")).toBeInTheDocument();
+  // The queue and its auto-selected detail panel each read the requests once.
+  expect(listProjectValueChangeRequests.mock.calls).toEqual([[projectId, undefined], [projectId, undefined]]);
+  expect(listProtectedProjectBindings).toHaveBeenCalledExactlyOnceWith(projectId);
+  expect(repository.listDrafts).toHaveBeenCalledExactlyOnceWith(projectId);
 });
 
 it("keeps an unsubmitted merge link through a same-request API refresh and clears it on a real selection change", async () => {

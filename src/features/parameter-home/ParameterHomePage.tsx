@@ -107,8 +107,6 @@ export function ParameterHomePage({
         projectScope: dashboardState.projectScope,
         activeBindingCount: summary?.kpis.totalBindings,
         hotspotsStatus: dashboardState.hotspots.status,
-        changeRequests: state.changeRequests,
-        drafts: state.parameterDrafts,
         projects: state.configDraft.projects.map((project) => ({
           id: project.id,
           name: project.name,
@@ -121,8 +119,6 @@ export function ParameterHomePage({
       canManageOrganization,
       dashboardState.projectScope,
       dashboardState.hotspots.status,
-      state.changeRequests,
-      state.parameterDrafts,
       state.configDraft.projects,
       summary?.workbenchSignals,
       summary?.kpis.totalBindings,

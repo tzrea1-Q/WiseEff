@@ -1604,6 +1604,26 @@ describe("ParametersPage API topology workspace", () => {
     await waitFor(() => expect(onNavigate).toHaveBeenCalledWith("/parameters?project=nebula&binding=pbind_nebula"));
   });
 
+  it("looks up a mapped Binding's owner by exact ID when its project is not cached", async () => {
+    const onNavigate = vi.fn();
+    const binding = { ...initialState.parameters[0], id: "pbind_nebula", projectId: "nebula" };
+    const getParameter = vi.fn().mockResolvedValue(binding);
+    const getLegacyIdentifier = vi.fn().mockResolvedValue({ item: {
+      legacyType: "project-parameter-binding", legacyId: "old-in-nebula", disposition: "mapped",
+      target: { kind: "parameter-binding", id: binding.id, href: "/api/v2/catalog" }, historicalOnly: false
+    } });
+    render(<TopBarActionsHarness><ParametersPage
+      state={createParametersPageState({ parameters: [] })} dispatch={vi.fn()} onNavigate={onNavigate}
+      search="?project=aurora&parameter=old-in-nebula" runtimeMode="api" canEdit={false}
+      parameterRepository={{ getParameter }} topologyRepository={createApiBoundaryRepository()}
+      canonicalRepository={{ ...createTestAppPorts().parameterCatalogRepository, getLegacyIdentifier }}
+      listConfigSets={async () => [{ id: API_SENTINEL_CONFIG_SET_ID, name: "default" }]}
+    /></TopBarActionsHarness>);
+
+    await waitFor(() => expect(onNavigate).toHaveBeenCalledWith("/parameters?project=nebula&binding=pbind_nebula"));
+    expect(getParameter).toHaveBeenCalledExactlyOnceWith(binding.id);
+  });
+
   it.each(["NOT_FOUND", "CONFLICT", "GONE"])("keeps an unmapped old ?parameter= link visibly historical (%s)", async (code) => {
     const onNavigate = vi.fn();
     const parameterActions = createParameterActions();

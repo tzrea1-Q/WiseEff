@@ -82,6 +82,8 @@ export type ParameterPageActions = {
   applyImportBatch(input: ApplyParameterImportBatchInput): Promise<ParameterImportBatchDto | ParameterRuntimeVoidResult>;
   parseDtsImport(input: ParseDtsImportInput): Promise<DtsImportParseResult>;
   refresh(options?: ParameterRuntimeRefreshOptions): Promise<ParameterRuntimeRefreshResult>;
+  loadProjectParameters?: ParameterRuntimeActions["loadProjectParameters"];
+  ensureProjectParameters?: ParameterRuntimeActions["ensureProjectParameters"];
 };
 
 /** Loading lifecycle for a page-scoped API data section (FA-21 state coverage). */
@@ -199,7 +201,8 @@ export function PageRouter({
   const isPublicationAdministrator = publicationAdministrator ?? (currentRoleId === "admin" || currentRoleId === "platform-admin");
   const canOpenKnowledge = visibleWorkflows.includes("knowledge");
   const canOpenParameters = visibleWorkflows.includes("parameter-management");
-  const searchProjectId = new URLSearchParams(search).get("project") ?? "";
+  const params = new URLSearchParams(search);
+  const searchProjectId = params.get("project") || params.get("projectId") || "";
   const effectiveParametersProjectId = searchProjectId || state.activeProjectId;
   const activeProjectInitializationStatus =
     state.projectInitializationStatuses[effectiveParametersProjectId] ?? "initialized";
@@ -356,6 +359,7 @@ export function PageRouter({
           parameterActions={parameterActions}
           topologyRepository={parameterTopologyRepository}
           canonicalRepository={runtime?.parameterCatalogRepository}
+          parameterRepository={runtime?.parameterRepository}
           parameterFileRepository={runtime?.parameterFileRepository}
           listConfigSets={listParameterConfigSets}
           effectiveProjectId={effectiveParametersProjectId}
@@ -407,7 +411,7 @@ export function PageRouter({
           runtimeMode={runtimeMode}
           parameterTopologyRepository={parameterTopologyRepository}
           projects={state.configDraft.projects}
-          parameters={state.parameters}
+          parameters={runtimeMode === "api" ? undefined : state.parameters}
           activeProjectId={state.activeProjectId}
           dispatch={dispatch}
           parameterActions={parameterActions}

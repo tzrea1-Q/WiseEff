@@ -203,6 +203,7 @@ export type ParameterInitializationSourceRole = "primary" | "supplement" | "libr
  */
 export type ProjectParameterInitializationSnapshotItem = {
   parameterId: string;
+  displayName?: string;
   sourceProjectId: string;
   sourceRole: ParameterInitializationSourceRole;
   module: string;

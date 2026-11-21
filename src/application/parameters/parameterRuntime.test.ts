@@ -5,6 +5,7 @@ import { initialState } from "@/mockData";
 import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 import { createParameterRuntimeActions as createRuntimeActions, parameterRuntimeFailureNotification, formatParameterRuntimeError } from "./parameterRuntime";
 import { appReducer } from "@/application/state/appState";
+import { createApiInitialState } from "@/application/state/apiInitialState";
 
 const apiProjects = [{ id: "api-project", name: "API Project", code: "API" }];
 const apiParameter = {
@@ -102,7 +103,7 @@ describe("createParameterRuntimeActions", () => {
     else complete(apiProjects);
     await expect(first).resolves.toBeUndefined();
     expect(dispatch).toHaveBeenCalledTimes(1);
-    expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({ type: "HYDRATE_PARAMETER_RUNTIME", projects: newer }));
+    expect(dispatch).toHaveBeenCalledWith({ type: "HYDRATE_PARAMETER_PROJECTS", projects: newer });
   });
 
   it.each(["mock", "api"] as const)("withdraws the detail action port in %s mode without calling the shared API read adapter", (runtimeMode) => {
@@ -117,7 +118,7 @@ describe("createParameterRuntimeActions", () => {
   });
 
   it("hydrates a canonical-only project's Bindings without the failing historical semantic list", async () => {
-    const dispatch = vi.fn();
+    let state = createApiInitialState();
     const repository = createRepository({
       listParameters: vi.fn().mockRejectedValue(new Error("historical reader unavailable"))
     });
@@ -127,22 +128,18 @@ describe("createParameterRuntimeActions", () => {
         driverModule: "Power", moduleId: "module-power", description: "Current limit"
       }] })
     };
-    const actions = createParameterRuntimeActions({ runtimeMode: "api", repository, dispatch, canonicalRepository });
+    const actions = createParameterRuntimeActions({ runtimeMode: "api", repository, canonicalRepository,
+      dispatch: (action) => { state = appReducer(state, action); } });
 
-    const snapshot = await actions.refresh();
+    await actions.refresh();
+    await actions.ensureProjectParameters([apiProjects[0].id]);
 
-    expect(snapshot).toMatchObject({
-      projects: apiProjects,
+    expect(state).toMatchObject({
       parameters: [{ id: "pbind_canonical_only", projectId: "api-project", name: "limit", currentValue: "36.5" }],
-      parameterDrafts: [apiDraft]
+      parameterDrafts: [apiDraft],
+      projectParameterStatuses: { "api-project": "ready" }
     });
     expect(repository.listParameters).not.toHaveBeenCalled();
-    expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({ type: "HYDRATE_PARAMETER_RUNTIME", projects: apiProjects }));
-    const hydrated = appReducer(initialState, dispatch.mock.calls[0][0]);
-    expect(hydrated.configDraft.projects).toEqual(apiProjects);
-    expect(hydrated.parameterDrafts).toEqual([apiDraft]);
-    expect(hydrated.configDraft.parameterLibrary).toHaveLength(1);
-    expect(hydrated.configDraft.parameterModules).toEqual(expect.arrayContaining([expect.objectContaining({ name: "Power" })]));
   });
 
   it("returns the staged API batch after refreshing without claiming values were applied", async () => {
@@ -256,12 +253,7 @@ describe("createParameterRuntimeActions", () => {
     expect(repository.listChangeRequests).not.toHaveBeenCalled();
     expect(repository.listSubmissionRounds).not.toHaveBeenCalled();
     expect(dispatch).toHaveBeenCalledWith({
-      type: "HYDRATE_PARAMETER_RUNTIME",
-      projects: apiProjects,
-      parameters: [apiParameter],
-      changeRequests: [],
-      parameterSubmissionRounds: [],
-      parameterDrafts: [apiDraft]
+      type: "UPDATE_PROJECT_PARAMETER_CACHE", projectId: input.projectId, parameters: [apiParameter]
     });
   });
 
@@ -333,7 +325,7 @@ describe("createParameterRuntimeActions", () => {
 
     expect(repository.listDrafts).toHaveBeenCalledWith("api-project");
     expect(repository.deleteDraft).toHaveBeenCalledWith("draft-to-delete", "api-project");
-    expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({ type: "HYDRATE_PARAMETER_RUNTIME" }));
+    expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({ type: "UPDATE_PROJECT_PARAMETER_CACHE", projectId: "api-project" }));
   });
 
   it("dispatches discard action in mock mode", async () => {
@@ -359,10 +351,10 @@ describe("createParameterRuntimeActions", () => {
     await actions.withdrawSubmissionRound("api-round-1");
 
     expect(repository.withdrawSubmissionRound).toHaveBeenCalledWith("api-round-1");
-    expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({ type: "HYDRATE_PARAMETER_RUNTIME" }));
+    expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({ type: "UPDATE_PROJECT_PARAMETER_CACHE", projectId: "api-project" }));
   });
 
-  it("refresh loads projects, parameters, change requests, submission rounds, and drafts", async () => {
+  it("refresh loads only project summaries", async () => {
     const dispatch = vi.fn();
     const repository = createRepository();
     const actions = createParameterRuntimeActions({ runtimeMode: "api", repository, dispatch });
@@ -373,42 +365,74 @@ describe("createParameterRuntimeActions", () => {
     expect(repository.listParameters).not.toHaveBeenCalled();
     expect(repository.listChangeRequests).not.toHaveBeenCalled();
     expect(repository.listSubmissionRounds).not.toHaveBeenCalled();
-    expect(repository.listDrafts).toHaveBeenCalledTimes(1);
-    expect(repository.listDrafts).toHaveBeenCalledWith("api-project");
-    expect(dispatch).toHaveBeenCalledWith({
-      type: "HYDRATE_PARAMETER_RUNTIME",
-      projects: apiProjects,
-      parameters: [apiParameter],
-      changeRequests: [],
-      parameterSubmissionRounds: [],
-      parameterDrafts: [apiDraft]
-    });
+    expect(repository.listDrafts).not.toHaveBeenCalled();
+    expect(dispatch).toHaveBeenCalledExactlyOnceWith({ type: "HYDRATE_PARAMETER_PROJECTS", projects: apiProjects });
   });
 
-  it("refresh loads and combines a complete parameter list per project", async () => {
-    const dispatch = vi.fn();
+  it.each(["submit", "stash", "discard", "review", "withdraw", "apply"] as const)("%s refreshes only the affected project", async (mutation) => {
+    let state = createApiInitialState();
     const secondProject = { id: "api-project-2", name: "API Project 2", code: "API2" };
-    const secondParameter = { ...apiParameter, id: "api-project-param-2", projectId: secondProject.id };
+    const projectId = apiProjects[0].id;
+    const secondDraft = { ...apiDraft, id: "draft-2", parameterId: "binding-2", projectId: secondProject.id };
     const listProtectedProjectBindings = vi.fn().mockImplementation(async (projectId: string) =>
-      ({ items: [{ ...apiBinding, id: projectId === secondProject.id ? secondParameter.id : apiParameter.id }] })
+      ({ items: [projectId === secondProject.id ? { ...apiBinding, id: secondDraft.parameterId } : apiBinding] })
     );
     const repository = createRepository({
-      listProjects: vi.fn().mockResolvedValue([...apiProjects, secondProject])
+      listProjects: vi.fn().mockResolvedValue([...apiProjects, secondProject]),
+      listDrafts: vi.fn(async (id) => id === secondProject.id ? [secondDraft] : [apiDraft])
     });
-    const actions = createParameterRuntimeActions({ runtimeMode: "api", repository, dispatch, canonicalRepository: { listProtectedProjectBindings } });
-
+    const actions = createParameterRuntimeActions({ runtimeMode: "api", repository, canonicalRepository: { listProtectedProjectBindings },
+      getParameterProjectId: (id) => state.parameters.find((parameter) => parameter.id === id)?.projectId,
+      dispatch: (action) => { state = appReducer(state, action); } });
     await actions.refresh();
+    await actions.ensureProjectParameters([projectId, secondProject.id]);
+    const secondRecord = state.parameters.find((parameter) => parameter.projectId === secondProject.id);
+    expect(secondRecord?.id).toBe(secondDraft.parameterId);
+    listProtectedProjectBindings.mockClear();
+    vi.mocked(repository.listDrafts).mockClear();
 
-    expect(listProtectedProjectBindings).toHaveBeenCalledTimes(2);
-    expect(listProtectedProjectBindings).toHaveBeenCalledWith("api-project");
-    expect(listProtectedProjectBindings).toHaveBeenCalledWith("api-project-2");
-    expect(dispatch).toHaveBeenCalledWith(
-      expect.objectContaining({
-        type: "HYDRATE_PARAMETER_RUNTIME",
-        projects: [...apiProjects, secondProject],
-        parameters: [apiParameter, secondParameter]
-      })
-    );
+    const item = { parameterId: apiParameter.id, targetValue: apiDraft.targetValue, reason: apiDraft.reason };
+    const mutate = {
+      submit: () => actions.submitChanges({ projectId, items: [item] }),
+      stash: () => actions.stashChanges([item]),
+      discard: () => actions.discardDrafts({ projectId, parameterIds: [item.parameterId] }),
+      review: () => actions.reviewChange({ requestId: apiChangeRequest.id, decision: "advance" }),
+      withdraw: () => actions.withdrawSubmissionRound(apiRound.id),
+      apply: () => actions.applyImportBatch({ batchId: apiPreviewBatch.id })
+    };
+    await mutate[mutation]();
+
+    expect(listProtectedProjectBindings).toHaveBeenCalledExactlyOnceWith(projectId);
+    expect(vi.mocked(repository.listDrafts).mock.calls).toEqual(mutation === "discard" ? [[projectId], [projectId]] : [[projectId]]);
+    expect(repository.listProjects).toHaveBeenCalledTimes(1);
+    expect(state.parameters.find((parameter) => parameter.projectId === secondProject.id)).toBe(secondRecord);
+    expect(state.parameterDrafts.find((draft) => draft.projectId === secondProject.id)).toBe(secondDraft);
+  });
+
+  it("ignores stale responses and keeps a loaded project when another fails", async () => {
+    let state = createApiInitialState();
+    const [project] = apiProjects;
+    const siblingProject = { id: "sibling", code: "SIB", name: "Sibling" };
+    let completeOld!: (value: { items: typeof apiBinding[] }) => void;
+    const old = new Promise<{ items: typeof apiBinding[] }>((resolve) => { completeOld = resolve; });
+    const listProtectedProjectBindings = vi.fn().mockReturnValueOnce(old)
+      .mockResolvedValueOnce({ items: [{ ...apiBinding, rawValue: "new" }] })
+      .mockRejectedValueOnce(new Error("sibling unavailable"));
+    const actions = createParameterRuntimeActions({ runtimeMode: "api", canonicalRepository: { listProtectedProjectBindings },
+      repository: createRepository({ listProjects: vi.fn().mockResolvedValue([project, siblingProject]) }),
+      dispatch: (action) => { state = appReducer(state, action); } });
+    await actions.refresh();
+    const first = actions.ensureProjectParameters([project.id]);
+    expect(state.projectParameterStatuses?.[project.id]).toBe("loading");
+    await actions.ensureProjectParameters([project.id], { force: true });
+    completeOld({ items: [{ ...apiBinding, rawValue: "old" }] });
+    await first;
+    const [record] = state.parameters;
+    expect(record.currentValue).toBe("new");
+    await expect(actions.ensureProjectParameters([siblingProject.id])).resolves.toHaveProperty("notification");
+    expect(state.parameters).toEqual([record]);
+    expect(state.parameterDrafts).toEqual([apiDraft]);
+    expect(state.projectParameterStatuses).toEqual({ [project.id]: "ready", [siblingProject.id]: "error" });
   });
 
   it("can return a refresh failure without dispatching a duplicate notification", async () => {
@@ -446,19 +470,14 @@ describe("createParameterRuntimeActions", () => {
 
     expect(result).toEqual(apiPreviewBatch);
     expect(repository.createImportPreview).toHaveBeenCalledWith(input);
-    expect(repository.listProjects).toHaveBeenCalledTimes(1);
+    expect(repository.listProjects).not.toHaveBeenCalled();
     expect(repository.listParameters).not.toHaveBeenCalled();
     expect(repository.listChangeRequests).not.toHaveBeenCalled();
     expect(repository.listSubmissionRounds).not.toHaveBeenCalled();
     expect(repository.listDrafts).toHaveBeenCalledTimes(1);
     expect(repository.listDrafts).toHaveBeenCalledWith("api-project");
     expect(dispatch).toHaveBeenCalledWith({
-      type: "HYDRATE_PARAMETER_RUNTIME",
-      projects: apiProjects,
-      parameters: [apiParameter],
-      changeRequests: [],
-      parameterSubmissionRounds: [],
-      parameterDrafts: [apiDraft]
+      type: "UPDATE_PROJECT_PARAMETER_CACHE", projectId: input.projectId, parameters: [apiParameter]
     });
   });
 

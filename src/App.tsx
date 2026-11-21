@@ -503,18 +503,22 @@ function AppShell({
       ? apiAuthPermissions.includes("parameter:edit") &&
         (apiAuthPermissions.includes("debugging:dts-reload") || apiAuthPermissions.includes("admin:access"))
       : true;
-  const parameterRepositoryRef = useRef(parameterRepositoryClient);
-  parameterRepositoryRef.current = parameterRepositoryClient;
+  const parameterAccessKey = JSON.stringify([apiAuthStatus, organizationId, apiAuthRoles, apiAuthPermissions, apiProjectMemberships,
+    state.users.find((user) => user.id === state.currentUserId)?.isActive]);
+  const parameterScope = useMemo(() => ({ scopeGeneration, parameterAccessKey, parameterRepositoryClient,
+    catalog: appRuntime.parameterCatalogRepository }), [scopeGeneration, parameterAccessKey, parameterRepositoryClient, appRuntime.parameterCatalogRepository]);
+  const parameterScopeRef = useRef(parameterScope);
+  parameterScopeRef.current = parameterScope;
   const parameterActions = useMemo<ParameterRuntimeActions>(
     () =>
       createParameterRuntimeActions({
         runtimeMode,
         repository: parameterRepositoryClient,
         canonicalRepository: appRuntime.parameterCatalogRepository,
-        dispatch: (action) => { if (scopeRef.current.generation === scopeGeneration && parameterRepositoryRef.current === parameterRepositoryClient) dispatch(action); },
+        dispatch: (action) => { if (parameterScopeRef.current === parameterScope) dispatch(action); },
         getParameterProjectId: (parameterId) => stateRef.current.parameters.find((parameter) => parameter.id === parameterId)?.projectId
       }),
-    [appRuntime.parameterCatalogRepository, parameterRepositoryClient, runtimeMode, scopeGeneration]
+    [appRuntime.parameterCatalogRepository, parameterRepositoryClient, runtimeMode, parameterScope]
   );
   const logRepositoryRef = useRef(logAnalysisRepositoryClient);
   logRepositoryRef.current = logAnalysisRepositoryClient;
@@ -762,21 +766,23 @@ function AppShell({
   );
   const domainDataHydratedRef = useRef(false);
   const apiRuntimeGeneration = useRef(0);
-  const hydratedScope = useRef<number | null>(null);
+  const hydratedScope = useRef<typeof parameterScope | null>(null);
   useLayoutEffect(() => {
     if (runtimeMode !== "api" || apiAuthStatus !== "authenticated") return;
     const previous = hydratedScope.current;
-    hydratedScope.current = scopeGeneration;
-    if (previous === null || previous === scopeGeneration) return;
+    hydratedScope.current = parameterScope;
+    if (previous === null || previous === parameterScope) return;
     domainDataHydratedRef.current = false;
     apiRuntimeGeneration.current += 1;
+    hydratedParameterScope.current = null;
+    dispatch({ type: "CLEAR_API_RUNTIME_DOMAIN", domain: "parameters" });
+    if (previous.scopeGeneration === scopeGeneration) return;
     dashboardDispatch({ type: "DASHBOARD_SUMMARY_LOADING" });
     dashboardDispatch({ type: "DASHBOARD_HOTSPOTS_LOADING" });
-    dispatch({ type: "HYDRATE_PARAMETER_RUNTIME", projects: [], parameters: [], changeRequests: [], parameterSubmissionRounds: [], parameterDrafts: [] });
     dispatch({ type: "HYDRATE_LOG_RUNTIME", logs: [] });
     dispatch({ type: "CLEAR_PARAMETER_INITIALIZATION" });
     initializationCreatedProjectIds.current.clear();
-  }, [runtimeMode, apiAuthStatus, scopeGeneration]);
+  }, [runtimeMode, apiAuthStatus, scopeGeneration, parameterScope]);
 
   const refreshApiRuntimeData = useCallback(
     async (cancelledRef?: { current: boolean }, roleId = stateRef.current.activeRoleId) => {
@@ -799,7 +805,7 @@ function AppShell({
         }
         if (cancelledRef?.current || generation !== apiRuntimeGeneration.current) return;
         // Settle domains independently: unrelated device discovery must not hold a page's controls.
-        if (failed) dispatch({ type: "CLEAR_API_RUNTIME_DOMAIN", domain });
+        if (failed && domain !== "parameters") dispatch({ type: "CLEAR_API_RUNTIME_DOMAIN", domain });
         setApiRuntimeFailures((current) => {
           const next = new Set(current);
           if (failed) next.add(domain);
@@ -1144,6 +1150,7 @@ function AppShell({
     initializationAuth.current = null;
     initializationCreatedProjectIds.current.clear();
     dispatch({ type: "CLEAR_PARAMETER_INITIALIZATION" });
+    if (runtimeMode === "api") dispatch({ type: "CLEAR_API_RUNTIME_DOMAIN", domain: "parameters" });
     clearLocalAuthToken();
     clearSessionDraftsForLogout();
     setApiAuthRoles(null);
@@ -1151,7 +1158,7 @@ function AppShell({
     setApiAuthStatus("unauthenticated");
     setApiAuthError("");
     dispatch({ type: "ADD_NOTIFICATION", message: "已退出登录" });
-  }, [appRuntime.authClient]);
+  }, [appRuntime.authClient, runtimeMode]);
 
   const handleUpdateCurrentUserProfile = useCallback(
     async (input: UpdateCurrentUserProfileInput) => {
@@ -1445,6 +1452,7 @@ function AppShell({
             onClose={() => setProjectInitOpen(false)}
             onPreview={runtimeMode === "api" ? previewParameterInitializationViaApi : undefined}
             onCompletePreview={runtimeMode === "api" ? parameterInitializationRepositoryClient.previewCompleteCopy : undefined}
+            ensureProjectParameters={runtimeMode === "api" ? parameterActions.ensureProjectParameters : undefined}
             onSubmit={runtimeMode === "api" ? submitParameterInitializationViaApi : undefined}
           />
         ) : null}
