@@ -360,20 +360,23 @@ async function readStoredArtifacts(
 ): Promise<Map<string, ReleaseArtifactRecord>> {
   // UNION deduplicates even a malformed cycle. Only lightweight pins enter
   // the recursion; each required artifact is transported once in one snapshot.
-  const lineage = scope?.includeLineage ? `with recursive lineage(digest, base) as (
+  const compactStorage = (await db.query<{ available: boolean }>(
+    "select to_regclass('catalog_publication.preview_snapshots') is not null as available",
+  )).rows[0]?.available;
+  const lineage = compactStorage && scope?.includeLineage ? `with recursive lineage(digest, base) as (
     select artifact_digest, compact_base_digest from catalog_publication.release_artifacts where artifact_digest = $1
     union
     select a.artifact_digest, a.compact_base_digest from catalog_publication.release_artifacts a
       join lineage l on l.base = a.artifact_digest
   )` : "";
   const { rows } = await db.query<ArtifactRow & ArtifactByteChunkRow>(
-    `${lineage} select id, artifact_digest, bytes_checksum, source_kind, storage_format,
+    `${lineage} select id, artifact_digest, bytes_checksum, source_kind, ${compactStorage ? "storage_format" : "'full' as storage_format"},
             target_release_id, target_release_digest, predecessor_release_id, predecessor_release_digest,
             toolchain, created_at, ${artifactByteColumns}
        from catalog_publication.release_artifacts as artifact
-       ${scope?.includeLineage ? "join lineage on lineage.digest = artifact.artifact_digest" : ""}
+       ${lineage ? "join lineage on lineage.digest = artifact.artifact_digest" : ""}
        ${artifactByteChunkJoin}
-       ${scope && !scope.includeLineage ? "where artifact_digest = $1" : ""}
+       ${scope && !lineage ? "where artifact_digest = $1" : ""}
        order by created_at, id, chunk.byte_start`,
     scope ? [scope.digest] : [],
   );
@@ -512,12 +515,12 @@ export async function persistArtifact(
       `insert into catalog_publication.release_artifacts (
          id, artifact_digest, bytes_checksum, artifact_bytes, source_kind,
          target_release_id, target_release_digest, predecessor_release_id,
-         predecessor_release_digest, toolchain, storage_format, compact_base_digest
-       ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11, case when $11 = 'successor-v1' then $9 end)
+         predecessor_release_digest, toolchain${input.storageFormat ? ", storage_format, compact_base_digest" : ""}
+       ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb${input.storageFormat ? ", $11, $9" : ""})
        returning
          id, artifact_digest, bytes_checksum, source_kind,
          target_release_id, target_release_digest, predecessor_release_id,
-         predecessor_release_digest, toolchain, created_at, storage_format`,
+         predecessor_release_digest, toolchain, created_at, ${input.storageFormat ? "storage_format" : "'full' as storage_format"}`,
       [
         input.id,
         input.artifactDigest,
@@ -529,7 +532,7 @@ export async function persistArtifact(
         input.predecessorReleaseId,
         input.predecessorReleaseDigest,
         JSON.stringify(input.toolchain),
-        input.storageFormat ?? "full",
+        ...(input.storageFormat ? [input.storageFormat] : []),
       ],
     );
     const row = inserted.rows[0];
