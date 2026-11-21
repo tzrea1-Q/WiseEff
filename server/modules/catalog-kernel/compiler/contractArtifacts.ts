@@ -35,9 +35,9 @@ const catalogOwnerRelease = readArtifact("catalog-release-owner-v6.schema.json")
 const manifest = readArtifact("manifest.schema.json");
 const stableRules = readArtifact("stable-id-rules.json");
 
-const deepFreeze = <Value>(value: Value): Value => {
+export const freezeCatalogJson = <Value>(value: Value): Value => {
   if (value !== null && typeof value === "object" && !Object.isFrozen(value)) {
-    for (const nested of Object.values(value)) deepFreeze(nested);
+    for (const nested of Object.values(value)) freezeCatalogJson(nested);
     Object.freeze(value);
   }
   return value;
@@ -46,7 +46,7 @@ const deepFreeze = <Value>(value: Value): Value => {
 export const catalogReleaseSchema = catalogRelease.json;
 export const catalogOwnerReleaseSchema = catalogOwnerRelease.json;
 export const catalogManifestSchema = manifest.json;
-export const stableCatalogRules = deepFreeze(
+export const stableCatalogRules = freezeCatalogJson(
   parseStableCatalogRules(stableRules.json),
 );
 

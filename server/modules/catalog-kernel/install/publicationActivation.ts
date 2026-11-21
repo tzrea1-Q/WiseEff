@@ -293,7 +293,7 @@ export const prepareOnlinePublication = async (
         kind: "publication-not-authorized", reason: "candidate-tampered", detail: "compiled artifact does not match the stored release pins",
       });
     }
-    return { kind: "prepared", artifact: { id, artifactDigest, bytesChecksum, targetReleaseId, targetReleaseDigest }, compiled: compiled.value };
+    return { kind: "prepared", artifact: { id, artifactDigest, bytesChecksum: loaded.storageBytesChecksum ?? bytesChecksum, targetReleaseId, targetReleaseDigest }, compiled: compiled.value };
   } catch (error) {
     // A matching receipt or authoritative authorization failure can supersede this probe.
     return { kind: "failed", error };

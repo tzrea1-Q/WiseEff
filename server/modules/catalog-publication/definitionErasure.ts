@@ -16,12 +16,7 @@ import {
   refreshSuccessorSource,
   sha256Digest,
 } from "./builder/bundleCodec";
-import {
-  artifactByteChunkJoin,
-  artifactByteColumns,
-  assembleArtifactBytes,
-  type ArtifactByteChunkRow,
-} from "./persistence/artifactByteTransport";
+import { readArtifactsForErasure } from "./persistence/store";
 
 export type CatalogDefinitionErasurePlan = {
   readonly definitionId: string;
@@ -63,25 +58,9 @@ type StoredArtifact = {
 type InstalledRelease = { readonly id: string; readonly release_digest: string };
 
 async function readStoredArtifacts(db: Queryable): Promise<StoredArtifact[]> {
-  const { rows } = await db.query<Pick<StoredArtifact, "id" | "artifact_digest"> & ArtifactByteChunkRow>(
-    `select id, artifact_digest, ${artifactByteColumns}
-     from catalog_publication.release_artifacts as artifact
-     ${artifactByteChunkJoin}
-     order by created_at, id, chunk.byte_start`,
-  );
-  const artifacts: StoredArtifact[] = [];
-  for (let start = 0; start < rows.length;) {
-    const first = rows[start]!;
-    let end = start + 1;
-    while (rows[end]?.id === first.id) end += 1;
-    artifacts.push({
-      id: first.id,
-      artifact_digest: first.artifact_digest,
-      artifact_bytes: assembleArtifactBytes(rows.slice(start, end)),
-    });
-    start = end;
-  }
-  return artifacts;
+  return (await readArtifactsForErasure(db)).map(record => ({
+    id: record.id, artifact_digest: record.artifactDigest, artifact_bytes: record.artifactBytes,
+  }));
 }
 
 const compile = (bundle: CatalogReleaseBundle): CompiledCatalogRelease => {

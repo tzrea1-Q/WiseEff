@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import * as yaml from "yaml";
 
-import { compileCatalogRelease, validateCatalogReleaseDigest } from "./compileCatalogRelease";
+import { compileCatalogRelease, createCatalogReleaseDigestValidator, validateCatalogReleaseDigest } from "./compileCatalogRelease";
 import { prepareForCompilation } from "./validation";
+import { freezeCatalogJson } from "./contractArtifacts";
 import {
   invalidCanonicalPropertyBundle,
   lineageGapBundle,
@@ -17,6 +18,34 @@ afterEach(() => vi.restoreAllMocks());
 vi.mock("yaml", { spy: true });
 
 describe("request-local compiler preparation", () => {
+  it("reuses only immutable nodes in the same build and still checks the successor lineage", () => {
+    const bundle = freezeCatalogJson(validCatalogReleaseBundle());
+    const validate = createCatalogReleaseDigestValidator();
+    const parse = vi.mocked(yaml.parseAllDocuments);
+    parse.mockClear();
+    const first = bundle.releases.find(node => node.manifest.release.sequence === 1)!;
+    expect(validate({ ...bundle, targetReleaseId: first.manifest.release.id, releases: [first] }).ok).toBe(true);
+    expect(validate(bundle).ok).toBe(true);
+    const calls = parse.mock.calls.length;
+    expect(calls).toBe(bundle.releases.reduce((count, node) => count + node.sources.length, 0));
+    const disconnected = { ...bundle, targetReleaseId: "unknown" };
+    const reused = validate(disconnected);
+    expect(parse).toHaveBeenCalledTimes(calls);
+    expect(reused.ok).toBe(false);
+    expect(reused).toEqual(validateCatalogReleaseDigest(disconnected));
+    expect(parse).toHaveBeenCalledTimes(calls * 2);
+  });
+
+  it("detects changes to nested data when only the outer release node was frozen", () => {
+    const bundle = validCatalogReleaseBundle();
+    for (const node of bundle.releases) Object.freeze(node);
+    const validate = createCatalogReleaseDigestValidator();
+    expect(validate(bundle).ok).toBe(true);
+    Object.assign(bundle.releases[0].sources[0], { bytes: "eg==" });
+    expect(validate(bundle)).toEqual(validateCatalogReleaseDigest(bundle));
+    expect(validate(bundle).ok).toBe(false);
+  });
+
   it("parses each YAML source once for syntax, authority and compiled output", () => {
     const bundle = validCatalogReleaseBundle();
     const sourceCount = bundle.releases.reduce((count, release) => count + release.sources.length, 0);

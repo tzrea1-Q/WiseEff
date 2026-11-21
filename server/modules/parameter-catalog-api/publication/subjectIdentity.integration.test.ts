@@ -241,6 +241,9 @@ it("upgrades a populated Catalog and reviews versioned identity, owner, kind, de
         expect((await publish(toImport.id, "import-huawei-definition")).status).toBe(201);
         const imported = await run(author);
         expect(imported.id).not.toBe(current.id);
+        expect((await db.query(
+          "select artifact_digest from catalog_publication.preview_snapshots where artifact_digest=$1", [imported.digest],
+        )).rows).toEqual([{ artifact_digest: imported.digest }]);
         releaseId = imported.id;
         const importedSnapshot = await kernel.loadCurrentCatalog(imported);
         if (!importedSnapshot.ok) throw new Error(JSON.stringify(importedSnapshot));
@@ -276,6 +279,16 @@ it("upgrades a populated Catalog and reviews versioned identity, owner, kind, de
         expect(beforeTransfer.value.resolveSubject(match(short))).toMatchObject({ status: "matched", subject: { id: subjectId }, matchedBy: "alias" });
         expect(afterTransfer.value.resolveSubject(match(short))).toMatchObject({ status: "matched", subject: { id: transferTargetId }, matchedBy: "alias" });
 
+        // A spelling stays reserved to its original subject even when its
+        // former owner publishes a rename without retaining a formal alias.
+        const correctedBattery = await publishAliasChange({ op: "rename-subject", subjectId: "csub_drv_huawei_batt_info",
+          selector: "huawei,batt_info_current", keepOldAlias: false }, "free-historical-spelling");
+        scope = author;
+        expect(await preview({ op: "rename-subject", subjectId: transferTargetId,
+          selector: "huawei,batt_info", keepOldAlias: false })).toMatchObject({ status: 409 });
+        expect(await preview({ op: "rename-subject", subjectId: "csub_drv_huawei_batt_info",
+          selector: "huawei,batt_info", keepOldAlias: false })).toMatchObject({ status: 201 });
+
         const defaults = { op: "set-driver-defaults", subjectId, nature: "logical-service", cardinality: "singleton-per-project" };
         await db.query("delete from registration_recognition_rules where organization_id=$1", [organizationId]);
         const manyDts = '/dts-v1/; / { first { compatible = "huawei,direct-charger"; }; second { compatible = "huawei,direct-charger"; }; };';
@@ -295,7 +308,7 @@ it("upgrades a populated Catalog and reviews versioned identity, owner, kind, de
         await db.query("insert into parameter_modules(id,organization_id,name,path,depth,kind,origin) values ('foreign-huawei-module',$1,'Huawei','huawei',1,'business','curated')", [foreignOrganizationId]);
         const foreignRegistration = await createRegistrationService(pool).execute({ kind: "register", organizationId: foreignOrganizationId,
           subjectId: CatalogSubjectId(subjectId), subjectKind: "driver", destinationModuleId: "foreign-huawei-module",
-          expectedRelease: transferred, placement: { mode: "use-default" }, method: "explicit", proof: {}, idempotencyKey: "foreign-huawei",
+          expectedRelease: correctedBattery, placement: { mode: "use-default" }, method: "explicit", proof: {}, idempotencyKey: "foreign-huawei",
           context: { actorKind: "platform-admin", principalId: author.principalId } });
         if (!foreignRegistration.ok) throw new Error(JSON.stringify(foreignRegistration));
         const foreignSet = await createConfigSet(api, foreignEditor, { projectId: foreignProjectId, name: "Foreign chargers" });

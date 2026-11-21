@@ -17,10 +17,12 @@ import type { OwnerDeclaration } from "./claimedOwners";
 import type { ImpactFacts, PublicationRiskClass } from "./authorization/types";
 import {
   buildCompleteSuccessor,
+  buildIdentitySuccessorFromSnapshot,
   impactSummaryFromReport,
   persistSuccessorBuild,
 } from "./builder/completeSuccessor";
-import { targetReleaseOf } from "./builder/bundleCodec";
+import { encodeBundleBytes, targetReleaseOf } from "./builder/bundleCodec";
+import { canAppendIdentitySnapshot, identitySnapshotOf, withPreviewBaseline } from "./builder/identitySnapshot";
 import {
   preparePredecessorArtifact,
   preparedPredecessorBundle,
@@ -39,8 +41,8 @@ import type {
 import { CATALOG_CAPABILITY_CONTRACT_REVISION } from "./builder/types";
 import { persistCandidate as storePersistCandidate } from "./persistence/store";
 import { persistArtifact as storePersistArtifact } from "./persistence/store";
-import { getArtifactByDigest } from "./persistence/store";
-import type { JsonObject, PublicationCandidateRecord } from "./persistence/types";
+import { getArtifactByDigest, getValidatedPreviewSnapshot, putValidatedPreviewSnapshot } from "./persistence/store";
+import type { JsonObject, PreviewSnapshot, PublicationCandidateRecord } from "./persistence/types";
 
 export const PUBLICATION_REQUEST_SCOPE = "instance:catalog-publication";
 
@@ -404,7 +406,7 @@ const mintFrozenIdentity = (
   };
 };
 
-export async function previewPublicationCandidate(input: {
+type PreviewInput = {
   readonly db: Database;
   readonly predecessorDigest: string;
   readonly predecessorArtifact?: PreparedPredecessorArtifact;
@@ -415,9 +417,22 @@ export async function previewPublicationCandidate(input: {
   readonly proposalId?: string;
   readonly proposalRevisionId?: string;
   readonly markdownSource?: { readonly fileName: string; readonly sha256: string; readonly parserVersion: string };
-}): Promise<{ ok: true; value: PreviewPublicationValue } | { ok: false; error: PreviewPublicationError }> {
+};
+
+export const previewPublicationCandidate = (input: PreviewInput) => preview(input, true);
+
+async function preview(input: PreviewInput, useSnapshot: boolean):
+  Promise<{ ok: true; value: PreviewPublicationValue } | { ok: false; error: PreviewPublicationError }> {
+  const [first] = input.changeSet;
+  const spelling = input.changeSet.length === 1 && (first?.op === "rename-subject" || first?.op === "set-subject-alias") ? first : undefined;
+  let snapshot: PreviewSnapshot | undefined;
+  if (useSnapshot && spelling && !input.predecessorArtifact) {
+    const found = await withPreviewBaseline(input.db, tx => getValidatedPreviewSnapshot(tx, input.predecessorDigest));
+    if (found.ok) snapshot = found.value;
+    else if (found.error.kind !== "not-found") return { ok: false, error: { kind: "predecessor-incomplete", detail: found.error.kind } };
+  }
   let predecessorArtifact = input.predecessorArtifact;
-  if (!predecessorArtifact) {
+  if (!snapshot && !predecessorArtifact) {
     const artifact = await getArtifactByDigest(input.db, input.predecessorDigest);
     if (!artifact.ok) return { ok: false, error: { kind: "artifact-missing" } };
     const prepared = preparePredecessorArtifact({
@@ -426,11 +441,11 @@ export async function previewPublicationCandidate(input: {
     if (!prepared.ok) return { ok: false, error: { kind: "predecessor-incomplete", detail: prepared.detail } };
     predecessorArtifact = prepared.artifact;
   }
-  const bundle = preparedPredecessorBundle(predecessorArtifact);
-  if (!bundle || predecessorArtifact.digest !== input.predecessorDigest) {
+  const bundle = predecessorArtifact && preparedPredecessorBundle(predecessorArtifact);
+  if (!snapshot && (!bundle || predecessorArtifact?.digest !== input.predecessorDigest)) {
     return { ok: false, error: { kind: "invalid-input", reason: "predecessor-artifact-mismatch" } };
   }
-  const predecessorTarget = targetReleaseOf(bundle);
+  const predecessorTarget = snapshot?.target ?? (bundle && targetReleaseOf(bundle));
   if (!predecessorTarget) {
     return { ok: false, error: { kind: "predecessor-incomplete", detail: "predecessor-target-missing" } };
   }
@@ -452,17 +467,21 @@ export async function previewPublicationCandidate(input: {
           proposalRevisionId: DefinitionProposalRevisionId(input.proposalRevisionId),
         }
       : null;
-  const productPath = input.changeSet.some((change) => change.op !== "create-definition")
+  const productPath: "m1" | "m2-core" = input.changeSet.some((change) => change.op !== "create-definition")
     ? "m2-core"
     : "m1";
 
-  const built = await buildCompleteSuccessor({
-    predecessorArtifact,
+  const buildInput = {
+    predecessorArtifact: predecessorArtifact ?? { digest: input.predecessorDigest },
     changeSet: input.changeSet,
     frozenIdentity: frozen,
     proposal,
     productPath,
-  });
+  };
+  const built = snapshot ? await buildIdentitySuccessorFromSnapshot(buildInput, snapshot) : await buildCompleteSuccessor(buildInput);
+  // Reviewed historical retirements may rely on an earlier successor state.
+  // Resolve ambiguous diagnostics against the original complete lineage.
+  if (snapshot && !built.ok && built.error.kind === "invalid-release") return preview(input, false);
 
   if (!built.ok) {
     if (built.error.kind === "artifact-missing") {
@@ -511,6 +530,9 @@ export async function previewPublicationCandidate(input: {
   }
   if (built.value.kind !== "successor") {
     return { ok: false, error: { kind: "invalid-input", reason: "noop-revise" } };
+  }
+  if (snapshot && spelling && !await canAppendIdentitySnapshot(input.db, snapshot, spelling, frozen, built.value.artifact.artifactDigest)) {
+    return preview(input, false);
   }
 
   const facts = { ...publicationImpactFacts(input.authorPrincipalId, input.changeSet, built.value.impact),
@@ -563,11 +585,32 @@ export async function previewPublicationCandidate(input: {
       reason: successorChange.reason ?? null,
     } } : {}),
     ...(replacementChange ? { definitionReplacement: replacementChange } : {}) };
+  const baseSnapshot = spelling && bundle ? identitySnapshotOf(bundle, predecessorTarget) : undefined;
+  const artifact = built.value.artifact;
+  const verifiedIdentityBase = snapshot ?? baseSnapshot;
+  const successorSnapshot = target && (verifiedIdentityBase ?
+    { target, hasSubjectRules: verifiedIdentityBase.hasSubjectRules } : identitySnapshotOf(artifact.bundle, target));
+  const compact = Boolean(spelling && successorSnapshot);
   const persisted = await persistSuccessorBuild(
     {
       db: input.db,
       ports: {
-        persistArtifact: storePersistArtifact,
+        persistArtifact: async (db, artifactInput) => {
+          if (baseSnapshot) {
+            const saved = await putValidatedPreviewSnapshot(db, input.predecessorDigest, baseSnapshot);
+            if (!saved.ok) return saved;
+          }
+          const stored = await storePersistArtifact(db, compact && successorSnapshot ? { ...artifactInput, storageFormat: "successor-v1",
+            artifactBytes: artifact.storageFormat ? artifact.artifactBytes : encodeBundleBytes({
+              schemaVersion: "1.0.0", targetReleaseId: successorSnapshot.target.manifest.release.id,
+              releases: [successorSnapshot.target],
+            }) } : artifactInput);
+          if (stored.ok && successorSnapshot) {
+            const saved = await putValidatedPreviewSnapshot(db, artifact.artifactDigest, successorSnapshot, compact ? "successor-v1" : undefined);
+            if (!saved.ok) return saved;
+          }
+          return stored;
+        },
         persistCandidate: async (db, candidateInput) =>
           storePersistCandidate(db, {
             ...candidateInput,

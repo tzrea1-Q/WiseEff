@@ -13,7 +13,8 @@ import {
   FIRST_ACME_RELEASE_ID,
   compileVendorCatalogSuccessor,
 } from "../../../../scripts/compile-vendor-catalog-release";
-import { buildCompleteSuccessor } from "./completeSuccessor";
+import { buildCompleteSuccessor, buildIdentitySuccessorFromSnapshot } from "./completeSuccessor";
+import { identitySnapshotOf } from "./identitySnapshot";
 import {
   allocationFor,
   allocationForRevision,
@@ -26,6 +27,39 @@ import {
 } from "./predecessorHarness";
 
 describe("buildCompleteSuccessor", () => {
+  it("certifies the same candidate as full history after a historical cross-kind retirement", async () => {
+    const initial = firstAcmePredecessor();
+    const converted = await buildCompleteSuccessor({
+      productPath: "m2-core", predecessorArtifact: { digest: initial.digest, bytes: initial.bytes },
+      changeSet: [{ op: "replace-subject-kind", subjectId: "csub_acme_power", replacement: { kind: "node-type", selector: "converted" } }],
+      frozenIdentity: frozenPageIdentity([], "converted"),
+    });
+    if (!converted.ok || converted.value.kind !== "successor") throw new Error(JSON.stringify(converted));
+    const artifact = converted.value.artifact;
+    const convertedNode = artifact.bundle.releases.at(-1)!;
+    const subjectId = convertedNode.documents.find(doc => doc.kind === "subject" && doc.content.selector.value === "converted")!.content.id;
+    const renamed = await buildCompleteSuccessor({
+      productPath: "m2-core", predecessorArtifact: { digest: artifact.artifactDigest, bytes: artifact.artifactBytes },
+      changeSet: [{ op: "rename-subject", subjectId, selector: "renamed", keepOldAlias: false }],
+      frozenIdentity: frozenPageIdentity([], "renamed", "1.2.0"),
+    });
+    if (!renamed.ok || renamed.value.kind !== "successor") throw new Error(JSON.stringify(renamed));
+    const base = renamed.value.artifact;
+    const snapshot = identitySnapshotOf(base.bundle, base.bundle.releases.at(-1)!);
+    if (!snapshot) throw new Error("expected a validated identity snapshot");
+    const input = {
+      productPath: "m2-core" as const, predecessorArtifact: { digest: base.artifactDigest, bytes: base.artifactBytes },
+      changeSet: [{ op: "set-subject-alias" as const, subjectId, selector: "another", active: true }],
+      frozenIdentity: frozenPageIdentity([], "aliased", "1.3.0"),
+    };
+    const full = await buildCompleteSuccessor(input);
+    const compact = await buildIdentitySuccessorFromSnapshot(input, snapshot);
+    if (!full.ok || full.value.kind !== "successor") throw new Error(JSON.stringify(full));
+    if (!compact.ok || compact.value.kind !== "successor") throw new Error(JSON.stringify(compact));
+    expect(compact.value.candidate).toEqual(full.value.candidate);
+    expect(compact.value.artifact.bundle.releases).toEqual(full.value.artifact.bundle.releases.slice(-1));
+  });
+
   it("replays the old release and retains the previous compatible as an alias after a rename", async () => {
     const predecessor = firstAcmePredecessor();
     const result = await buildCompleteSuccessor({

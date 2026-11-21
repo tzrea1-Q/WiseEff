@@ -85,6 +85,18 @@ For a long-running job, correlate `claimed`, `activation-timeout`, `settled`, an
 
 ### Memory budgets for preview and publication
 
+For shared subject renames and formal alias edits, the API can preview against a
+validated snapshot of the pinned release. The first preview of a legacy release
+can still take longer while it validates history. Once eligible, each candidate
+stores the new release and a reference to its predecessor. Activation and
+historical replay reconstruct the complete bundle. A change requiring historical
+evidence beyond the snapshot uses the complete validation path.
+
+During a rolling upgrade, apply the schema migrations and upgrade the publication
+manager and other artifact readers before starting API instances that write the
+new format. Once a compact candidate exists, keep a compatible reader for its
+activation and replay, including during an application rollback.
+
 Both API preview and manager activation compile Catalog data. Each service defaults
 to 2 GiB RAM, 3 GiB RAM plus swap, and 1536 MiB V8 old-space. The difference leaves
 room for young generation, native allocations, Buffers and the TypeScript loader;

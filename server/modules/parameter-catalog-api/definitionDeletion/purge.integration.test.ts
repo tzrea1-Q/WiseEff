@@ -2,13 +2,40 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { createDefinitionDeletionFixture } from "../../../testing/parameterCatalog/definitionDeletion";
 import { prepareCatalogDefinitionErasure } from "../../catalog-publication/definitionErasure";
-import { X_DEFINITION_ID, Y_DEFINITION_ID } from "../../catalog-kernel/runtime/catalogChain.fixture";
+import { nodeTypeAndSecondDriverSuccessorBundle, X_DEFINITION_ID, Y_DEFINITION_ID } from "../../catalog-kernel/runtime/catalogChain.fixture";
+import { encodeBundleBytes } from "../../catalog-publication/builder/bundleCodec";
+import { getArtifactByDigest, getValidatedPreviewSnapshot, persistArtifact, putValidatedPreviewSnapshot } from "../../catalog-publication/persistence/store";
+import { CatalogArtifactId, CatalogReleaseDigest, CatalogReleaseId } from "../../parameter-catalog-contract/index";
 
 describe("platform Definition erasure through the runtime API database role", () => {
   let fixture: Awaited<ReturnType<typeof createDefinitionDeletionFixture>>;
 
   beforeAll(async () => {
     fixture = await createDefinitionDeletionFixture("definition_purge_sql");
+    const bundle = nodeTypeAndSecondDriverSuccessorBundle();
+    const previous = bundle.releases.find(node => node.manifest.release.id === fixture.chain.pinC.id)!;
+    const target = bundle.releases.find(node => node.manifest.release.id === bundle.targetReleaseId)!;
+    const release = target.manifest.release;
+    await fixture.api.transaction(async tx => {
+      await tx.query("set local role catalog_publication_coordinator_role");
+      expect((await persistArtifact(tx, {
+        id: CatalogArtifactId("cart_erase_compact"), artifactDigest: release.digest, targetReleaseId: CatalogReleaseId(release.id),
+        targetReleaseDigest: CatalogReleaseDigest(release.digest), predecessorReleaseId: fixture.chain.pinC.id,
+        predecessorReleaseDigest: fixture.chain.pinC.digest, sourceKind: "typed-changeset", toolchain: target.manifest.toolchain,
+        storageFormat: "successor-v1", artifactBytes: encodeBundleBytes({ ...bundle, releases: [target] }),
+      })).ok).toBe(true);
+      expect((await putValidatedPreviewSnapshot(tx, fixture.chain.pinC.digest, { target: previous, hasSubjectRules: false })).ok).toBe(true);
+      expect((await putValidatedPreviewSnapshot(tx, release.digest, { target, hasSubjectRules: false }, "successor-v1")).ok).toBe(true);
+    });
+    expect(await getValidatedPreviewSnapshot(fixture.api, release.digest)).toMatchObject({ ok: true, value: { target } });
+    const complete = await getArtifactByDigest(fixture.api, release.digest);
+    if (!complete.ok) throw new Error(JSON.stringify(complete.error));
+    expect(Buffer.from(complete.value.artifactBytes).equals(encodeBundleBytes(bundle))).toBe(true);
+    await fixture.api.transaction(async tx => {
+      await tx.query("set local role catalog_publication_coordinator_role");
+      const replay = await persistArtifact(tx, { ...complete.value, sourceKind: "adopted-preexisting" });
+      expect(replay.ok && replay.value.id).toBe(complete.value.id);
+    });
     const owner = fixture.owners[0]!;
     await fixture.root.query(`insert into public.parameter_specs(id,organization_id,source_kind,specification_key,property_key)
       values ('legacy-erase-spec',$1,'manual','manual/legacy-erase','iin_max'),('legacy-retain-spec',$1,'manual','manual/legacy-retain','iin_max')`, [owner.organizationId]);
@@ -85,6 +112,7 @@ describe("platform Definition erasure through the runtime API database role", ()
     expect((await fixture.root.query("select id,value from parameter_catalog.project_parameter_values order by id")).rows).toEqual(before);
     expect((await fixture.root.query("select id from public.parameter_specs where id='legacy-erase-spec'")).rows).toHaveLength(1);
     expect((await fixture.root.query("select * from parameter_catalog.definition_erasures")).rows).toHaveLength(0);
+    expect((await fixture.api.query("select 1 from catalog_publication.preview_snapshots")).rows).toHaveLength(2);
   });
 
   it("erases all target data, retains the other Definition and raw source, and supports cleanup retry", async () => {
@@ -105,6 +133,14 @@ describe("platform Definition erasure through the runtime API database role", ()
       const column = table.endsWith(".parameter_definitions") ? "id" : "definition_id";
       expect((await fixture.root.query(`select 1 from ${table} where ${column}=$1`, [X_DEFINITION_ID])).rows, table).toHaveLength(0);
     }
+    expect((await fixture.api.query("select 1 from catalog_publication.preview_snapshots")).rows).toHaveLength(0);
+    const rewritten = (await fixture.api.query<{ artifact_digest: string; storage_format: string }>(
+      "select artifact_digest,storage_format from catalog_publication.release_artifacts where id='cart_erase_compact'",
+    )).rows[0]!;
+    expect(rewritten.storage_format).toBe("full");
+    const hydrated = await getArtifactByDigest(fixture.api, rewritten.artifact_digest);
+    if (!hydrated.ok) throw new Error(JSON.stringify(hydrated.error));
+    expect(Buffer.from(hydrated.value.artifactBytes).toString()).not.toContain(X_DEFINITION_ID);
     for (const table of ["public.parameter_specs", "public.parameter_spec_versions", "public.parameter_definitions", "public.project_parameter_values", "public.parameter_history_entries", "public.legacy_parameter_migration_evidence", "parameter_catalog.legacy_identities", "parameter_catalog.legacy_mapping_versions"]) {
       expect((await fixture.root.query(`select 1 from ${table} where id like 'legacy-erase-%'`)).rows, table).toHaveLength(0);
     }
