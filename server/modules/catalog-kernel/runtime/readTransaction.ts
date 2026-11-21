@@ -10,17 +10,24 @@ export type CatalogSnapshotClient = Pick<pg.PoolClient, "query">;
 
 const readTransactionBrand = Symbol("catalog.caller-owned-read-transaction");
 
-/** An already-open repeatable-read, read-only transaction owned by the caller. */
+/** An already-open transaction owned by the caller. */
 export type CatalogReadTransaction = CatalogSnapshotClient & {
-  readonly [readTransactionBrand]: true;
+  readonly [readTransactionBrand]: pg.Pool | null;
 };
 
 export type CatalogReadSource = pg.Pool | CatalogReadTransaction;
 
-export const catalogReadTransaction = (client: CatalogSnapshotClient): CatalogReadTransaction => ({
-  [readTransactionBrand]: true,
+export const catalogReadTransaction = (
+  client: CatalogSnapshotClient,
+  // Supply the owning pool only for repeatable-read, read-only transactions.
+  readOnlyPool: pg.Pool | null = null,
+): CatalogReadTransaction => ({
+  [readTransactionBrand]: readOnlyPool,
   query: client.query.bind(client),
 });
+
+export const catalogSnapshotCachePool = (source: CatalogReadSource): pg.Pool | null =>
+  readTransactionBrand in source ? source[readTransactionBrand] : source;
 
 export class CatalogSnapshotReadFailure extends Error {
   readonly kernelError: CatalogKernelError;

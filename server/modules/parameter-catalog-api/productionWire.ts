@@ -711,8 +711,7 @@ const createReadPorts = (
     };
   }
 
-  const kernel = createCatalogKernel(pool);
-  const runtime = createPinCapturingCatalogRuntime(pool, kernel);
+  const runtime = createCatalogKernel(pool);
   const queries = createGovernanceCatalogQueries(pool);
   const usage = createUsageQueries(pool);
   return {
@@ -785,9 +784,7 @@ const createGovernancePorts = (
         }),
       };
 
-  const kernel = pool
-    ? createPinCapturingCatalogRuntime(pool, createCatalogKernel(pool))
-    : undefined;
+  const kernel = pool ? createCatalogKernel(pool) : undefined;
   const queries = pool ? createGovernanceCatalogQueries(pool) : undefined;
 
   return {
@@ -812,7 +809,7 @@ const createGovernancePorts = (
     },
     ...commands,
     readReviewItemDetails: pool && kernel ? async (input) => {
-      const loaded = await kernel.loadCurrentCatalog(input.pin);
+      const loaded = await createPinCapturingCatalogRuntime(pool, kernel).loadCurrentCatalog(input.pin);
       if (!loaded.ok) throw new ApiError("CONFLICT", "Catalog changed; refresh the review evidence.", { reason: "release-drift" });
       return readReviewItemDetailsFromPool(pool, input, loaded.value);
     } : undefined,
@@ -824,13 +821,15 @@ const createGovernancePorts = (
             publication: createReplacementPublicationPorts(db),
           }),
         }
-      : {}),    resolveSubjectKind: kernel
+      : {}),
+    resolveSubjectKind: pool && kernel
       ? async (subjectId) => {
-          const pointer = await readCurrentCatalogPointer(pool!);
+          const pointer = await readCurrentCatalogPointer(pool);
           if (pointer.kind !== "installed") {
             return null;
           }
-          const loaded = await kernel.loadCurrentCatalog(pinOf(pointer.current.id, pointer.current.digest));
+          const loaded = await createPinCapturingCatalogRuntime(pool, kernel)
+            .loadCurrentCatalog(pinOf(pointer.current.id, pointer.current.digest));
           if (!loaded.ok) {
             return null;
           }

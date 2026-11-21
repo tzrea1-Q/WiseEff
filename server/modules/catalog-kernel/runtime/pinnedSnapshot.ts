@@ -8,20 +8,8 @@ import {
   CatalogReleaseId,
 } from "../../parameter-catalog-contract/index";
 import type { PinnedCatalogSnapshot } from "../interface";
-import { loadProjection, locatorPin } from "./currentSnapshot";
-import { withCatalogReadTransaction, type CatalogReadSource } from "./readTransaction";
-
-const asPinned = (
-  snapshot: Exclude<Awaited<ReturnType<typeof loadProjection>>, null>["snapshot"],
-  pin: CatalogReleasePin,
-): PinnedCatalogSnapshot => {
-  const pinned: PinnedCatalogSnapshot = Object.assign(snapshot, {
-    snapshotKind: "pinned" as const,
-    pin,
-  });
-  Object.freeze(pinned);
-  return pinned;
-};
+import { loadSnapshotBody, locatorPin, readReleaseHeader } from "./currentSnapshot";
+import { catalogSnapshotCachePool, withCatalogReadTransaction, type CatalogReadSource } from "./readTransaction";
 
 export const resolveCatalogReleasePin = async (
   pool: CatalogReadSource,
@@ -56,18 +44,11 @@ export const resolveCatalogReleasePin = async (
 export const loadPinnedCatalogSnapshot = async (
   pool: CatalogReadSource,
   pin: CatalogReleasePin,
+  { fresh = false } = {},
 ): Promise<Result<PinnedCatalogSnapshot, CatalogKernelError>> =>
   withCatalogReadTransaction(pool, "loadPinnedCatalog", async (client) => {
-    const release = await client.query<{
-      id: string;
-      release_digest: string;
-    }>(
-      `select id, release_digest
-         from parameter_catalog.catalog_releases
-        where id = $1`,
-      [pin.id],
-    );
-    const row = release.rows[0];
+    const cachePool = fresh ? null : catalogSnapshotCachePool(pool);
+    const row = await readReleaseHeader(client, pin.id, cachePool);
     if (!row) {
       return {
         ok: false,
@@ -75,7 +56,7 @@ export const loadPinnedCatalogSnapshot = async (
       };
     }
     const actualDigest = CatalogReleaseDigest(row.release_digest);
-    if (actualDigest !== pin.digest) {
+    if (row.id !== pin.id || actualDigest !== pin.digest) {
       return {
         ok: false,
         error: {
@@ -86,25 +67,8 @@ export const loadPinnedCatalogSnapshot = async (
         },
       };
     }
-    const loaded = await loadProjection(client, pin.id, "pinned", pin);
-    if (!loaded) {
-      return {
-        ok: false,
-        error: { kind: "historical-release-unavailable", pin },
-      };
-    }
-    if (loaded.identity.id !== pin.id || loaded.identity.digest !== pin.digest) {
-      return {
-        ok: false,
-        error: {
-          kind: "digest-conflict",
-          releaseId: pin.id,
-          expected: pin.digest,
-          actual: loaded.identity.digest,
-        },
-      };
-    }
-    return { ok: true, value: asPinned(loaded.snapshot, pin) };
+    const snapshot = await loadSnapshotBody(cachePool, client, row, "pinned", pin);
+    return { ok: true, value: snapshot };
   });
 
 export const loadPinnedCatalogById = async (
