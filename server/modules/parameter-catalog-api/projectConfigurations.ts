@@ -64,7 +64,9 @@ function token(value: unknown): value is string {
 
 function present(row: Instance) {
   const unset = row.source_ref === "canonical-binding-identity";
-  const raw = unset ? "" : payloadToBindingView({ kind: row.value_kind, value: row.value } as ProjectValuePayload, row.source_format).rawValue;
+  const raw = unset ? "" : payloadToBindingView(
+    { kind: row.value_kind, value: row.value } as ProjectValuePayload, row.source_format, row.source_raw_text,
+  ).rawValue;
   return {
     kind: "instance" as const, bindingId: row.binding_id, projectId: row.project_id, projectName: row.project_name,
     configSetId: row.config_set_id, configSetName: row.config_set_name, sourceOccurrenceId: row.source_occurrence_id, sourceFormat: row.source_format,

@@ -5,6 +5,7 @@ import { parameterOrganizationId, parameterInvocation } from "../parameters/oper
  * Does not publish Catalog definitions.
  */
 import { createHash, randomUUID } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
 import type pg from "pg";
 
 import { ApiError } from "../../shared/http/errors";
@@ -165,12 +166,26 @@ export function importTextToDtsValue(propertyKey: string, text: string): DtsValu
 export function payloadToBindingView(
   payload: ProjectValuePayload,
   sourceFormat?: "dts" | "json",
+  sourceRawText?: string | null,
 ): {
   typedValue: CatalogBindingValue;
   rawValue: string;
 } {
   if (sourceFormat === "json" && payload.kind !== "json") {
     throw new ApiError("CONFLICT", "A JSON source pin contains a non-JSON project value payload.");
+  }
+  let previousRawText = sourceFormat === "dts" && sourceRawText?.trim() ? sourceRawText : undefined;
+  if (previousRawText !== undefined) {
+    try {
+      // Only empty RHS values require the property name to parse.
+      const parsed = parseDtsValue("", previousRawText).value;
+      if (isDeepStrictEqual(dtsValueToPayload(parsed), payload)) {
+        return { typedValue: parsed, rawValue: previousRawText };
+      }
+    } catch {
+      // The pinned source can contain unexpanded macros; the stored payload is authoritative.
+      previousRawText = undefined;
+    }
   }
   let typedValue: CatalogBindingValue;
   switch (payload.kind) {
@@ -221,7 +236,7 @@ export function payloadToBindingView(
       }
       break;
   }
-  return { typedValue: typedValue as DtsValue, rawValue: renderDtsValue(typedValue as DtsValue) };
+  return { typedValue, rawValue: renderDtsValue(typedValue, previousRawText) };
 }
 
 export async function loadPublishedCatalog(pool: pg.Pool): Promise<CatalogSnapshot | null> {
@@ -988,14 +1003,20 @@ export async function saveCanonicalProjectValue(
       reason: definition.status,
     });
   }
-  const current = await pool.query<{ source_ref: string }>(
+  const current = await pool.query<{ source_ref: string; source_raw_text: string | null }>(
     `
-    select source_ref
-      from parameter_catalog.${VALUES_RELATION}
-     where id = $1
+    select value.source_ref, property.raw_text as source_raw_text
+      from parameter_catalog.${VALUES_RELATION} value
+      left join parameter_catalog.project_value_source_pins pin
+        on pin.project_value_id = value.id and pin.binding_id = value.binding_id
+       and pin.definition_id = value.definition_id and pin.config_revision_id = value.config_revision_id
+       and pin.organization_id = $3 and pin.project_id = $4 and pin.config_revision_id = $2
+      left join dts_property_occurrences property
+        on property.id = pin.property_occurrence_id and property.file_version_id = pin.file_version_id
+     where value.id = $1
      limit 1
     `,
-    [row.current_value_id],
+    [row.current_value_id, input.configRevisionId, input.organizationId, input.projectId],
   );
   const sourceRef = current.rows[0]?.source_ref;
   if (!sourceRef || sourceRef === "canonical-binding-identity") {
@@ -1032,7 +1053,7 @@ export async function saveCanonicalProjectValue(
     definitionId: written.value.pin.definitionId,
     currentValueId: written.value.currentTip,
     propertyKey: definition.definition.propertyKey,
-    rawText: payloadToBindingView(payload, "dts").rawValue,
+    rawText: payloadToBindingView(payload, "dts", current.rows[0]?.source_raw_text).rawValue,
   };
 }
 
@@ -1180,6 +1201,7 @@ async function listCatalogBindingRowsInSnapshot(
       module_id: string | null;
       module_name: string | null;
       source_format: "dts" | "json" | null;
+      source_raw_text: string | null;
       source_file_id: string | null;
       source_node_path: string | null;
       source_occurrence_id: string | null;
@@ -1195,6 +1217,7 @@ async function listCatalogBindingRowsInSnapshot(
         placement.module_id,
         module.name as module_name,
         source_pin.format as source_format,
+        source_property.raw_text as source_raw_text,
         source_pin.file_id as source_file_id,
         coalesce(structured_node.node_path, source_occurrence.root_pointer) as source_node_path,
         source_pin.source_occurrence_id
@@ -1249,7 +1272,7 @@ async function listCatalogBindingRowsInSnapshot(
   for (const row of rows) {
     const loc = locators.get(row.pin.bindingId);
     if (!loc?.source_format) throw new ApiError("CONFLICT", "Canonical read requires an exact owned source pin.");
-    const view = payloadToBindingView(row.pin.payload, loc?.source_format ?? undefined);
+    const view = payloadToBindingView(row.pin.payload, loc.source_format, loc.source_raw_text);
     const currentDefinition = currentCatalog?.getDefinitionById(row.pin.definitionId);
     items.push({
       id: row.pin.bindingId,

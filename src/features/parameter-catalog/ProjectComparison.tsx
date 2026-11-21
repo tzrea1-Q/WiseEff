@@ -7,6 +7,7 @@ import type { CatalogProjectConfigurationsResponse } from "@/infrastructure/http
 import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 import { diffLines } from "@/application/project-configuration/sourceTextMerge";
 import { formatAbsolute } from "@/domain/format/formatDateTime";
+import { dtsValuesEquivalent } from "@/domain/parameter-topology/dtsValueEquality";
 
 type Instance = NonNullable<CatalogProjectConfigurationsResponse["baseline"]>;
 type SideLine = { text: string; number: number; changed: boolean };
@@ -185,7 +186,7 @@ export function ProjectComparison({ repository, organizationId, definitionId, ba
           : !items.length && !leftId ? currentInventory?.loading ? <SectionSkeleton label="正在查找可对比项目" /> : <SectionEmpty message={currentInventory?.cursor ? "尚未加载到可对比项目。" : "当前没有可用于对比的项目配置。"} />
             : !result ? <SectionSkeleton label="正在读取两侧完整原值" /> : <>
       <div className="parameter-library-compare__status" role="status">
-        <strong>{complete ? left.rawValue === right.rawValue ? "原文相同" : "配置值存在差异" : "请选择两侧项目进行对比"}</strong>
+        <strong>{complete ? left.rawValue === right.rawValue ? "原文相同" : left.sourceFormat === "dts" && right.sourceFormat === "dts" && left.rawValue !== undefined && right.rawValue !== undefined && dtsValuesEquivalent(left.rawValue, right.rawValue) ? "取值相同 · 仅书写格式不同" : "配置值存在差异" : "请选择两侧项目进行对比"}</strong>
         {right?.comparison ? <span>{comparisonStatus(right.comparison.status)}{right.comparison.revisionChanged ? " · 固定修订不同" : ""}
           {right.comparison.delta !== undefined ? ` · 目标 − 基准：${right.comparison.delta} ${right.unit ?? ""}` : ""}</span> : null}
         {complete && !difference.large && left.rawValue !== right.rawValue ? <span className="parameter-library-compare__legend"><span>− {difference.rows.filter(row => row.left?.changed).length}</span><span>+ {difference.rows.filter(row => row.right?.changed).length}</span></span> : null}

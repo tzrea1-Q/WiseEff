@@ -733,6 +733,7 @@ function canonicalValueRawValue(row: CanonicalValueRow): string | null {
     return payloadToBindingView(
       { kind: row.value_kind, value: row.value } as ProjectValuePayload,
       row.source_format,
+      row.source_raw_text,
     ).rawValue;
   } catch {
     // A historical canonical value may predate its source pin (the initial
