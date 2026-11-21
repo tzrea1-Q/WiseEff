@@ -116,9 +116,11 @@ describe("CP-07 publication job recovery", () => {
     await provisionOnlineActivation(pool, client, "iin_t10");
     const installer = createCatalogInstaller(pool);
     const first = await claimAndExecute(installer, "manager-t10");
-    expect(first, JSON.stringify(first)).toMatchObject({ kind: "activated" });
+    if (first.kind !== "activated") {
+      throw new Error(`activation failed: ${JSON.stringify(first)}`);
+    }
     const snapshot = await domainSnapshot(client);
-    const claimed = await withPublicationCoordinator(db, (tx) => getJob(tx, (first as { job: { id: string } }).job.id));
+    const claimed = await withPublicationCoordinator(db, (tx) => getJob(tx, first.job.id));
     expect(claimed.ok).toBe(true);
     if (!claimed.ok) {
       throw new Error("job missing");
@@ -565,7 +567,7 @@ describe("CP-07 publication job recovery", () => {
     if (!selfHigh.ok) {
       expect(selfHigh.error).toMatchObject({
         kind: "authorization",
-        reason: "publication-self-approval-forbidden",
+        reason: "publication-capability-missing",
       });
     }
     const reviewed = await enqueuePublicationJob({

@@ -112,12 +112,8 @@ export function DefinitionLifecycleDialog({
   const [failure, setFailure] = useState("");
   const [idempotencyKey, setIdempotencyKey] = useState<string | null>(null);
 
-  const allowed = canExecutePublicationAction(
-    actor,
-    intent === "retire-definition" ? "preview-publication" : "publish-publication",
-    domainState,
-    sessionPermissions
-  );
+  const allowed = canExecutePublicationAction(actor, "preview-publication", domainState, sessionPermissions)
+    && canExecutePublicationAction(actor, "review-high-risk-publication", domainState, sessionPermissions);
   const contentText = copy[intent];
   const batch = mode === "batch";
   const targets = definitions;
@@ -203,7 +199,7 @@ export function DefinitionLifecycleDialog({
   };
 
   const publish = async () => {
-    if (!candidate || pending) {
+    if (!allowed || !candidate || pending) {
       return;
     }
     setPending(true);
@@ -305,7 +301,7 @@ export function DefinitionLifecycleDialog({
             className="button primary"
             data-lifecycle-action={intent}
             disabled={effective ? pending : !allowed || pending || Boolean(job && jobIsPending(job.status)) || (!batch && !reason.trim()) || (batch && (runtimeMode === "mock" || targets.length === 0 || targets.length > DEFINITION_BATCH_LIMIT))}
-            title={allowed ? undefined : "当前会话缺少发布能力或目录不可写。"}
+            title={allowed ? undefined : "当前会话缺少目录编写或高风险复核权限，或者目录不可写。"}
             onClick={() => void (effective ? close() : captureCandidate())}
           >
             {effective ? "完成" : pending && !candidate ? "正在预演…" : "预演影响"}

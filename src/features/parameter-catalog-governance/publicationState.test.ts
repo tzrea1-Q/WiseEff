@@ -46,9 +46,9 @@ describe("publication operator state", () => {
     expect(() => buildCreateDefinitionChangeSet({ ...draft, dtsExamples: ["other = <3>;"] })).toThrow("属性名");
     expect(() => buildCreateDefinitionChangeSet({ ...draft, dtsExamples: Array(9).fill("<3>") })).toThrow("最多填写 8 个");
   });
-  it("describes high-risk approval for the current actor", () => {
-    expect(publicationApprovalCopy("high", "org-admin")).toBe("高风险：组织管理员可自行批准，请仔细核对影响。");
-    expect(publicationApprovalCopy("high", "user")).toBe("高风险：必须由另一位具备高风险复核权限的人员批准。");
+  it("describes approval by candidate risk", () => {
+    expect(publicationApprovalCopy("high")).toBe("高风险变更需要具备高风险复核权限的人员核对影响并确认发布。");
+    expect(publicationApprovalCopy("low")).toBe("低风险变更可由具备发布或高风险复核权限的人员确认。");
   });
   it("does not treat org-admin as an author without session permission", () => {
     expect(canExecutePublicationAction("org-admin", "preview-publication", ready)).toBe(false);

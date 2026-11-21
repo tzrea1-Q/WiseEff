@@ -484,7 +484,7 @@ describe("CanonicalSubjectPlacementPanel", () => {
     const register = vi.spyOn(publication.governance, "createRegistration");
     render(<CanonicalSubjectPlacementPanel {...ports} catalog={{ ...publication.catalog, ...ports.catalog }}
       governance={{ ...publication.governance, ...ports.governance }} organizationId={CATALOG_ORGANIZATION_ID}
-      currentPersonId="batch-user" actor="org-admin" canAdmin sessionPermissions={["catalog:author", "catalog:publish"]} onNavigate={navigate} />);
+      currentPersonId="batch-user" actor="org-admin" canAdmin sessionPermissions={["catalog:author", "catalog:review-high-risk"]} onNavigate={navigate} />);
     const user = userEvent.setup();
     const create = await screen.findByRole("button", { name: "新增主体" });
     await waitFor(() => expect(create).toBeEnabled());

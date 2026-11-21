@@ -26,6 +26,7 @@ import {
   catalogValueShapeLabel
 } from "../parameter-catalog/catalogPresentation";
 import {
+  catalogErrorCopy,
   catalogHistoryCloseLabel,
   catalogHistoryOpenLabel
 } from "../parameter-catalog/copy";
@@ -53,7 +54,6 @@ import { DtsExamplesEditor } from "./DtsExamplesEditor";
 export type DefinitionEditorBodyProps = {
   actor: CatalogActorKind;
   organizationId?: string;
-  organizationAdmin?: boolean;
   sessionPermissions?: readonly string[] | null;
   domainState: CatalogDomainState;
   catalog: ParameterCatalogRepository;
@@ -81,6 +81,7 @@ export type DefinitionEditorBodyProps = {
   /** Server gate: without it the dialog only reads. */
   authoringAllowed: boolean;
   publishingAllowed?: boolean;
+  reviewHighRiskAllowed?: boolean;
 };
 
 
@@ -218,7 +219,6 @@ const projectStatusLabel = {
 export function DefinitionEditorBody({
   actor,
   organizationId,
-  organizationAdmin = actor === "org-admin",
   sessionPermissions,
   domainState,
   catalog,
@@ -236,7 +236,8 @@ export function DefinitionEditorBody({
   onClose,
   onRetireDefinition,
   authoringAllowed,
-  publishingAllowed = false
+  publishingAllowed = false,
+  reviewHighRiskAllowed = false
 }: DefinitionEditorBodyProps) {
   const [phase, setPhase] = useState<Phase>("compose");
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -346,9 +347,10 @@ export function DefinitionEditorBody({
   );
   const deprecationChanged = deprecated !== (definition.lifecycle === "deprecated") ||
     (deprecated && successor !== publishedSuccessor);
-  const canReviewRevision = canPublish && canExecutePublicationAction(
+  const canReviewRevision = editable && targetSubjectAllowed && reviewHighRiskAllowed && canExecutePublicationAction(
     actor, "review-high-risk-publication", publicationState, sessionPermissions
   );
+  const canSaveContentRevision = deprecationChanged ? editable && targetSubjectAllowed : canPublish || canReviewRevision;
   const unresolvedMerge = preview?.projects.some(project => project.mergeConflict && !project.mergeConflict.choice) ||
     preview?.projects.some(project => project.mergeConflict &&
       (mergeChoices[project.projectId] ?? project.mergeConflict.choice) !== project.mergeConflict.choice);
@@ -490,7 +492,7 @@ export function DefinitionEditorBody({
 
   /** Content-only edit: publish a revision, no project reference moves. */
   const saveContentRevision = async () => {
-    if (!canPublish || pending) return;
+    if (!canSaveContentRevision || pending) return;
     if (deprecationChanged ? (contentChanged || identityChanged || (deprecated && !successor)) : !validateExamples()) return;
     if (!reason.trim()) {
       setError("请填写修改原因，用于审计。");
@@ -506,9 +508,9 @@ export function DefinitionEditorBody({
           successorDefinitionId: deprecated ? successor : null, reason: reason.trim() }] : buildPublicationChangeSet(contentDraft(), valueSchema) as never },
         { catalogReleaseId }
       );
-      if (deprecationChanged && !organizationAdmin) {
+      if (deprecationChanged || (candidate.item.riskClass === "high" && !canReviewRevision)) {
         setRevisionCandidate(candidate.item);
-        setReviewing(false);
+        setReviewing(canReviewRevision);
         return;
       }
       const published = await catalog.publishPublicationCandidate(
@@ -1008,9 +1010,9 @@ export function DefinitionEditorBody({
                       type="button"
                       className="button primary"
                       data-editor-action="save-content"
-                      disabled={!canPublish || pending || (!contentChanged && !deprecationChanged) ||
+                      disabled={!canSaveContentRevision || pending || (!contentChanged && !deprecationChanged) ||
                         (deprecationChanged && (contentChanged || (deprecated && !successor))) || !reason.trim()}
-                      title={canPublish ? undefined : publishDisabledReason}
+                      title={canSaveContentRevision ? undefined : publishDisabledReason}
                       onClick={() => void saveContentRevision()}
                     >
                       {pending ? "正在处理…" : deprecationChanged ? "预览弃用修订" : "保存内容修订"}
@@ -1103,7 +1105,7 @@ export function DefinitionEditorBody({
             </div>
             {preview.publicationCandidateId ? <details className="definition-editor__more">
               <summary>发布与复核信息</summary>
-              <p>若发布策略要求独立复核，请把候选编号 <code>{preview.publicationCandidateId}</code> 交给具备复核权限的管理员。发布生效后，在此继续执行项目迁移。</p>
+              <p>候选编号 <code>{preview.publicationCandidateId}</code>。具备高风险复核权限的人员可确认发布，发布生效后可继续执行项目迁移。</p>
             </details> : null}
             <dl className="parameter-catalog__dl definition-editor__preview-dl">
               <dt>目标组织</dt><dd>{preview.organizationId}</dd>
@@ -1323,7 +1325,7 @@ export function DefinitionEditorBody({
           <button type="button" className="button subtle" disabled={pending || !reviewId.trim()} onClick={() => void loadRevisionCandidate()}>读取候选</button>
         </details> : null}
         {revisionCandidate && phase === "compose" ? <section aria-label="定义发布候选">
-          <p>{reviewing ? "核对共享定义的变更后确认发布。" : "请把候选编号交给另一位具备高风险复核权限的管理员。"}</p>
+          <p>{canReviewRevision && reviewing ? "核对共享定义的变更后确认发布。" : "请由具备高风险复核权限的人员核对候选并确认发布。"}</p>
           <dl className="parameter-catalog__dl">
             <dt>候选编号</dt><dd><code>{revisionCandidate.id}</code></dd>
             {revisionCandidate.impactSummary.definitionSuccessorChange ? <>
@@ -1337,7 +1339,7 @@ export function DefinitionEditorBody({
                 revisionCandidate.impactSummary.definitionReplacement.subjectId}</dd>
             </> : null}
           </dl>
-          {reviewing ? <button type="button" className="button primary" disabled={pending || revisionCandidate.expectedBaseReleaseId !== catalogReleaseId}
+          {canReviewRevision && reviewing ? <button type="button" className="button primary" disabled={pending || revisionCandidate.expectedBaseReleaseId !== catalogReleaseId}
             onClick={() => void publishReviewedRevision()}>确认发布定义候选</button> : null}
           {revisionCandidate.expectedBaseReleaseId !== catalogReleaseId ? <p role="alert">目录版本已变化，请重新预览。</p> : null}
         </section> : null}
@@ -1387,7 +1389,7 @@ function failureText(error: unknown): string {
     if (error.details.replacement === "current-project-references") return "旧定义已有当前项目引用，请选择实际项目并使用迁移流程。当前输入已保留。";
     if (error.details.replacement === "target-identity-conflict") return "目标身份已存在，请查看已有定义或修改目标身份。当前输入已保留。";
     if (error.details.replacement === "replacement-target-unavailable") return "已发布的替代定义当前不可用，请刷新 Catalog 后核对目标身份。当前输入已保留。";
-    if (error.details.reason === "publication-self-approval-forbidden") return "当前发布策略要求另一位管理员独立复核。请在发布与复核信息中查看候选编号。";
+    if (error.details.reason === "publication-self-approval-forbidden") return catalogErrorCopy(error.details.reason);
   }
   const state = catalogStateFromFailure(error);
   return `${catalogStateMessage(state) ?? "操作未完成，请稍后重试。"} 当前输入已保留。`;

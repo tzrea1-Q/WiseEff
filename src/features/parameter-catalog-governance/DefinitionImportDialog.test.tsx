@@ -29,7 +29,7 @@ function renderImport(options: {
   options.prepare?.(ports);
   const completed = vi.fn();
   const ui = (catalogReleaseId: string = CATALOG_RELEASE_ID) => <DefinitionImportDialog open initialDocument={options.initialDocument} runtimeMode={options.runtimeMode ?? "api"}
-    actor="org-admin" sessionPermissions={["catalog:author", "catalog:publish"]}
+    actor="org-admin" sessionPermissions={["catalog:author", "catalog:publish", "catalog:review-high-risk"]}
     domainState={deriveCatalogDomainState({ document: readyCatalogDocument })} catalog={ports.catalog}
     governance={ports.governance}
     moduleRegistry={{ getRegistry: async () => ({ modules: options.modules ?? [module("business", "电源", null, "business"),
@@ -38,7 +38,7 @@ function renderImport(options: {
     organizationId={CATALOG_ORGANIZATION_ID} publicationSurface={{ publicationEnabled: true,
       lowRiskSingleActorPublish: false, policyRevision: 1, frozen: false, adopted: true,
       currentReleaseId: CATALOG_RELEASE_ID, authoringAllowed: true, publishingAllowed: true,
-      reviewHighRiskAllowed: false, blockers: [] }}
+      reviewHighRiskAllowed: true, blockers: [] }}
     createIdempotencyKey={() => "pub-key"} onOpenChange={vi.fn()} onCompleted={completed} />;
   const view = render(ui());
   return { ports, completed, rerenderRelease: (releaseId: string) => view.rerender(ui(releaseId)) };

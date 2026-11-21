@@ -66,7 +66,7 @@ it("upgrades a populated Catalog and reviews versioned identity, owner, kind, de
       });
       expect(adopt.ok, JSON.stringify(adopt)).toBe(true);
       const observer = await connect(connectionString);
-      try { await enablePublicationPolicy(observer, { publicationEnabled: true, lowRiskSingleActorPublish: true }); }
+      try { await enablePublicationPolicy(observer, { publicationEnabled: true, lowRiskSingleActorPublish: false }); }
       finally { await observer.end(); }
       const token = `id${randomBytes(5).toString("hex")}`;
       const runtime = await provisionPublicationRuntimeLogins(connectionString, { mode: "lab", runToken: token });
@@ -178,18 +178,13 @@ it("upgrades a populated Catalog and reviews versioned identity, owner, kind, de
         scope = author;
         const add = await preview(alias);
         expect(add).toMatchObject({ status: 201, body: { item: { riskClass: "high", impactSummary: { subjectIdentity: { change: alias } } } } });
-        expect(await publish(candidateId(add.body), "alias-publication")).toMatchObject({ status: 403,
-          body: { error: { details: { reason: "publication-self-approval-forbidden" } } } });
-        scope = scopeFor("identity-author", "platform-admin", organizationId, true);
-        expect(await publish(candidateId(add.body), "alias-publication")).toMatchObject({ status: 403,
-          body: { error: { details: { reason: "publication-self-approval-forbidden" } } } });
         scope = orgAdmin;
         expect((await publish(candidateId(add.body), "alias-publication")).status).toBe(403);
-        scope = reviewer;
+        scope = scopeFor("identity-author", "platform-admin", organizationId, true);
         const approved = await publish(candidateId(add.body), "alias-publication");
         expect(approved.status, JSON.stringify(approved)).toBe(201);
         expect(await publish(candidateId(add.body), "alias-publication")).toMatchObject({ status: 200, body: { item: { id: jobId(approved.body) } } });
-        const aliased = await run();
+        const aliased = await run(scope);
         expect(aliased.id).not.toBe(previous.id);
         releaseId = aliased.id;
         scope = author;
@@ -201,11 +196,15 @@ it("upgrades a populated Catalog and reviews versioned identity, owner, kind, de
         const competing = await preview({ op: "rename-subject", subjectId, selector: "huawei,direct-charger-alt", keepOldAlias: false });
         expect(competing.status).toBe(201);
         expect((await preview({ op: "rename-subject", subjectId, selector: short, keepOldAlias: false })).status).toBe(409);
+        const selfApproved = await publish(candidateId(rename.body), "rename-publication");
+        expect(selfApproved.status, JSON.stringify(selfApproved.body)).toBe(201);
+        expect((await db.query(`select approval.actor_principal_id from catalog_publication.publication_authorizations approval
+          join catalog_publication.publication_jobs job on job.authorization_id=approval.id where job.id=$1`,
+        [jobId(selfApproved.body)])).rows).toEqual([{ actor_principal_id: author.principalId }]);
         scope = reviewer;
-        expect((await publish(candidateId(rename.body), "rename-publication")).status).toBe(201);
         const competingJob = await publish(candidateId(competing.body), "concurrent-rename");
         expect(competingJob.status).toBe(201);
-        const current = await run();
+        const current = await run(author);
         expect(current.id).not.toBe(aliased.id);
         releaseId = current.id;
         expect(await run()).toEqual(current);
@@ -241,6 +240,9 @@ it("upgrades a populated Catalog and reviews versioned identity, owner, kind, de
         expect((await publish(toImport.id, "import-huawei-definition")).status).toBe(201);
         const imported = await run(author);
         expect(imported.id).not.toBe(current.id);
+        expect((await db.query(
+          "select artifact_digest from catalog_publication.preview_snapshots where artifact_digest=$1", [imported.digest],
+        )).rows).toEqual([{ artifact_digest: imported.digest }]);
         releaseId = imported.id;
         const importedSnapshot = await kernel.loadCurrentCatalog(imported);
         if (!importedSnapshot.ok) throw new Error(JSON.stringify(importedSnapshot));
@@ -276,6 +278,16 @@ it("upgrades a populated Catalog and reviews versioned identity, owner, kind, de
         expect(beforeTransfer.value.resolveSubject(match(short))).toMatchObject({ status: "matched", subject: { id: subjectId }, matchedBy: "alias" });
         expect(afterTransfer.value.resolveSubject(match(short))).toMatchObject({ status: "matched", subject: { id: transferTargetId }, matchedBy: "alias" });
 
+        // A spelling stays reserved to its original subject even when its
+        // former owner publishes a rename without retaining a formal alias.
+        const correctedBattery = await publishAliasChange({ op: "rename-subject", subjectId: "csub_drv_huawei_batt_info",
+          selector: "huawei,batt_info_current", keepOldAlias: false }, "free-historical-spelling");
+        scope = author;
+        expect(await preview({ op: "rename-subject", subjectId: transferTargetId,
+          selector: "huawei,batt_info", keepOldAlias: false })).toMatchObject({ status: 409 });
+        expect(await preview({ op: "rename-subject", subjectId: "csub_drv_huawei_batt_info",
+          selector: "huawei,batt_info", keepOldAlias: false })).toMatchObject({ status: 201 });
+
         const defaults = { op: "set-driver-defaults", subjectId, nature: "logical-service", cardinality: "singleton-per-project" };
         await db.query("delete from registration_recognition_rules where organization_id=$1", [organizationId]);
         const manyDts = '/dts-v1/; / { first { compatible = "huawei,direct-charger"; }; second { compatible = "huawei,direct-charger"; }; };';
@@ -295,7 +307,7 @@ it("upgrades a populated Catalog and reviews versioned identity, owner, kind, de
         await db.query("insert into parameter_modules(id,organization_id,name,path,depth,kind,origin) values ('foreign-huawei-module',$1,'Huawei','huawei',1,'business','curated')", [foreignOrganizationId]);
         const foreignRegistration = await createRegistrationService(pool).execute({ kind: "register", organizationId: foreignOrganizationId,
           subjectId: CatalogSubjectId(subjectId), subjectKind: "driver", destinationModuleId: "foreign-huawei-module",
-          expectedRelease: transferred, placement: { mode: "use-default" }, method: "explicit", proof: {}, idempotencyKey: "foreign-huawei",
+          expectedRelease: correctedBattery, placement: { mode: "use-default" }, method: "explicit", proof: {}, idempotencyKey: "foreign-huawei",
           context: { actorKind: "platform-admin", principalId: author.principalId } });
         if (!foreignRegistration.ok) throw new Error(JSON.stringify(foreignRegistration));
         const foreignSet = await createConfigSet(api, foreignEditor, { projectId: foreignProjectId, name: "Foreign chargers" });
@@ -372,8 +384,6 @@ it("upgrades a populated Catalog and reviews versioned identity, owner, kind, de
           expect.objectContaining({ organizationId: foreignOrganizationId, id: foreignRegistration.value.registrationId,
             cardinalityOverride: "multiple", natureOverride: "physical-device", recognitionOverride: true }),
         ]));
-        expect((await publish(candidateId(untilChanged.body), "author-cannot-approve-shared-rules")).status).toBe(403);
-        scope = reviewer;
         const queued = await publish(candidateId(untilChanged.body), "before-organization-rule-changed");
         expect(queued.status).toBe(201);
         await updateRegistrationRecognitionSettings(api, {
@@ -381,7 +391,7 @@ it("upgrades a populated Catalog and reviews versioned identity, owner, kind, de
           idempotencyKey: "narrow-huawei-multiple", requestId: "narrow-huawei-multiple", invocation: createUserInvocation(editor),
           catalogReleaseId: releaseId, body: { compatibles: [renamed] },
         });
-        expect((await run()).id).toBe(releaseId);
+        expect((await run(author)).id).toBe(releaseId);
         const drifted = await fetch(`${http.baseUrl}/api/v2/catalog/publications/${jobId(queued.body)}`);
         expect(await drifted.json()).toMatchObject({ item: { status: "needs-rebase" } });
         const updated = await publishAliasChange(defaults, "update-huawei-defaults");

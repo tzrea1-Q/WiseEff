@@ -120,7 +120,7 @@ export function catalogErrorCopy(reason: CatalogApiFailureReason | "unknown"): s
     case "publication-capability-missing":
       return "缺少目录编写或发布权限。";
     case "publication-self-approval-forbidden":
-      return "单人策略未开启时，不能自行批准本次发布，请由其他具备发布权限的人员确认。";
+      return "这条发布记录依据旧策略被拒绝。请重新预览并确认发布。";
     case "catalog-not-adopted":
       return "参数目录正在接管中，暂不能在线发布。请等待接管完成。";
     case "publication-policy-disabled":

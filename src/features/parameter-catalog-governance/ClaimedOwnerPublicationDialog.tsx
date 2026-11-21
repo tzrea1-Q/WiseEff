@@ -26,7 +26,8 @@ export function ClaimedOwnerPublicationDialog(props: {
   const canReview = !unavailable && props.actor !== "agent"
     && Boolean(props.surface?.publishingAllowed || props.surface?.reviewHighRiskAllowed);
   const stale = Boolean(candidate && candidate.expectedBaseReleaseId !== props.catalogReleaseId);
-  const canPublish = canReview && flow.candidateVerified && candidate?.impactSummary.ownerPublicationOnly === true
+  const canPublish = canReview && props.surface?.reviewHighRiskAllowed === true
+    && flow.candidateVerified && candidate?.impactSummary.ownerPublicationOnly === true
     && claims.length > 0 && !stale && !success
     && !inFlight && !pending && !job;
   const advisory = props.surface ? publicationSurfaceAdvisory(props.surface) : null;
@@ -95,7 +96,7 @@ export function ClaimedOwnerPublicationDialog(props: {
             </table>
             <details><summary>发布与审核信息</summary><p>候选编号：{candidate.id}</p>
               <p>基准版本：{candidate.expectedBaseReleaseId}</p>
-              <p>这是高风险目录变更，沿用现有发布权限和审核规则。组织管理员可按既有规则自批；其他编写者可将候选编号交给有审核权限的人员。</p>
+              <p>请核对待发布的归属变更。具备高风险复核权限即可确认发布。</p>
             </details>
           </> : null}
           {job ? <p role="status">{publicationStatusCopy(job).message}{success ? "。归属发布已生效。" : ""}</p> : null}
@@ -117,7 +118,7 @@ export function ClaimedOwnerPublicationDialog(props: {
       </>}
     </ModalDialog>
     <PublicationConfirmation confirm={confirm} allowed={confirm === "publish" ? canPublish : canPreview}
-      risk="high" actor={props.actor} pending={pending} onPreview={() => void preview()}
+      risk="high" pending={pending} onPreview={() => void preview()}
       onPublish={() => void publish()} onCancel={() => setConfirm(null)} />
   </>;
 }

@@ -85,6 +85,18 @@ For a long-running job, correlate `claimed`, `activation-timeout`, `settled`, an
 
 ### Memory budgets for preview and publication
 
+For shared subject renames and formal alias edits, the API can preview against a
+validated snapshot of the pinned release. The first preview of a legacy release
+can still take longer while it validates history. Once eligible, each candidate
+stores the new release and a reference to its predecessor. Activation and
+historical replay reconstruct the complete bundle. A change requiring historical
+evidence beyond the snapshot uses the complete validation path.
+
+During a rolling upgrade, apply the schema migrations and upgrade the publication
+manager and other artifact readers before starting API instances that write the
+new format. Once a compact candidate exists, keep a compatible reader for its
+activation and replay, including during an application rollback.
+
 Both API preview and manager activation compile Catalog data. Each service defaults
 to 2 GiB RAM, 3 GiB RAM plus swap, and 1536 MiB V8 old-space. The difference leaves
 room for young generation, native allocations, Buffers and the TypeScript loader;
@@ -253,12 +265,12 @@ Status prints non-secret identity: database OID, database name, current Release 
 
 ```bash
 npx tsx scripts/catalog-publication-ops.ts policy enable --actor <user-id> \
-  --confirmation ephemeral-test-only [--low-risk-single-actor]
+  --confirmation ephemeral-test-only
 npx tsx scripts/catalog-publication-ops.ts policy disable --actor <user-id> \
   --confirmation ephemeral-test-only
 ```
 
-Enable is refused unless `current_database()` matches the ephemeral test name pattern and the confirmation token matches. `--low-risk-single-actor` is independent and defaults to the current policy value (not bundled on).
+Enable is refused unless `current_database()` matches the ephemeral test name pattern and the confirmation token matches. The legacy `low_risk_single_actor_publish` field and its CLI options remain available for compatibility. Approval uses the Candidate’s risk and the actor’s capabilities.
 
 **Durable / non-ephemeral instance:** check then execute against observed identity. Do not use the ephemeral confirmation. Re-run status after any drift; do not reuse a stale check.
 
@@ -269,8 +281,7 @@ npx tsx scripts/catalog-publication-ops.ts policy check enable --actor <user-id>
   --expected-digest sha256:... \
   --expected-policy-revision <n> \
   --expected-frozen true|false \
-  --expected-adopted true \
-  [--low-risk-single-actor|--no-low-risk-single-actor]
+  --expected-adopted true
 
 npx tsx scripts/catalog-publication-ops.ts policy enable --actor <user-id> \
   --expected-database-oid <oid> \
@@ -278,8 +289,7 @@ npx tsx scripts/catalog-publication-ops.ts policy enable --actor <user-id> \
   --expected-digest sha256:... \
   --expected-policy-revision <n> \
   --expected-frozen true|false \
-  --expected-adopted true \
-  [--low-risk-single-actor|--no-low-risk-single-actor]
+  --expected-adopted true
 ```
 
 Enable requires exact Catalog adoption (current Artifact + Receipt). It does not advance `current`, does not clear freeze, and does not require a prior online publication. Disable keeps Catalog, Artifact, Receipt, and project values. Closing publication does not restore legacy `advance` after a Receipt exists.
@@ -320,7 +330,7 @@ Work directory unless noted: `/srv/wiseeff/ops/self-hosted`. CLI runs inside the
 | 1. Read post-upgrade state | `./scripts/collect-catalog-publication-status.sh` (or `compose ps`, image `curl` manager `/health/live`, `policy status`, `freeze status`) | No | Running image/tag, roles, current Release, policy revision, freeze; JSON `pinsForPolicyCheck` | Missing manager LOGIN on a stack that already had `publication-manager` |
 | 2. Inspect source bundle / adopt check | `inspect` with `CATALOG_BASELINE_READONLY_DATABASE_URL`; `adopt --check` with expected id/digest/bundle | No | JSON identity matches the collected bundle | Drift, missing history, or missing Artifact bytes |
 | 3. Adopt + ACL + capabilities | `adopt --execute`; Org Admin already has `catalog:author` / `catalog:publish` / `catalog:review-high-risk`. Grant those only for non-admin publishers | Yes | Receipt kind `adopted-preexisting`; Org Admin can author and self-approve after re-login | Do not use test capabilities; do not grant platform-admin |
-| 4. Policy check / enable / disable | `policy check enable` then `policy enable` with the **fresh** status pins; optional `--low-risk-single-actor` | Yes | `publication_enabled=true`; freeze unchanged | Stale pins, not adopted, ephemeral confirmation on a durable name |
+| 4. Policy check / enable / disable | `policy check enable` then `policy enable` with the **fresh** status pins | Yes | `publication_enabled=true`; freeze unchanged | Stale pins, not adopted, ephemeral confirmation on a durable name |
 | 5. Page business loop | `/parameter-admin/specs` create/revise/preview/publish; workbench "Submit selected" control | Yes | Receipt `effective`; official value content; history after restart | Queued/running after timeout is failure; do not POST save APIs by hand |
 | 6. Abnormal stop | `policy disable`; `freeze set` if maintenance; upgrade recovery for restore | Yes | Publication closed; Catalog/values retained | Do not DROP history or re-bootstrap |
 

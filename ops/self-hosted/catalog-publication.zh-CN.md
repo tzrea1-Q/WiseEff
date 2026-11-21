@@ -65,6 +65,10 @@ API 设置 `WISEEFF_API_PROCESS=1`，日志 worker 设置 `LOG_WORKER_ENABLED=tr
 
 ### 预览和发布的内存预算
 
+共享主体改名和正式别名编辑可以使用当前固定版本的已验证快照生成预览。旧版本首次预览需要校验历史，耗时可能较长。满足快照条件后，每个候选存储本次新增的发布版本及其前序引用。激活和历史回放时会重建完整发布包。涉及快照之外的历史证据时，预览会走完整校验链路。
+
+滚动升级时，先执行数据库迁移并升级发布管理器及其他产物读取端，再启动会写入新格式的 API 实例。生成紧凑格式候选后，激活和历史回放均需要兼容的读取端，应用回滚时也应保留该读取能力。
+
 API 预览和管理进程激活都会编译 Catalog 数据。两个服务各自默认使用 2 GiB RAM
 上限、3 GiB RAM 与交换空间合计上限、1536 MiB V8 老生代堆上限。差额用于年轻代、
 原生内存、Buffer 和 TypeScript 加载器，并不保证任意规模的目录都能容纳。主机需要
@@ -209,12 +213,12 @@ npx tsx scripts/catalog-publication-ops.ts policy status
 
 ```bash
 npx tsx scripts/catalog-publication-ops.ts policy enable --actor <user-id> \
-  --confirmation ephemeral-test-only [--low-risk-single-actor]
+  --confirmation ephemeral-test-only
 npx tsx scripts/catalog-publication-ops.ts policy disable --actor <user-id> \
   --confirmation ephemeral-test-only
 ```
 
-仅当 `current_database()` 符合临时库名模式且确认口令匹配时才能走这条路径。`--low-risk-single-actor` 是独立选择，默认保持当前值，不与启用捆绑。
+仅当 `current_database()` 符合临时库名模式且确认口令匹配时才能走这条路径。旧版 `low_risk_single_actor_publish` 字段及其命令行选项为兼容保留。发布批准取决于候选风险和操作人权限。
 
 **非临时实例：** 必须先 check 再 execute，引脚来自刚读到的 status，不能套用过期确认。不要使用 ephemeral 确认口令。
 
@@ -225,8 +229,7 @@ npx tsx scripts/catalog-publication-ops.ts policy check enable --actor <user-id>
   --expected-digest sha256:... \
   --expected-policy-revision <n> \
   --expected-frozen true|false \
-  --expected-adopted true \
-  [--low-risk-single-actor|--no-low-risk-single-actor]
+  --expected-adopted true
 npx tsx scripts/catalog-publication-ops.ts policy enable --actor <user-id> \
   --expected-database-oid <oid> \
   --expected-id <crel_...> \
@@ -266,7 +269,7 @@ overlay **只覆盖网络/端口/拓扑**（loopback 端口、`host.docker.inter
 | 1. 升级后状态读取 | `./scripts/collect-catalog-publication-status.sh`（或 `compose ps`、镜像内 `curl` manager `/health/live`、`policy status`、`freeze status`） | 否 | 运行镜像/标签、角色、current Release、策略版本、freeze；JSON `pinsForPolicyCheck` | 已经跑过 `publication-manager` 的栈缺少专用 LOGIN |
 | 2. 源包与接管检查 | 只读 `inspect`；`adopt --check` | 否 | JSON 身份与源包一致 | 漂移、缺历史或缺 Artifact |
 | 3. 接管 + ACL + 能力 | `adopt --execute`；组织 Admin 默认已有 `catalog:author` / `catalog:publish` / `catalog:review-high-risk`。只给非 admin 发布人 grant | 是 | Receipt `adopted-preexisting`；组织 Admin 重新登录后可编写并自批 | 不用测试 capability；不要授给 platform-admin |
-| 4. 策略检查 / 启用 / 停用 | 用**最新** status 引脚 `policy check enable` 再 `policy enable`；可选 `--low-risk-single-actor` | 是 | `publication_enabled=true`；freeze 不变 | 陈旧引脚、未接管、在正式库名上使用 ephemeral 确认 |
+| 4. 策略检查 / 启用 / 停用 | 用**最新** status 引脚 `policy check enable` 再 `policy enable` | 是 | `publication_enabled=true`；freeze 不变 | 陈旧引脚、未接管、在正式库名上使用 ephemeral 确认 |
 | 5. 页面业务闭环 | `/parameter-admin/specs` 编写/预览/发布；工作台 `提交所选` | 是 | Receipt `effective`；正式值内容；重启后历史仍在 | 排队/执行中超时即失败；禁止手工 POST 保存 API |
 | 6. 异常停用 | `policy disable`；维护时 `freeze set`；恢复走升级 recovery | 是 | 发布关闭；Catalog 与项目值保留 | 不要删历史或再次 bootstrap |
 

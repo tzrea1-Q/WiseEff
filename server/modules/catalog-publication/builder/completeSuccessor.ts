@@ -10,7 +10,7 @@ import {
   serializeContract,
   type ContractJsonValue,
 } from "../../parameter-catalog-contract/index";
-import { validateCatalogReleaseDigest } from "../../catalog-kernel/compiler/index";
+import { createCatalogReleaseDigestValidator, freezeCatalogJson, validateIdentityAppendDigest } from "../../catalog-kernel/compiler/index";
 import type {
   CatalogReleaseBundle,
   CatalogReleaseDefinitionDocument,
@@ -31,6 +31,7 @@ import type {
   JsonObject,
   PersistArtifactInput,
   PersistCandidateInput,
+  PreviewSnapshot,
 } from "../persistence/types";
 import {
   CATALOG_CAPABILITY_ALLOW_LIST,
@@ -70,7 +71,8 @@ import type {
   SupportedDefinitionContent,
 } from "./types";
 import { preparedPredecessorBundle } from "./preparedPredecessor";
-import { subjectIdentityProvenance, subjectRulesProvenance } from "../../catalog-kernel/compiler/subjectIdentity";
+import { subjectIdentityProvenance } from "../../catalog-kernel/compiler/subjectIdentity";
+import { publicationHistoryCapabilities } from "./identitySnapshot";
 import { applySubjectIdentityChange } from "./subjectIdentity";
 import { applySubjectRulesChange } from "./subjectRules";
 
@@ -177,6 +179,7 @@ const canonicalPublishedAt = (value: string): boolean => {
 
 const loadPredecessor = async (
   input: BuildCompleteSuccessorInput,
+  validateDigest: ReturnType<typeof createCatalogReleaseDigestValidator>,
 ): Promise<
   | {
       readonly ok: true;
@@ -196,7 +199,7 @@ const loadPredecessor = async (
     bundle = parsed.bundle;
   }
   // Reusing JSON never skips source, lineage or aggregate-digest validation.
-  const validated = validateCatalogReleaseDigest(bundle);
+  const validated = validateDigest(bundle);
   if (!validated.ok) {
     return { ok: false, error: { kind: "predecessor-incomplete", cause: validated.error } };
   }
@@ -252,7 +255,7 @@ const readPredecessorBytes = async (
       error: { kind: "predecessor-incomplete", cause: { detail: parsed.detail } },
     };
   }
-  return { ok: true, bundle: parsed.bundle };
+  return { ok: true, bundle: freezeCatalogJson(parsed.bundle) };
 };
 
 const definitionDocuments = (
@@ -821,6 +824,22 @@ export const persistSuccessorBuild = async (
 export async function buildCompleteSuccessor(
   input: BuildCompleteSuccessorInput,
 ): Promise<BuildCompleteSuccessorResult> {
+  return buildSuccessor(input);
+}
+
+export async function buildIdentitySuccessorFromSnapshot(input: BuildCompleteSuccessorInput, snapshot: PreviewSnapshot): Promise<BuildCompleteSuccessorResult> {
+  const [change] = input.changeSet;
+  if (input.changeSet.length !== 1 || (change.op !== "rename-subject" && change.op !== "set-subject-alias") ||
+      snapshot.target.manifest.release.digest !== input.predecessorArtifact.digest || input.persist) {
+    return fail({ kind: "invalid-input", reason: "invalid identity snapshot build" });
+  }
+  return buildSuccessor(input, snapshot);
+}
+
+async function buildSuccessor(
+  input: BuildCompleteSuccessorInput,
+  snapshot?: PreviewSnapshot,
+): Promise<BuildCompleteSuccessorResult> {
   const productPath = input.productPath ?? "m1";
   if (productPath !== "m1" && productPath !== "m2-core") {
     return fail({ kind: "invalid-input", reason: "productPath must be m1 or m2-core" });
@@ -831,7 +850,10 @@ export async function buildCompleteSuccessor(
       reason: "persist requires a session-bound Database.transaction()",
     });
   }
-  const predecessor = await loadPredecessor(input);
+  const validateDigest = createCatalogReleaseDigestValidator();
+  const predecessor = snapshot ? { ok: true as const, digest: input.predecessorArtifact.digest,
+    bundle: { schemaVersion: "1.0.0" as const, targetReleaseId: snapshot.target.manifest.release.id, releases: [snapshot.target] } }
+    : await loadPredecessor(input, validateDigest);
   if (!predecessor.ok) return fail(predecessor.error);
 
   const predecessorTarget = targetReleaseOf(predecessor.bundle);
@@ -1217,9 +1239,9 @@ export async function buildCompleteSuccessor(
   const bundle: CatalogReleaseBundle = {
     schemaVersion: "1.0.0",
     targetReleaseId: successor.manifest.release.id,
-    releases: [...predecessor.bundle.releases, successor],
+    releases: snapshot ? [successor] : [...predecessor.bundle.releases, successor],
   };
-  const validated = validateCatalogReleaseDigest(bundle);
+  const validated = snapshot ? validateIdentityAppendDigest(snapshot.target, successor) : validateDigest(bundle);
   if (!validated.ok) {
     return fail({
       kind: "invalid-release",
@@ -1246,9 +1268,8 @@ export async function buildCompleteSuccessor(
     }
   }
 
-  const contract = capabilityContract(input.changeSet, successor.documents,
-    bundle.releases.some(release => release.documents.some(subjectRulesProvenance)),
-    bundle.releases.some(release => definitionDocuments(release).some(document => document.content.revision.dtsExamples !== undefined)));
+  const history = snapshot ?? publicationHistoryCapabilities(bundle);
+  const contract = capabilityContract(input.changeSet, successor.documents, history.hasSubjectRules, history.hasDtsExamples);
   const impact = { ...buildImpact(predecessorTarget, successor, requestedClasses), capabilityContractRevision: contract.revision };
   const impactReportDigest = canonicalDigest(impact as unknown as ContractJsonValue);
   const artifactBytes = encodeBundleBytes(bundle);
@@ -1279,6 +1300,7 @@ export async function buildCompleteSuccessor(
   });
   const proposal = input.proposal ?? null;
   const artifact = {
+    ...(snapshot ? { storageFormat: "successor-v1" as const } : {}),
     id: frozen.artifactId,
     artifactDigest: validated.value.aggregateDigest,
     artifactBytes,

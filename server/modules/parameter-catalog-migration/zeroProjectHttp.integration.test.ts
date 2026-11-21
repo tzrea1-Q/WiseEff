@@ -219,7 +219,7 @@ describe("#1309 zero-project identity correction through the real API role", () 
     }
   }, 120_000);
 
-  it("publishes, redirects and withdraws deprecation with a distinct reviewer while preserving pinned project values", async () => {
+  it("publishes, redirects and withdraws deprecation while preserving pinned project values", async () => {
     const source = await unused("lifecycle_source");
     const target = await unused("lifecycle_target");
     const terminal = await unused("lifecycle_terminal");
@@ -234,27 +234,21 @@ describe("#1309 zero-project identity correction through the real API role", () 
         body: JSON.stringify({ changeSet: [{ op: "revise-definition", definitionId, class: "semantic", successorDefinitionId,
           reason: "Publish issue 1579 lifecycle revision" }] }) },
     );
-    const applyLifecycle = async (definitionId: string, successorId: string | null, checkSeparation = false) => {
+    const applyLifecycle = async (definitionId: string, successorId: string | null, publisherId = ADMIN) => {
       const candidate = await lifecycleCandidate(definitionId, successorId);
       expect(candidate.status, candidate.bodyText).toBe(201);
       expect(candidate.body).toMatchObject({ item: { riskClass: "high", impactSummary: {
         definitionSuccessorChange: { definitionId, successorDefinitionId: successorId },
       } } });
-      const publish = async (actor: string) => requestJson(app(actor), `/api/v2/catalog/publication-candidates/${candidate.body.item.id}/publish`, {
+      const queued = await requestJson(app(publisherId), `/api/v2/catalog/publication-candidates/${candidate.body.item.id}/publish`, {
         method: "POST", headers: { authorization: "Bearer administrator", "X-WiseEff-Catalog-Release": (await pin()).id },
         body: JSON.stringify({ idempotencyKey: randomUUID() }) });
-      if (checkSeparation) {
-        const refused = await publish(ADMIN);
-        expect(refused.status, refused.bodyText).toBe(403);
-        expect(refused.body).toMatchObject({ error: { details: { reason: "publication-self-approval-forbidden" } } });
-      }
-      const queued = await publish(REVIEWER);
       expect(queued.status, queued.bodyText).toBe(201);
       expect(await activate()).toBe("claimed");
     };
     await harness.db.query("delete from user_role_bindings where id='zero-admin'");
     try {
-      await applyLifecycle(source.definitionId, target.definitionId, true);
+      await applyLifecycle(source.definitionId, target.definitionId);
       const first = await read(definitionPath);
       expect(first.body).toMatchObject({ item: { lifecycle: "deprecated", currentRevision: { successorDefinitionId: target.definitionId },
         recommendedDefinition: { id: target.definitionId, propertyKey: "lifecycle_target" } } });
@@ -268,7 +262,7 @@ describe("#1309 zero-project identity correction through the real API role", () 
         effectiveValue: { groups: [[{ value: "5" }]] } }] });
       const cycle = await lifecycleCandidate(target.definitionId, source.definitionId);
       expect(cycle.body).toMatchObject({ error: { details: { field: "definition-successor-cycle" } } });
-      await applyLifecycle(target.definitionId, terminal.definitionId);
+      await applyLifecycle(target.definitionId, terminal.definitionId, REVIEWER);
       expect((await read(definitionPath)).body).toMatchObject({ item: { recommendedDefinition: { id: terminal.definitionId } } });
       await applyLifecycle(source.definitionId, terminal.definitionId);
       expect((await read(definitionPath)).body).toMatchObject({ item: { currentRevision: { successorDefinitionId: terminal.definitionId } } });
@@ -481,7 +475,7 @@ describe("#1309 zero-project identity correction through the real API role", () 
     } finally { await harness.db.query("insert into user_role_bindings(id,user_id,organization_id,role_id) values ('zero-admin',$1,$2,'admin')", [ADMIN, ORG]); }
   }, 120_000);
 
-  it("finalizes a selected-project replacement after the shared Candidate is published by its independent reviewer", async () => {
+  it("finalizes a selected-project replacement after its platform author publishes with the legacy flag off", async () => {
     const definition = await unused("independent_project_source");
     const targetOrganization = "org-independent-project";
     await reference(definition, targetOrganization, "independent-project", "independent_project_target");
@@ -491,23 +485,20 @@ describe("#1309 zero-project identity correction through the real API role", () 
       await enablePublicationPolicy(client as unknown as import("pg").Client, { publicationEnabled: true, lowRiskSingleActorPublish: false });
       const preview = await post("/preview", {
         oldDefinitionId: definition.definitionId, newSubjectId: PREDECESSOR_SUBJECT_ID,
-        newPropertyKey: "independent_project_target", ...integerContent("Independently reviewed", 0),
+        newPropertyKey: "independent_project_target", ...integerContent("Selected project replacement", 0),
         projectIds: ["zero-project-independent-project"], reason: "Review before migrating one project",
       }, undefined, targetOrganization);
       expect(preview.status, preview.bodyText).toBe(201);
       const frozen = catalogReplacementPreviewResponseSchema.parse(preview.body).item;
       expect(frozen.publicationCandidateId).toBeTruthy();
       const command = { previewId: frozen.previewId, previewFingerprint: frozen.previewFingerprint, idempotencyKey: "independent-project-execute" };
-      const refused = await post("", command, frozen.previewFingerprint, targetOrganization);
-      expect(refused.status, refused.bodyText).toBe(403);
-      expect(refused.body).toMatchObject({ error: { details: { reason: "publication-self-approval-forbidden" } } });
       const candidatePath = `/api/v2/catalog/publication-candidates/${frozen.publicationCandidateId}`;
-      const reviewed = await requestJson(app(REVIEWER), candidatePath, { headers: { authorization: "Bearer reviewer" } });
-      expect(reviewed.body).toMatchObject({ item: { impactSummary: { definitionReplacement: {
+      const candidate = await requestJson(app(), candidatePath, { headers: { authorization: "Bearer administrator" } });
+      expect(candidate.body).toMatchObject({ item: { impactSummary: { definitionReplacement: {
         definitionId: definition.definitionId, propertyKey: "independent_project_target",
       } } } });
-      const published = await requestJson(app(REVIEWER), `${candidatePath}/publish`, {
-        method: "POST", headers: { authorization: "Bearer reviewer", "X-WiseEff-Catalog-Release": (await pin()).id },
+      const published = await requestJson(app(), `${candidatePath}/publish`, {
+        method: "POST", headers: { authorization: "Bearer administrator", "X-WiseEff-Catalog-Release": (await pin()).id },
         body: JSON.stringify({ idempotencyKey: "independent-project-publish" }),
       });
       expect(published.status, published.bodyText).toBe(201);

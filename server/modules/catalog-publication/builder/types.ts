@@ -395,6 +395,7 @@ export type CatalogImpactReport = {
 };
 
 export type BuiltReleaseArtifact = {
+  readonly storageFormat?: "successor-v1";
   readonly id: CatalogArtifactId;
   readonly artifactDigest: string;
   readonly artifactBytes: Uint8Array;

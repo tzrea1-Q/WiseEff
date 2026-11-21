@@ -59,7 +59,7 @@ it("hands newly published subjects and placement hints to batch registration", a
     items: [{ id: "csub_new_1", kind: "driver", canonicalName: "acme,new", availableModuleIds: ["charging"] }],
     modules: [{ id: "power", name: "Power", parentId: null, kind: "business", occupied: false },
       { id: "charging", name: "Charging", parentId: "power", kind: "business", occupied: false }] });
-  render(<CatalogOrganizationSurface {...ports} runtimeMode="api" actor="org-admin" sessionPermissions={["catalog:author", "catalog:publish", "catalog:register"]}
+  render(<CatalogOrganizationSurface {...ports} runtimeMode="api" actor="org-admin" sessionPermissions={["catalog:author", "catalog:review-high-risk", "catalog:register"]}
     search="" organizationId={CATALOG_ORGANIZATION_ID} currentPersonId="admin" onAnchorChange={vi.fn()} />);
   const user = userEvent.setup();
   await user.click(await screen.findByRole("button", { name: "批量导入定义" }));

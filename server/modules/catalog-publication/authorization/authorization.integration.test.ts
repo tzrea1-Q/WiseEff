@@ -124,7 +124,7 @@ describe("catalog publication authorization", () => {
     }
   });
 
-  it("allows low-risk self-approve only with explicit policy and a real catalog:publish principal", async () => {
+  it("records a low-risk author with catalog:publish as the approver", async () => {
     const token = uniqueToken("lowok");
     const policyRevision = await enablePublicationPolicy(client, {
       publicationEnabled: true,
@@ -152,7 +152,7 @@ describe("catalog publication authorization", () => {
     expect(authorized.value).not.toHaveProperty("approved");
   });
 
-  it("refuses low-risk self-approve when the single-actor policy is off", async () => {
+  it("allows an authorized low-risk author to approve when the legacy flag is off", async () => {
     const token = uniqueToken("lowoff");
     const policyRevision = await enablePublicationPolicy(client, {
       publicationEnabled: true,
@@ -170,9 +170,9 @@ describe("catalog publication authorization", () => {
         policyRevision,
       });
     });
-    expect(result).toEqual({
-      ok: false,
-      error: { reason: "publication-self-approval-forbidden" },
+    expect(result).toMatchObject({
+      ok: true,
+      value: { riskClass: "low", authorization: { actorPrincipalId: PUBLISHER } },
     });
   });
 
@@ -218,10 +218,10 @@ describe("catalog publication authorization", () => {
     }
   });
 
-  it("refuses high-risk self-approve and worker reviewers", async () => {
+  it("lets an author with high-risk review permission approve and refuses publish-only and system actors", async () => {
     const policyRevision = await enablePublicationPolicy(client, {
       publicationEnabled: true,
-      lowRiskSingleActorPublish: true,
+      lowRiskSingleActorPublish: false,
     });
 
     const selfHigh = await asCoordinator(client, async () => {
@@ -236,12 +236,12 @@ describe("catalog publication authorization", () => {
         policyRevision,
       });
     });
-    expect(selfHigh).toEqual({
-      ok: false,
-      error: { reason: "publication-self-approval-forbidden" },
+    expect(selfHigh).toMatchObject({
+      ok: true,
+      value: { riskClass: "high", authorization: { actorPrincipalId: REVIEWER } },
     });
 
-    const adminSelfHigh = await asCoordinator(client, async () => {
+    const publishOnly = await asCoordinator(client, async () => {
       const candidate = await persistHandBuiltCandidate(client, {
         token: uniqueToken("highad"),
         authorPrincipalId: PUBLISHER,
@@ -253,7 +253,7 @@ describe("catalog publication authorization", () => {
         policyRevision,
       });
     });
-    expect(adminSelfHigh.ok).toBe(true);
+    expect(publishOnly).toEqual({ ok: false, error: { reason: "publication-capability-missing" } });
 
     const worker = await asCoordinator(client, async () => {
       const candidate = await persistHandBuiltCandidate(client, {

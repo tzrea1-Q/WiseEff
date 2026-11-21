@@ -9,6 +9,7 @@ import {
   CATALOG_ORGANIZATION_ID,
   CATALOG_RELEASE_ID,
   CATALOG_SUBJECT_ID,
+  catalogPublicationCandidate,
   readyCatalogDocument,
   activeDefinition,
   catalogPublicationJob,
@@ -41,6 +42,7 @@ function renderDialog(
     onBatchRegistration?: (subjectId: string) => void;
   } = {}
 ) {
+  const permissions = options.permissions ?? ["catalog:author", "catalog:publish", "catalog:review-high-risk"];
   const ports = createMockCatalogPorts({
     publicationOutcome: options.publicationOutcome ?? "queued"
   });
@@ -66,7 +68,7 @@ function renderDialog(
       intent={options.intent}
       initialOwnerSubjectId={options.initialOwnerSubjectId}
       actor={options.actor ?? "user"}
-      sessionPermissions={options.permissions ?? ["catalog:author", "catalog:publish"]}
+      sessionPermissions={permissions}
       domainState={ready}
       catalog={ports.catalog}
       governance={ports.governance}
@@ -80,9 +82,9 @@ function renderDialog(
         frozen: false,
         adopted: true,
         currentReleaseId: CATALOG_RELEASE_ID,
-        authoringAllowed: (options.permissions ?? ["catalog:author", "catalog:publish"]).includes("catalog:author"),
-        publishingAllowed: (options.permissions ?? ["catalog:author", "catalog:publish"]).includes("catalog:publish"),
-        reviewHighRiskAllowed: false,
+        authoringAllowed: permissions.includes("catalog:author"),
+        publishingAllowed: permissions.includes("catalog:publish"),
+        reviewHighRiskAllowed: permissions.includes("catalog:review-high-risk"),
         blockers: []
       }}
       createIdempotencyKey={options.createIdempotencyKey ?? (() => "pub-key")}
@@ -486,7 +488,7 @@ describe("PublicationDialog", () => {
       }),
       { catalogReleaseId: CATALOG_RELEASE_ID }
     );
-    expect(await screen.findByText("组织管理员可核对当前影响后确认发布。")).toBeVisible();
+    expect(await screen.findByText("低风险变更可由具备发布或高风险复核权限的人员确认。")).toBeVisible();
     expect(screen.getByLabelText("发布预览")).toHaveTextContent("新增定义");
   });
 
@@ -504,6 +506,22 @@ describe("PublicationDialog", () => {
     expect(await screen.findByText(/发布已入队/)).toBeVisible();
     await user.click(screen.getByRole("button", { name: "发布到目录" }));
     expect(publish).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    { permission: "catalog:publish", canConfirm: false },
+    { permission: "catalog:review-high-risk", canConfirm: true }
+  ])("controls high-risk confirmation with $permission", async ({ permission, canConfirm }) => {
+    const { createCandidate } = renderDialog({ permissions: ["catalog:author", permission] });
+    createCandidate.mockResolvedValueOnce({ item: { ...catalogPublicationCandidate, riskClass: "high" } });
+    const user = userEvent.setup();
+    await fillSupportedDefinition(user);
+    await user.click(screen.getByRole("button", { name: "预览发布" }));
+    await confirm("确认预览");
+    await screen.findByLabelText("发布预览");
+    const submit = screen.queryByRole("button", { name: "发布到目录" });
+    if (canConfirm) expect(submit).toBeVisible();
+    else expect(submit).not.toBeInTheDocument();
   });
 
   it("renders active-superseded as historical success", async () => {
@@ -612,7 +630,7 @@ describe("PublicationDialog", () => {
     const { ports } = renderDialog({
       intent: "create-subject",
       actor: "org-admin",
-      permissions: ["catalog:author", "catalog:publish"],
+      permissions: ["catalog:author", "catalog:publish", "catalog:review-high-risk"],
       publicationOutcome,
       onBatchRegistration
     });

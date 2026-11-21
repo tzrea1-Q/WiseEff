@@ -12,6 +12,13 @@ import type {
   PublicationPolicyRevision,
   Result,
 } from "../../parameter-catalog-contract/index";
+import type { CatalogReleaseNode } from "../../catalog-kernel/compiler/types";
+
+export type PreviewSnapshot = {
+  readonly target: CatalogReleaseNode;
+  readonly hasSubjectRules: boolean;
+  readonly hasDtsExamples: boolean;
+};
 
 export type ArtifactSourceKind =
   | "typed-changeset"
@@ -70,6 +77,9 @@ export type CatalogPublicationStoreError =
 export type CatalogPublicationStoreResult<T> = Result<T, CatalogPublicationStoreError>;
 
 export interface ReleaseArtifactRecord {
+  readonly storageFormat?: "successor-v1";
+  /** Checksum of the compact stored bytes when artifactBytes contains a reconstructed bundle. */
+  readonly storageBytesChecksum?: string;
   readonly id: CatalogArtifactId;
   readonly artifactDigest: string;
   readonly bytesChecksum: string;
@@ -84,6 +94,7 @@ export interface ReleaseArtifactRecord {
 }
 
 export interface PersistArtifactInput {
+  readonly storageFormat?: "successor-v1";
   readonly id: CatalogArtifactId;
   readonly artifactDigest: string;
   readonly artifactBytes: Uint8Array;

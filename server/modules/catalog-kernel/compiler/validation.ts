@@ -16,7 +16,7 @@ import type {
   CatalogReleaseDocument,
   CatalogReleaseNode,
 } from "./types";
-import { stableCatalogRules } from "./contractArtifacts";
+import { freezeCatalogJson, stableCatalogRules } from "./contractArtifacts";
 import {
   isCatalogReleaseBundle,
   isValidJsonSchema202012,
@@ -1364,6 +1364,7 @@ const retirementSemanticKind = (
 const validateRetirementLineage = (
   bundle: CatalogReleaseBundle,
   rules: StableCatalogRules["retirementRules"] = stableCatalogRules.retirementRules,
+  verifiedBaseId?: string,
 ): CatalogReleaseViolation[] => {
   const violations: CatalogReleaseViolation[] = [];
   const releasesById = new Map(
@@ -1371,6 +1372,7 @@ const validateRetirementLineage = (
   );
 
   for (const release of orderedReleaseNodes(bundle.releases)) {
+    if (release.manifest.release.id === verifiedBaseId) continue;
     const predecessorId = release.manifest.release.predecessor?.id;
     const predecessor = predecessorId
       ? releasesById.get(predecessorId)
@@ -1414,6 +1416,20 @@ const validateRetirementLineage = (
       const predecessorWasRetired =
         predecessorDocument.content.lifecycle === "retired" &&
         predecessorTombstone !== null;
+      // A reviewed conversion can pin a retirement release older than the
+      // current snapshot. Its proof carries forward when neither the tombstone
+      // nor the facts the retirement rule reads about its successor changed.
+      if (verifiedBaseId && predecessorWasRetired && predecessor &&
+        canonicalKey(tombstone as unknown as ContractJsonValue) === canonicalKey(predecessorTombstone as unknown as ContractJsonValue)) {
+        if (!tombstone.successorId) continue;
+        const successorOf = (node: CatalogReleaseNode) => node.documents.find(item =>
+          item.kind === document.kind && item.content.id === tombstone.successorId);
+        const before = successorOf(predecessor);
+        const after = successorOf(release);
+        if (before && after && before.kind !== "definition" && after.kind !== "definition" &&
+          retirementSemanticKind(before) === retirementSemanticKind(after) &&
+          before.content.lifecycle === after.content.lifecycle) continue;
+      }
       const expectedReleaseId = predecessorWasRetired
         ? predecessorTombstone.withdrawnByReleaseId
         : release.manifest.release.id;
@@ -1515,6 +1531,7 @@ const validateRetirementLineage = (
 const validateLineage = (
   bundle: CatalogReleaseBundle,
   rules: StableCatalogRules["lineageRules"] = stableCatalogRules.lineageRules,
+  verifiedBaseId?: string,
 ): CatalogReleaseViolation[] => {
   const violations: CatalogReleaseViolation[] = [];
   const releasesById = new Map<string, CatalogReleaseNode>();
@@ -1596,6 +1613,7 @@ const validateLineage = (
     visited.add(releaseId);
     active.add(releaseId);
 
+    if (releaseId === verifiedBaseId) break;
     const predecessorPin = current.manifest.release.predecessor;
     if (predecessorPin === null) break;
     const predecessor = releasesById.get(predecessorPin.id);
@@ -1660,14 +1678,32 @@ export interface PreparedCompilation {
   readonly validation: CompilerValidation;
 }
 
+// Only immutable JSON nodes can carry their release-local proof into a second
+// validation. Cross-release checks still see the entire authoritative chain.
+const frozenJson = (value: unknown): boolean => {
+  if (value === null || typeof value !== "object") return true;
+  if (!Object.isFrozen(value)) return false;
+  const prototype = Object.getPrototypeOf(value);
+  if (prototype !== Object.prototype && prototype !== Array.prototype && prototype !== null) return false;
+  return Object.values(Object.getOwnPropertyDescriptors(value)).every(
+    descriptor => "value" in descriptor && frozenJson(descriptor.value),
+  );
+};
+
+type PreparedNodes = WeakMap<CatalogReleaseNode, CatalogReleaseNode>;
+
 // Keep the source-derived documents from this validation pass. Re-deriving
 // them after validation duplicates every historical release's YAML work and
 // creates another object graph while the previous one is awaiting collection.
-export const prepareForCompilation = (
+const prepare = (
   bundle: CatalogReleaseBundle,
   rules: StableCatalogRules = stableCatalogRules,
+  verifiedNodes?: PreparedNodes,
+  verifiedBaseId?: string,
 ): PreparedCompilation => {
-  const releases = orderedReleaseNodes(bundle.releases).map((release) => ({
+  const originals = orderedReleaseNodes(bundle.releases);
+  const cached = originals.map(release => verifiedNodes?.get(release));
+  const releases = originals.map((release, index) => cached[index] ?? ({
     ...release,
     manifest: {
       ...release.manifest,
@@ -1690,7 +1726,7 @@ export const prepareForCompilation = (
   // Share one parse between syntax and authority validation. Keep their
   // diagnostics in the original order: inventory and syntax errors come first.
   const inspectedSources = new WeakMap<CatalogSource, SourceInspection>();
-  const sourceViolations = validateSources(releases, inspectedSources, rules.manifestRules);
+  const sourceViolations = validateSources(releases.filter((_, index) => !cached[index]), inspectedSources, rules.manifestRules);
   if (sourceViolations.length > 0) {
     return {
       bundle,
@@ -1702,7 +1738,8 @@ export const prepareForCompilation = (
     };
   }
 
-  const derivedReleases = releases.map((release) => {
+  const derivedReleases = releases.map((release, index) => {
+    if (cached[index]) return release;
     const derived = deriveSourceDocuments(release, inspectedSources);
     if (derived.failures.length > 0) {
       sourceViolations.push(
@@ -1753,12 +1790,20 @@ export const prepareForCompilation = (
     ...normalizedBundle,
     releases: derivedReleases,
   };
+  const contentViolations = validateCompileContent(derivedReleases.filter((_, index) => !cached[index]), rules);
+  if (verifiedNodes && contentViolations.length === 0) {
+    originals.forEach((original, index) => {
+      if (cached[index] || !frozenJson(original)) return;
+      const prepared = derivedReleases[index];
+      verifiedNodes.set(original, freezeCatalogJson(prepared));
+    });
+  }
   return {
     bundle: authoritativeBundle,
     validation: {
       source: [],
       compile: orderViolations([
-        ...validateCompileContent(derivedReleases, rules),
+        ...contentViolations,
         ...validateStableIdentityLineage(derivedReleases, rules.identityRules),
         ...validatePermanentSelectorOwnership(
           derivedReleases,
@@ -1766,13 +1811,27 @@ export const prepareForCompilation = (
         ),
       ]),
       lineage: orderViolations([
-        ...validateLineage(authoritativeBundle, rules.lineageRules),
+        ...validateLineage(authoritativeBundle, rules.lineageRules, verifiedBaseId),
         ...validateLineageContent(authoritativeBundle, rules),
-        ...validateRetirementLineage(authoritativeBundle, rules.retirementRules),
+        ...validateRetirementLineage(authoritativeBundle, rules.retirementRules, verifiedBaseId),
       ]),
     },
   };
 };
+
+export const prepareForCompilation = (
+  bundle: CatalogReleaseBundle,
+  rules: StableCatalogRules = stableCatalogRules,
+): PreparedCompilation => prepare(bundle, rules);
+
+export const createBuildPreparation = () => {
+  const verifiedNodes: PreparedNodes = new WeakMap();
+  return (bundle: CatalogReleaseBundle) => prepare(bundle, stableCatalogRules, verifiedNodes);
+};
+
+/** The publication preview caller has verified historical key ownership and pinned this exact base. */
+export const prepareIdentityAppend = (bundle: CatalogReleaseBundle, base: CatalogReleaseNode) =>
+  prepare(bundle, stableCatalogRules, new WeakMap([[base, base]]), base.manifest.release.id);
 
 export const validateForCompilation = (
   bundle: CatalogReleaseBundle,
