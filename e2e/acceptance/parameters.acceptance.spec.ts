@@ -169,15 +169,11 @@ test.describe("M5.4 manual flow B/C - parameter management browser acceptance", 
       disposablePageUrl(disposableRuntime, `/parameters?project=${projectId}`)
     );
 
-    // API mode mounts semantic topology workspace from ingested Config Set (not teaching fixtures).
+    // This disposable project starts without an ingested config set. Wait for
+    // the semantic empty state because the loading workbench also has a searchbox.
     const workspace = page.getByRole("region", { name: "DTS 参数工作台" });
-    await expect(workspace).toBeVisible({ timeout: 30_000 });
-    // Empty/loading until base+overlay ingest exists is acceptable; gpio_int coverage lives in
-    // parameter-topology.acceptance.spec.ts (PARAM-TOPOLOGY-*).
-    const gpioSearch = workspace.getByRole("searchbox", { name: "搜索 DTS 参数" });
-    if (await gpioSearch.isVisible().catch(() => false)) {
-      await gpioSearch.fill("gpio_int");
-    }
+    await expect(workspace.getByText("该项目尚无参数配置，请联系项目管理员导入 DTS 文件。"))
+      .toBeVisible({ timeout: 30_000 });
     await expect(page.getByRole("region", { name: "检索参数表" })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "导出 Excel" })).toHaveCount(0);
     await expect(page.getByText("推荐值", { exact: false })).toHaveCount(0);

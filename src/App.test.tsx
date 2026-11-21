@@ -1354,7 +1354,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     expect(authClient.getCurrentAuthContext).toHaveBeenCalledTimes(1);
   });
 
-  it("loads only the requested project's parameters after auth and reuses them when returning", async () => {
+  it("reuses project parameters within a scope and reloads the visible project after a runtime reset", async () => {
     const firstId = initialState.activeProjectId;
     const secondId = initialState.configDraft.projects.find((project) => project.id !== firstId)!.id;
     window.history.replaceState(null, "", `/parameters?project=${firstId}`);
@@ -1363,7 +1363,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     const parameterCatalogRepository = createTestAppPorts().parameterCatalogRepository;
     const listParameterConfigSets = createTestConfigSetList();
 
-    render(
+    const app = (
       <App
         authClient={{
           getCurrentAuthContext: async () => ({
@@ -1388,6 +1388,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
         runtimeMode="api"
       />
     );
+    const { rerender } = render(app);
 
     expect(await screen.findAllByText("gpio_int")).not.toHaveLength(0);
     expect(screen.getByLabelText("DTS 参数工作台")).toBeInTheDocument();
@@ -1407,6 +1408,15 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     await changeSelectValue(screen.getByRole("combobox", { name: "项目" }), firstId);
     expect(vi.mocked(parameterCatalogRepository.listProtectedProjectBindings!).mock.calls).toEqual([[firstId], [secondId]]);
     expect(vi.mocked(parameterRepository.listDrafts).mock.calls).toEqual([[firstId], [secondId]]);
+
+    const replacementRepository = createTestParameterRepository();
+    const replacementCatalog = createTestAppPorts().parameterCatalogRepository;
+    rerender(<App {...app.props} parameterRepository={replacementRepository} parameterCatalogRepository={replacementCatalog} />);
+
+    expect(await screen.findAllByText("gpio_int")).not.toHaveLength(0);
+    expect(replacementRepository.listProjects).toHaveBeenCalledTimes(1);
+    expect(replacementCatalog.listProtectedProjectBindings).toHaveBeenCalledExactlyOnceWith(firstId);
+    expect(replacementRepository.listDrafts).toHaveBeenCalledExactlyOnceWith(firstId);
   });
 
   it("hydrates debugging runtime data from the API gateway after auth", async () => {
