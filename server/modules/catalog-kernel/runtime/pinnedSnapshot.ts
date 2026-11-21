@@ -9,7 +9,12 @@ import {
 } from "../../parameter-catalog-contract/index";
 import type { PinnedCatalogSnapshot } from "../interface";
 import { loadSnapshotBody, locatorPin, readReleaseHeader } from "./currentSnapshot";
-import { catalogSnapshotCachePool, withCatalogReadTransaction, type CatalogReadSource } from "./readTransaction";
+import {
+  catalogSnapshotCachePool,
+  CatalogSnapshotReadFailure,
+  withCatalogReadTransaction,
+  type CatalogReadSource,
+} from "./readTransaction";
 
 export const resolveCatalogReleasePin = async (
   pool: CatalogReadSource,
@@ -41,35 +46,54 @@ export const resolveCatalogReleasePin = async (
     };
   });
 
+const ownerEpochChanged: CatalogKernelError = {
+  kind: "storage-failure",
+  operation: "loadPinnedCatalog",
+  retryable: true,
+};
+
 export const loadPinnedCatalogSnapshot = async (
   pool: CatalogReadSource,
   pin: CatalogReleasePin,
   { fresh = false } = {},
-): Promise<Result<PinnedCatalogSnapshot, CatalogKernelError>> =>
-  withCatalogReadTransaction(pool, "loadPinnedCatalog", async (client) => {
-    const cachePool = fresh ? null : catalogSnapshotCachePool(pool);
-    const row = await readReleaseHeader(client, pin.id, { cache: cachePool !== null });
-    if (!row) {
-      return {
-        ok: false,
-        error: { kind: "historical-release-unavailable", pin },
-      };
-    }
-    const actualDigest = CatalogReleaseDigest(row.release_digest);
-    if (row.id !== pin.id || actualDigest !== pin.digest) {
-      return {
-        ok: false,
-        error: {
+): Promise<Result<PinnedCatalogSnapshot, CatalogKernelError>> => {
+  const cachePool = fresh ? null : catalogSnapshotCachePool(pool);
+  const load = () => withCatalogReadTransaction<PinnedCatalogSnapshot>(pool, "loadPinnedCatalog", async (client, commit) => {
+    const readPinnedHeader = async (options: { cache?: boolean; checkOwnerEpoch: boolean }) => {
+      const row = await readReleaseHeader(client, pin.id, options);
+      if (!row) {
+        throw new CatalogSnapshotReadFailure({ kind: "historical-release-unavailable", pin });
+      }
+      const actual = CatalogReleaseDigest(row.release_digest);
+      if (row.id !== pin.id || actual !== pin.digest) {
+        throw new CatalogSnapshotReadFailure({
           kind: "digest-conflict",
           releaseId: pin.id,
           expected: pin.digest,
-          actual: actualDigest,
-        },
-      };
-    }
-    const snapshot = await loadSnapshotBody(cachePool, client, row, "pinned", pin);
+          actual,
+        });
+      }
+      return row;
+    };
+    const row = await readPinnedHeader({
+      cache: cachePool !== null,
+      checkOwnerEpoch: cachePool !== null || commit !== undefined,
+    });
+    const validation = commit && {
+      commit,
+      async recheck() {
+        const after = await readPinnedHeader({ checkOwnerEpoch: row.subject_owner_epoch !== null });
+        if (after.subject_owner_epoch !== row.subject_owner_epoch) {
+          throw new CatalogSnapshotReadFailure(ownerEpochChanged);
+        }
+      },
+    };
+    const snapshot = await loadSnapshotBody(cachePool, client, row, "pinned", pin, validation);
     return { ok: true, value: snapshot };
   });
+  const result = await load();
+  return !result.ok && result.error === ownerEpochChanged ? load() : result;
+};
 
 export const loadPinnedCatalogById = async (
   pool: CatalogReadSource,

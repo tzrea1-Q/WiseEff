@@ -1167,6 +1167,11 @@ type SnapshotCache = {
 const snapshotCaches = new WeakMap<pg.Pool, SnapshotCache>();
 const maxCachedSnapshots = 4;
 
+type SnapshotValidation = {
+  commit: () => Promise<void>;
+  recheck: () => Promise<void>;
+};
+
 function snapshotCache(pool: pg.Pool): SnapshotCache {
   let cache = snapshotCaches.get(pool);
   if (!cache) {
@@ -1182,7 +1187,7 @@ export async function loadSnapshotBody(
   row: ReleaseHeader,
   scope: "current",
   expected: CatalogReleasePin,
-  validate?: () => Promise<void>,
+  validation?: SnapshotValidation,
 ): Promise<CurrentCatalogSnapshot>;
 export async function loadSnapshotBody(
   pool: pg.Pool | null,
@@ -1190,6 +1195,7 @@ export async function loadSnapshotBody(
   row: ReleaseHeader,
   scope: "pinned",
   expected: CatalogReleasePin,
+  validation?: SnapshotValidation,
 ): Promise<PinnedCatalogSnapshot>;
 export async function loadSnapshotBody(
   pool: pg.Pool | null,
@@ -1197,12 +1203,15 @@ export async function loadSnapshotBody(
   row: ReleaseHeader,
   scope: "current" | "pinned",
   expected: CatalogReleasePin,
-  validate?: () => Promise<void>,
+  validation?: SnapshotValidation,
 ): Promise<LoadedSnapshot> {
   const metadata = projectionMetadata(row, scope, expected);
   const build = async (): Promise<LoadedSnapshot> => {
     const snapshot = await buildProjection(client, metadata, scope, expected);
-    await validate?.();
+    if (validation) {
+      await validation.commit();
+      await validation.recheck();
+    }
     return scope === "current"
       ? Object.freeze(Object.assign(snapshot, {
           snapshotKind: scope,
@@ -1226,11 +1235,16 @@ export async function loadSnapshotBody(
     ready.set(key, cached);
     return cached;
   }
-  // Caller-owned current reads retain their transaction view. A shared cold
+  // Caller-owned reads retain their transaction view. A shared cold
   // build must be able to commit and recheck before publishing its snapshot.
-  if (scope === "current" && !validate) return build();
+  if (!validation) return build();
   const inFlight = pending.get(key);
-  if (inFlight) return inFlight;
+  if (inFlight) {
+    // The builder rechecks the pin and epoch for this exact key. Release our
+    // locks first so queued DDL cannot block that post-commit recheck.
+    await validation.commit();
+    return inFlight;
+  }
 
   const projection = build();
   pending.set(key, projection);
@@ -1285,22 +1299,22 @@ export const loadCurrentCatalogSnapshot = async (
         error: { kind: "release-mismatch", expected, actual: captured },
       };
     }
-    const validate = commit && (async () => {
-      // Use the same connection after its snapshot transaction ends so this
-      // observes committed changes and works even with a single-client pool.
-      await commit();
-      const after = await readReleaseHeader(client, undefined, {
-        checkOwnerEpoch: row.subject_owner_epoch !== null,
-      });
-      const actual = after?.id ? releaseIdentity(after) : null;
-      if (!actual || actual.id !== expected.id || actual.digest !== expected.digest) {
-        throw new CatalogSnapshotReadFailure({ kind: "release-mismatch", expected, actual });
-      }
-      if (after?.subject_owner_epoch !== row.subject_owner_epoch) {
-        throw new CatalogSnapshotReadFailure(ownerEpochChanged);
-      }
-    });
-    const snapshot = await loadSnapshotBody(cachePool, client, row, "current", expected, validate);
+    const validation = commit && {
+      commit,
+      async recheck() {
+        const after = await readReleaseHeader(client, undefined, {
+          checkOwnerEpoch: row.subject_owner_epoch !== null,
+        });
+        const actual = after?.id ? releaseIdentity(after) : null;
+        if (!actual || actual.id !== expected.id || actual.digest !== expected.digest) {
+          throw new CatalogSnapshotReadFailure({ kind: "release-mismatch", expected, actual });
+        }
+        if (after?.subject_owner_epoch !== row.subject_owner_epoch) {
+          throw new CatalogSnapshotReadFailure(ownerEpochChanged);
+        }
+      },
+    };
+    const snapshot = await loadSnapshotBody(cachePool, client, row, "current", expected, validation);
     return { ok: true, value: snapshot };
   });
   const result = await load();

@@ -1,5 +1,5 @@
 import pg from "pg";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import {
   CatalogPageLimit,
@@ -19,21 +19,31 @@ import { catalogReadTransaction } from "./readTransaction";
 
 const page = { limit: CatalogPageLimit(100), after: { kind: "absent" } } as const;
 
-const queryLog = (pool: pg.Pool, beforeProjection?: () => Promise<void>): string[] => {
+const queryLog = (
+  pool: pg.Pool,
+  beforeProjection?: () => Promise<void>,
+  afterHeader?: () => Promise<void>,
+): string[] => {
   const queries: string[] = [];
   pool.on("connect", (client) => {
     const query = client.query.bind(client);
     client.query = (async (sql: string, values?: unknown[]) => {
       queries.push(sql);
       if (sql.includes("with recursive lineage")) await beforeProjection?.();
-      return query(sql, values);
+      const result = await query(sql, values);
+      if (sql.includes("as pointer_id")) await afterHeader?.();
+      return result;
     }) as typeof client.query;
   });
   return queries;
 };
 
-const createCacheReader = (pool: pg.Pool, beforeProjection?: () => Promise<void>) => {
-  const queries = queryLog(pool, beforeProjection);
+const createCacheReader = (
+  pool: pg.Pool,
+  beforeProjection?: () => Promise<void>,
+  afterHeader?: () => Promise<void>,
+) => {
+  const queries = queryLog(pool, beforeProjection, afterHeader);
   const projectionReads = () => queries.filter((sql) => sql.includes("from parameter_catalog.catalog_release_definition_heads"));
   const headerReads = () => queries.filter((sql) => sql.includes("as pointer_id"));
   return { queries, projectionReads, headerReads, kernel: createCatalogKernel(pool) };
@@ -227,6 +237,62 @@ describe("current catalog snapshot", () => {
     }
   });
 
+  it("lets queued DDL finish while another current reader waits for the cold build", async () => {
+    const reader = new pg.Pool({
+      connectionString: database.url, max: 2, options: "-c lock_timeout=2s -c statement_timeout=5s",
+    });
+    const ddl = new pg.Client({ connectionString: database.url, options: "-c statement_timeout=5s" });
+    await ddl.connect();
+    try {
+      const session = await ddl.query<{ pid: number }>("select pg_backend_pid() as pid");
+      const pid = session.rows[0]?.pid;
+      let building = false;
+      let resumeBuild = () => {};
+      const paused = new Promise<void>((resolve) => { resumeBuild = resolve; });
+      let headers = 0;
+      let alteration: Promise<PromiseSettledResult<pg.QueryResult>[]> | undefined;
+      const { kernel, projectionReads } = createCacheReader(reader, async () => {
+        building = true;
+        await paused;
+      }, async () => {
+        if (++headers !== 2) return;
+        // Queue ACCESS EXCLUSIVE after both transactions have read the header.
+        alteration = Promise.allSettled([ddl.query(
+          "alter table parameter_catalog.catalog_state alter column subject_owner_epoch set not null",
+        )]);
+        try {
+          await vi.waitFor(async () => {
+            const queued = await pool.query(
+              `select 1 from pg_locks
+                where pid = $1 and relation = 'parameter_catalog.catalog_state'::regclass
+                  and mode = 'AccessExclusiveLock' and not granted`,
+              [pid],
+            );
+            expect(queued.rowCount).toBe(1);
+          }, { timeout: 2_000 });
+        } finally {
+          resumeBuild();
+        }
+      });
+      const first = kernel.loadCurrentCatalog(pins.current);
+      try {
+        await vi.waitFor(() => expect(building).toBe(true), { timeout: 2_000 });
+        const [built, waiting] = await Promise.all([first, kernel.loadCurrentCatalog(pins.current)]);
+        expect(await alteration).toMatchObject([{ status: "fulfilled" }]);
+        expect([built, waiting]).toMatchObject([{ ok: true }, { ok: true }]);
+        if (built.ok && waiting.ok) expect(waiting.value).toBe(built.value);
+        expect(projectionReads()).toHaveLength(1);
+      } finally {
+        resumeBuild();
+        await first;
+        await alteration;
+      }
+    } finally {
+      await reader.end();
+      await ddl.end();
+    }
+  });
+
   it("selects the new cache key after pointer, fingerprint, and owner-epoch changes", async () => {
     const reader = new pg.Pool({ connectionString: database.url });
     const { kernel, projectionReads } = createCacheReader(reader);
@@ -287,13 +353,15 @@ describe("current catalog snapshot", () => {
     }
   });
 
-  it("rejects a cold snapshot if the current digest is rewritten during the build", async () => {
+  it.each(["current", "pinned"] as const)("rejects a cold %s snapshot if its digest is rewritten during the build", async (scope) => {
     const reader = new pg.Pool({ connectionString: database.url, max: 1 });
     const editor = await pool.connect();
-    const definitionId = ParameterDefinitionId("pdef_acme_power_iin_min");
-    const rewritten = { ...pins.current, digest: CatalogReleaseDigest(`sha256:${"e".repeat(64)}`) };
+    const pin = scope === "current" ? pins.current : pins.previous;
+    const property = scope === "current" ? "iin_min" : "iin_max";
+    const definitionId = ParameterDefinitionId(`pdef_acme_power_${property}`);
+    const rewritten = { ...pin, digest: CatalogReleaseDigest(`sha256:${"e".repeat(64)}`) };
     const updateDigest = (digest: CatalogReleaseDigest) => editor.query(
-      "update parameter_catalog.catalog_releases set release_digest = $2 where id = $1", [pins.current.id, digest],
+      "update parameter_catalog.catalog_releases set release_digest = $2 where id = $1", [pin.id, digest],
     );
     let rewrite = true;
     const { kernel, projectionReads } = createCacheReader(reader, async () => {
@@ -304,21 +372,21 @@ describe("current catalog snapshot", () => {
       await updateDigest(rewritten.digest);
       await editor.query(
         "delete from parameter_catalog.catalog_release_definition_heads where release_id = $1 and definition_id = $2",
-        [pins.current.id, definitionId],
+        [pin.id, definitionId],
       );
       await editor.query("commit");
     });
     try {
-      await expect(kernel.loadCurrentCatalog(pins.current)).resolves.toMatchObject({
-        ok: false, error: { kind: "release-mismatch", actual: rewritten },
-      });
-      const loaded = await kernel.loadCurrentCatalog(rewritten);
+      const load = scope === "current" ? kernel.loadCurrentCatalog : kernel.loadPinnedCatalog;
+      const error = scope === "current"
+        ? { kind: "release-mismatch", actual: rewritten }
+        : { kind: "digest-conflict", actual: rewritten.digest, expected: pin.digest, releaseId: pin.id };
+      await expect(load(pin)).resolves.toMatchObject({ ok: false, error });
+      const loaded = await load(rewritten);
       if (!loaded.ok) throw new Error(`expected the rewritten snapshot: ${loaded.error.kind}`);
       expect(loaded.value.getDefinitionById(definitionId).status).toBe("unknown");
-      await expect(kernel.loadCurrentCatalog(pins.current)).resolves.toMatchObject({
-        ok: false, error: { kind: "release-mismatch", actual: rewritten },
-      });
-      const warm = await kernel.loadCurrentCatalog(rewritten);
+      await expect(load(pin)).resolves.toMatchObject({ ok: false, error });
+      const warm = await load(rewritten);
       expect(warm.ok && warm.value).toBe(loaded.value);
       expect(projectionReads()).toHaveLength(2);
     } finally {
@@ -326,11 +394,11 @@ describe("current catalog snapshot", () => {
       await editor.query("rollback");
       await editor.query("begin");
       await editor.query("set local session_replication_role = replica");
-      await updateDigest(pins.current.digest);
+      await updateDigest(pin.digest);
       await editor.query(
         `insert into parameter_catalog.catalog_release_definition_heads (release_id, definition_id, revision_id)
-         values ($1, $2, 'drev_acme_power_iin_min_1') on conflict do nothing`,
-        [pins.current.id, definitionId],
+         values ($1, $2, $3) on conflict do nothing`,
+        [pin.id, definitionId, `drev_acme_power_${property}_1`],
       );
       await editor.query("commit");
       editor.release();
@@ -355,7 +423,7 @@ describe("current catalog snapshot", () => {
     }
   });
 
-  it("retries a cold read when the subject owner epoch advances during the build", async () => {
+  it.each(["current", "pinned"] as const)("retries a cold %s read when the subject owner epoch advances during the build", async (scope) => {
     const reader = new pg.Pool({ connectionString: database.url, max: 1 });
     let advanceEpoch = true;
     const { kernel, projectionReads } = createCacheReader(reader, async () => {
@@ -364,10 +432,12 @@ describe("current catalog snapshot", () => {
       await pool.query("update parameter_catalog.catalog_state set subject_owner_epoch = subject_owner_epoch + 1");
     });
     try {
-      const snapshot = await kernel.loadCurrentCatalog(pins.current);
+      const pin = scope === "current" ? pins.current : pins.previous;
+      const load = scope === "current" ? kernel.loadCurrentCatalog : kernel.loadPinnedCatalog;
+      const snapshot = await load(pin);
       if (!snapshot.ok) throw new Error(`expected a refreshed snapshot: ${snapshot.error.kind}`);
       expect(projectionReads()).toHaveLength(2);
-      const warm = await kernel.loadCurrentCatalog(pins.current);
+      const warm = await load(pin);
       expect(warm.ok && warm.value).toBe(snapshot.value);
       expect(projectionReads()).toHaveLength(2);
     } finally {
@@ -376,14 +446,15 @@ describe("current catalog snapshot", () => {
   });
 
   it.each(["table", "security-invoker view"] as const)("honors RLS behind a %s after warming a role's snapshot cache", async (relationKind) => {
-    const reader = new pg.Pool({ connectionString: database.url });
-    const { projectionReads } = createCacheReader(reader);
+    const reader = new pg.Pool({
+      connectionString: database.url, options: "-c role=catalog_synchronizer_role",
+    });
+    const { kernel, projectionReads } = createCacheReader(reader);
     const definitionId = ParameterDefinitionId("pdef_acme_power_iin_min");
     const readPinnedAsSynchronizer = async () => {
       const client = await reader.connect();
       try {
         await client.query("begin isolation level repeatable read read only");
-        await client.query("set local role catalog_synchronizer_role");
         const read = createCatalogKernel(catalogReadTransaction(client, reader));
         const loaded = await read.loadPinnedCatalog(pins.current);
         if (!loaded.ok) throw new Error(`expected restricted snapshot: ${loaded.error.kind}`);
@@ -396,10 +467,15 @@ describe("current catalog snapshot", () => {
     const throughView = relationKind === "security-invoker view";
     const heads = `parameter_catalog.catalog_release_definition_heads${throughView ? "_base" : ""}`;
     try {
-      const warm = await readPinnedAsSynchronizer();
+      const coldTransaction = await readPinnedAsSynchronizer();
+      expect(coldTransaction.getDefinitionById(definitionId).status).toBe("found");
+      const loaded = await kernel.loadPinnedCatalog(pins.current);
+      if (!loaded.ok) throw new Error(`expected pooled snapshot: ${loaded.error.kind}`);
+      const warm = loaded.value;
       expect(warm.getDefinitionById(definitionId).status).toBe("found");
       expect(await readPinnedAsSynchronizer()).toBe(warm);
-      expect(projectionReads()).toHaveLength(1);
+      expect(warm).not.toBe(coldTransaction);
+      expect(projectionReads()).toHaveLength(2);
 
       await pool.query(`
         ${throughView ? `
@@ -412,19 +488,22 @@ describe("current catalog snapshot", () => {
         create policy perf1_limit_heads on ${heads}
           for select to catalog_synchronizer_role using (definition_id <> 'pdef_acme_power_iin_min')
       `);
-      const restricted = await readPinnedAsSynchronizer();
-      expect(restricted.getDefinitionById(definitionId).status).toBe("unknown");
-      expect(projectionReads()).toHaveLength(2);
+      try {
+        const restricted = await readPinnedAsSynchronizer();
+        expect(restricted.getDefinitionById(definitionId).status).toBe("unknown");
+        expect(projectionReads()).toHaveLength(3);
+      } finally {
+        await pool.query(`
+          drop policy if exists perf1_limit_heads on ${heads};
+          alter table ${heads} disable row level security;
+          ${throughView ? `
+            drop view parameter_catalog.catalog_release_definition_heads;
+            alter table ${heads} rename to catalog_release_definition_heads;
+          ` : ""}
+        `);
+      }
     } finally {
       await reader.end();
-      await pool.query(`
-        drop policy if exists perf1_limit_heads on ${heads};
-        alter table ${heads} disable row level security;
-        ${throughView ? `
-          drop view parameter_catalog.catalog_release_definition_heads;
-          alter table ${heads} rename to catalog_release_definition_heads;
-        ` : ""}
-      `);
     }
   });
 
