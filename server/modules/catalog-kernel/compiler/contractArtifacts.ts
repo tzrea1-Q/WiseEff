@@ -34,6 +34,7 @@ const catalogRelease = readArtifact("catalog-release.schema.json");
 const catalogOwnerRelease = readArtifact("catalog-release-owner-v6.schema.json");
 const manifest = readArtifact("manifest.schema.json");
 const stableRules = readArtifact("stable-id-rules.json");
+const dtsExamples = readArtifact("definition-dts-examples.schema.json");
 
 export const freezeCatalogJson = <Value>(value: Value): Value => {
   if (value !== null && typeof value === "object" && !Object.isFrozen(value)) {
@@ -46,6 +47,7 @@ export const freezeCatalogJson = <Value>(value: Value): Value => {
 export const catalogReleaseSchema = catalogRelease.json;
 export const catalogOwnerReleaseSchema = catalogOwnerRelease.json;
 export const catalogManifestSchema = manifest.json;
+export const definitionDtsExamplesSchema = dtsExamples.json;
 export const stableCatalogRules = freezeCatalogJson(
   parseStableCatalogRules(stableRules.json),
 );
@@ -78,3 +80,6 @@ export const ownerBundleContractArtifactDigest = fingerprintContractArtifacts([
   manifest,
   stableRules,
 ]);
+
+export const dtsExamplesBundleContractArtifactDigest = (owned: boolean): string =>
+  fingerprintContractArtifacts([owned ? catalogOwnerRelease : catalogRelease, manifest, stableRules, dtsExamples]);

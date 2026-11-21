@@ -1,5 +1,5 @@
 /** Strip DTS block and line comments; keep comment-like text inside string literals. */
-export function stripDtsComments(source: string): string {
+export function stripDtsComments(source: string, strict = false): string {
   const out: string[] = [];
   let i = 0;
   let inString = false;
@@ -29,6 +29,7 @@ export function stripDtsComments(source: string): string {
     }
 
     if (ch === "/" && source[i + 1] === "*") {
+      if (strict && source.indexOf("*/", i + 2) === -1) throw new SyntaxError("Unterminated DTS block comment");
       out.push("  ");
       i += 2;
       while (i < source.length) {

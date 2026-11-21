@@ -33,6 +33,19 @@ import {
 const ready = deriveCatalogDomainState({ document: readyCatalogDocument });
 
 describe("publication operator state", () => {
+  it("preserves DTS source in create/revise payloads and clears only an explicitly emptied list", () => {
+    const draft = { ...emptyPublicationDraft(), propertyKey: "limit", displayName: "Limit", examples: "[3]" };
+    const text = "\tlimit =\n\t\t<0x3>; // retain spaces  ";
+    const authored = { ...draft, dtsExamples: [`\r\n${text.replaceAll("\n", "\r\n")}\r\n`] };
+    expect(fingerprintPublicationDraft(authored)).not.toBe(fingerprintPublicationDraft(draft));
+    expect(buildCreateDefinitionChangeSet(authored)).toMatchObject([{ content: { examples: [3], dtsExamples: [text] } }]);
+    expect(buildCreateDefinitionChangeSet({ ...authored, subjectKind: "configuration-schema" })?.[0]).not.toHaveProperty("content.dtsExamples");
+    const revision = { ...draft, mode: "revise-definition" as const };
+    expect(buildPublicationChangeSet(revision)?.[0]).not.toHaveProperty("content.dtsExamples");
+    expect(buildPublicationChangeSet({ ...revision, dtsExamples: [] })).toMatchObject([{ content: { dtsExamples: null } }]);
+    expect(() => buildCreateDefinitionChangeSet({ ...draft, dtsExamples: ["other = <3>;"] })).toThrow("属性名");
+    expect(() => buildCreateDefinitionChangeSet({ ...draft, dtsExamples: Array(9).fill("<3>") })).toThrow("最多填写 8 个");
+  });
   it("describes high-risk approval for the current actor", () => {
     expect(publicationApprovalCopy("high", "org-admin")).toBe("高风险：组织管理员可自行批准，请仔细核对影响。");
     expect(publicationApprovalCopy("high", "user")).toBe("高风险：必须由另一位具备高风险复核权限的人员批准。");

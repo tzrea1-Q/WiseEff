@@ -17,7 +17,7 @@ import type {
   CompileCatalogReleaseResult,
   CompiledCatalogReleaseModel,
 } from "./types";
-import { catalogCompilerContractFingerprint, catalogCompilerOwnerContractFingerprint } from "./contract";
+import { catalogCompilerContractFingerprint, catalogCompilerDtsContract, catalogCompilerOwnerContractFingerprint } from "./contract";
 import { freezeCatalogJson, ownerBundleContractArtifactDigest, s1BundleContractArtifactDigest } from "./contractArtifacts";
 import {
   createBuildPreparation,
@@ -173,11 +173,14 @@ export const compileCatalogRelease = (
 
   if (!target) throw new Error("validated target release disappeared");
 
-  const compilerFingerprint = releases.some((release) => release.documents.some((document) =>
-    document.kind === "subject" && document.content.ownerSubjectId !== undefined))
-    ? catalogCompilerOwnerContractFingerprint : catalogCompilerContractFingerprint;
-  const schemaDigest = compilerFingerprint === catalogCompilerOwnerContractFingerprint
-    ? ownerBundleContractArtifactDigest : s1BundleContractArtifactDigest;
+  const owned = releases.some((release) => release.documents.some((document) =>
+    document.kind === "subject" && document.content.ownerSubjectId !== undefined));
+  const hasDtsExamples = releases.some((release) => release.documents.some((document) =>
+    document.kind === "definition" && document.content.revision.dtsExamples !== undefined));
+  const { compilerFingerprint, schemaDigest } = hasDtsExamples ? catalogCompilerDtsContract(owned) : {
+    compilerFingerprint: owned ? catalogCompilerOwnerContractFingerprint : catalogCompilerContractFingerprint,
+    schemaDigest: owned ? ownerBundleContractArtifactDigest : s1BundleContractArtifactDigest,
+  };
   const toolchainDigest = hash(
     serializeContract({
       compilerContractFingerprint: compilerFingerprint,

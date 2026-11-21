@@ -217,6 +217,7 @@ export interface DefinitionContent {
   readonly unit: OptionalValue<UnitDescriptor>;
   readonly schemaDefault: OptionalValue<ParameterValue>;
   readonly examples: readonly ParameterValue[];
+  readonly dtsExamples?: readonly string[];
   readonly matching: DefinitionMatchingMetadata;
 }
 

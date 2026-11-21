@@ -111,6 +111,7 @@ export function mapDefinitionRevision(
     documentation: optionalString(revision.content.documentation),
     unit: revision.content.unit.kind === "present" ? revision.content.unit.value : null,
     examples: revision.content.examples,
+    ...(revision.content.dtsExamples !== undefined ? { dtsExamples: revision.content.dtsExamples } : {}),
     publishedInCatalogReleaseId: revision.publishedIn.id,
   });
 }

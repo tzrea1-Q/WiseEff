@@ -2,7 +2,8 @@ import { CATALOG_CAPABILITY_CONTRACT_REVISION } from "./types";
 import { describe, expect, it } from "vitest";
 
 import { compileCatalogRelease } from "../../catalog-kernel/compiler/index";
-import { omittedPredecessorAliasBundle } from "../../catalog-kernel/compiler/__fixtures__/catalogReleaseBundle";
+import { omittedPredecessorAliasBundle, validCatalogReleaseBundle } from "../../catalog-kernel/compiler/__fixtures__/catalogReleaseBundle";
+import { compiledReleaseGolden } from "../../catalog-kernel/compiler/__fixtures__/compiledReleaseGolden";
 import {
   CatalogReleaseVersion,
   serializeContract,
@@ -15,6 +16,7 @@ import {
 } from "../../../../scripts/compile-vendor-catalog-release";
 import { buildCompleteSuccessor, buildIdentitySuccessorFromSnapshot } from "./completeSuccessor";
 import { identitySnapshotOf } from "./identitySnapshot";
+import { encodeBundleBytes } from "./bundleCodec";
 import {
   allocationFor,
   allocationForRevision,
@@ -58,6 +60,34 @@ describe("buildCompleteSuccessor", () => {
     if (!compact.ok || compact.value.kind !== "successor") throw new Error(JSON.stringify(compact));
     expect(compact.value.candidate).toEqual(full.value.candidate);
     expect(compact.value.artifact.bundle.releases).toEqual(full.value.artifact.bundle.releases.slice(-1));
+  });
+
+  it("keeps legacy compiled bytes and bundle digests while adding a verbatim DTS revision", async () => {
+    const historical = compileCatalogRelease(validCatalogReleaseBundle());
+    expect(historical).toMatchObject({ ok: true, value: {
+      compiledReleaseDigest: compiledReleaseGolden.compiledReleaseDigest,
+      materializationFingerprint: compiledReleaseGolden.materializationFingerprint,
+    } });
+    const predecessor = firstAcmePredecessor();
+    const source = "iin_max =\n\t<0x20>; /* mA */";
+    const frozenIdentity = frozenPageIdentity([allocationForRevision("iin_max", 2)]);
+    const build = (examples: string[], valueSchema = { type: "integer" as const, minimum: 0 }) => buildCompleteSuccessor({
+      productPath: "m2-core", predecessorArtifact: { digest: predecessor.digest, bytes: predecessor.bytes }, frozenIdentity,
+      changeSet: [{ op: "revise-definition", definitionId: "pdef_acme_power_iin_max", class: "documentation", content: {
+        ...integerContent("Input current limit", "Maximum accepted input current."), valueSchema, dtsExamples: examples,
+      } }],
+    });
+    const built = await build([`\r\n${source.replaceAll("\n", "\r\n")}\r\n`]);
+    if (!built.ok || built.value.kind !== "successor") throw new Error(JSON.stringify(built));
+    const [carried, successor] = built.value.artifact.bundle.releases;
+    expect(carried?.manifest.release.digest).toBe(FIRST_ACME_RELEASE_DIGEST);
+    expect(encodeBundleBytes({ ...predecessor.bundle, releases: [carried!] })).toEqual(predecessor.bytes);
+    expect(successor?.documents.find((doc) => doc.content.id === "pdef_acme_power_iin_max")).toMatchObject({
+      content: { revision: { number: 2, dtsExamples: [source] } },
+    });
+    expect(built.value.impact.definitions.changed).toMatchObject([{ contentClass: "documentation" }]);
+    expect(await build([source.replace("iin_max", "another")])).toMatchObject({ ok: false, error: { detail: "dts-example-property-mismatch" } });
+    expect(await build([source], { type: "integer", minimum: 33 })).toMatchObject({ ok: false, error: { detail: "dts-example-does-not-match-schema" } });
   });
 
   it("replays the old release and retains the previous compatible as an alias after a rename", async () => {

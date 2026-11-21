@@ -19,7 +19,15 @@ export function withPreviewBaseline<T>(db: Database, read: (tx: Database) => Pro
 export function identitySnapshotOf(bundle: CatalogReleaseBundle, target: CatalogReleaseNode): PreviewSnapshot | undefined {
   if (bundle.releases.some(release => release.documents.some(doc => doc.kind === "subject" &&
     doc.content.canonicalKey !== `${doc.content.kind}:${doc.content.selector.value}`))) return undefined;
-  return { target, hasSubjectRules: bundle.releases.some(release => release.documents.some(subjectRulesProvenance)) };
+  return { target, ...publicationHistoryCapabilities(bundle) };
+}
+
+export function publicationHistoryCapabilities(bundle: CatalogReleaseBundle) {
+  return {
+    hasSubjectRules: bundle.releases.some(release => release.documents.some(subjectRulesProvenance)),
+    hasDtsExamples: bundle.releases.some(release => release.documents.some(doc =>
+      doc.kind === "definition" && doc.content.revision.dtsExamples !== undefined)),
+  };
 }
 
 export async function canAppendIdentitySnapshot(db: Database, snapshot: PreviewSnapshot, change: SpellingChange,

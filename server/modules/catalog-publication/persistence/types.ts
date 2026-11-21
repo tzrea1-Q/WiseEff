@@ -14,7 +14,11 @@ import type {
 } from "../../parameter-catalog-contract/index";
 import type { CatalogReleaseNode } from "../../catalog-kernel/compiler/types";
 
-export type PreviewSnapshot = { readonly target: CatalogReleaseNode; readonly hasSubjectRules: boolean };
+export type PreviewSnapshot = {
+  readonly target: CatalogReleaseNode;
+  readonly hasSubjectRules: boolean;
+  readonly hasDtsExamples: boolean;
+};
 
 export type ArtifactSourceKind =
   | "typed-changeset"

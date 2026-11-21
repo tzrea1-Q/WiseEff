@@ -123,6 +123,18 @@ Open **Batch import definitions** in **Parameter admin → Parameter definition 
 
 Subject headings accept the current primary identifier and active formal Catalog aliases. When a driver short name matches only an Organization's compatible rule, select the existing driver and rerun the preview to verify the match source. Display aliases are for display. Creating a driver requires `nature` and `cardinality`.
 
+Driver and NodeType definitions can carry verbatim DTS alongside the JSON examples in the table. Add a DTS example section with the heading shown below, and put each full property statement or bare value in its own fenced `dts` block. Copy spacing, line breaks, comments, hex literals and cell groups from the source. A statement's name must match the definition's property key. Each definition accepts up to eight blocks of up to 4,000 characters each. The section ends at the next heading of level three or higher and is excluded from the definition's documentation. The definition editor also supports these examples in its **DTS source examples** field.
+
+~~~markdown
+### DTS 示例
+```dts
+battery,ocv-table = <
+	4350 4300 4250   /* 100% */
+	0x10F4 4150      /* 90% */
+>;
+```
+~~~
+
 For a NodeType owned by a driver, put `parent: <driver-compatible>` below its heading. The driver must already be active in the current Catalog; a new driver in the same document cannot be used before publication. Omit the directive only for a standalone Catalog NodeType. Together with the node name, `parent` identifies the subject's owner in the current release. Use the latest export when the Catalog owner changes. Change organization ownership through **Module management → Edit node → Placement**.
 
 Markdown authors Catalog definitions. To edit module hierarchy, root subject placement, aliases or recognition settings in bulk, use the structure JSON import in **Module management** (`/parameter-admin/modules`) and follow its [editing guide](module-structure-editing.md) for supported fields.
@@ -136,6 +148,8 @@ In API mode, select up to 128 definitions in the Catalog list under **Parameter 
 In the definition import dialog, mark each existing definition with the revision operation described in the downloadable template. Preserve the subject identity, an owned node's `parent`, and the property key; include only fields to change. Omitted fields retain their current values, `-` clears an optional field, and `\-` represents a literal dash. In field values, write a pipe as `\|` and a backslash as `\\`. A document can also create definitions, up to 1024 entries per import batch. Preview shows differences, risk and the Organization's usage for semantic revisions. Unchanged entries are skipped; conflicts and errors must be resolved before one Candidate is authorized and published. Semantic revisions leave existing project Bindings on their previous revisions until the governed cutover.
 
 Revision exports include the same instructions. Preserve the display name in each definition heading unless a rename was requested. Removing a field row preserves its old value; it does not clear it. Supplied examples replace the entire example set, while omitted documentation retains the old text. Start from a fresh export and export again if the Catalog changes, so unrequested stale content is not written back.
+
+In a revision, omit the DTS example section to keep the published DTS examples. Put a single `-` under its heading to clear them, or supply the full replacement set of `dts` blocks. A revision that changes only DTS examples is a low-risk documentation change.
 
 In definition management, read the value type, unit and limits before editing. Returning from a correction preview to edit requires a new preview. Closing an unsaved editor asks whether to discard changes; publication progress remains visible and refreshable. The history view loads older revisions on request and compares their content with the current revision.
 

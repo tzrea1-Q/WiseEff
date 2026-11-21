@@ -28,7 +28,7 @@
 
 import { createHash } from "node:crypto";
 import pg from "pg";
-import { catalogCompilerContractFingerprint, catalogCompilerOwnerContractFingerprint } from "../../catalog-kernel/compiler/contract";
+import { catalogCompilerContractFingerprint, catalogCompilerDtsContract, catalogCompilerOwnerContractFingerprint } from "../../catalog-kernel/compiler/contract";
 import type { CatalogReleaseNode } from "../../catalog-kernel/compiler/types";
 import { encodeBundleBytes, parseBundleBytes } from "../builder/bundleCodec";
 
@@ -552,6 +552,7 @@ export async function persistArtifact(
 /** Bump the algorithm revision for validation changes not captured by the compiler contracts. */
 const PREVIEW_VALIDATOR_VERSION = [
   "catalog-subject-rename/v1", catalogCompilerContractFingerprint, catalogCompilerOwnerContractFingerprint,
+  catalogCompilerDtsContract(false).compilerFingerprint, catalogCompilerDtsContract(true).compilerFingerprint,
 ].join("/");
 
 export async function getValidatedPreviewSnapshot(
@@ -559,11 +560,11 @@ export async function getValidatedPreviewSnapshot(
 ): Promise<CatalogPublicationStoreResult<PreviewSnapshot>> {
   try {
     const result = await db.query<ArtifactByteChunkRow & {
-      target_release_id: string; target_checksum: string; has_subject_rules: boolean;
+      target_release_id: string; target_checksum: string; has_subject_rules: boolean; has_dts_examples: boolean;
     }>(
-      `select target_release_id, target_checksum, has_subject_rules, ${artifactByteColumns}
+      `select target_release_id, target_checksum, has_subject_rules, has_dts_examples, ${artifactByteColumns}
          from (
-           select a.target_release_id, s.target_checksum, s.has_subject_rules,
+           select a.target_release_id, s.target_checksum, s.has_subject_rules, s.has_dts_examples,
                   coalesce(s.target_bytes, a.artifact_bytes) as artifact_bytes
            from catalog_publication.preview_snapshots s
            join catalog_publication.release_artifacts a on a.id = s.artifact_id
@@ -584,7 +585,7 @@ export async function getValidatedPreviewSnapshot(
         !node || node.manifest?.release?.digest !== digest || node.manifest.release.id !== row.target_release_id) {
       return fail({ kind: "invalid-input", reason: "invalid-preview-snapshot" });
     }
-    return ok({ target: node, hasSubjectRules: row.has_subject_rules });
+    return ok({ target: node, hasSubjectRules: row.has_subject_rules, hasDtsExamples: row.has_dts_examples });
   } catch (error) {
     return fail(mapWriteError(error));
   }
@@ -606,13 +607,13 @@ export async function putValidatedPreviewSnapshot(
            and ($7::boolean = false or storage_format = 'successor-v1')
        ), saved as (
          insert into catalog_publication.preview_snapshots
-           (artifact_id, artifact_digest, validator_version, bytes_checksum, has_subject_rules, target_bytes, target_checksum)
-         select id, $1, $3, bytes_checksum, $4, $5, coalesce($6, bytes_checksum) from source
+           (artifact_id, artifact_digest, validator_version, bytes_checksum, has_subject_rules, target_bytes, target_checksum, has_dts_examples)
+         select id, $1, $3, bytes_checksum, $4, $5, coalesce($6, bytes_checksum), $8 from source
          on conflict (artifact_id, validator_version) do nothing
        )
        select exists (select 1 from source) as present`,
       [digest, release.id, PREVIEW_VALIDATOR_VERSION, snapshot.hasSubjectRules, targetBytes,
-        targetBytes ? sha256DigestOfBytes(targetBytes) : null, Boolean(storageFormat)],
+        targetBytes ? sha256DigestOfBytes(targetBytes) : null, Boolean(storageFormat), snapshot.hasDtsExamples],
     );
     return inserted.rows[0]?.present ? ok(undefined) : fail({ kind: "not-found", entity: "artifact" });
   } catch (error) {

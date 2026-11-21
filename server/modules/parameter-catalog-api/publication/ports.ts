@@ -24,6 +24,7 @@ import {
   type PreparedPredecessorArtifact,
 } from "../../catalog-publication/builder/preparedPredecessor";
 import { planMarkdownImport } from "../../catalog-publication/import/markdownImport";
+import { dtsExampleMessages } from "../../../../src/domain/parameter-catalog/dtsExamples";
 
 import { modulePath, readPlacementHintEvidence } from "../../parameter-governance/registration/readRepository";
 import {
@@ -251,6 +252,7 @@ const mapPreviewError = (kind: string, detail?: string): CatalogPublicationFailu
     return { kind: "reason", reason: "predecessor-incomplete" };
   }
   if (kind === "unsupported-catalog-capability") {
+    if (detail && Object.hasOwn(dtsExampleMessages, detail)) return { kind: "validation", field: "dtsExamples", reason: detail };
     return { kind: "reason", reason: "unsupported-catalog-capability" };
   }
   if (kind === "unsupported-change-op") {
@@ -381,7 +383,8 @@ export function bindCatalogPublicationCommands(input: {
       });
       if (!previewed.ok) {
         return { ok: false, error: mapPreviewError(previewed.error.kind,
-          previewed.error.kind === "invalid-input" ? previewed.error.reason : undefined) };
+          previewed.error.kind === "invalid-input" ? previewed.error.reason
+            : previewed.error.kind === "unsupported-catalog-capability" ? previewed.error.detail : undefined) };
       }
       if (plan?.changeSet) {
         const facts = previewed.value.impactFacts;

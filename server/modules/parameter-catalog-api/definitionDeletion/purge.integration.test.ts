@@ -24,10 +24,10 @@ describe("platform Definition erasure through the runtime API database role", ()
         predecessorReleaseDigest: fixture.chain.pinC.digest, sourceKind: "typed-changeset", toolchain: target.manifest.toolchain,
         storageFormat: "successor-v1", artifactBytes: encodeBundleBytes({ ...bundle, releases: [target] }),
       })).ok).toBe(true);
-      expect((await putValidatedPreviewSnapshot(tx, fixture.chain.pinC.digest, { target: previous, hasSubjectRules: false })).ok).toBe(true);
-      expect((await putValidatedPreviewSnapshot(tx, release.digest, { target, hasSubjectRules: false }, "successor-v1")).ok).toBe(true);
+      expect((await putValidatedPreviewSnapshot(tx, fixture.chain.pinC.digest, { target: previous, hasSubjectRules: false, hasDtsExamples: false })).ok).toBe(true);
+      expect((await putValidatedPreviewSnapshot(tx, release.digest, { target, hasSubjectRules: false, hasDtsExamples: false }, "successor-v1")).ok).toBe(true);
     });
-    expect(await getValidatedPreviewSnapshot(fixture.api, release.digest)).toMatchObject({ ok: true, value: { target } });
+    expect(await getValidatedPreviewSnapshot(fixture.api, release.digest)).toMatchObject({ ok: true, value: { target, hasDtsExamples: false } });
     const complete = await getArtifactByDigest(fixture.api, release.digest);
     if (!complete.ok) throw new Error(JSON.stringify(complete.error));
     expect(Buffer.from(complete.value.artifactBytes).equals(encodeBundleBytes(bundle))).toBe(true);

@@ -7,6 +7,7 @@ import { NavigatorWorkbench } from "@/components/layout/NavigatorWorkbench";
 import { ViewSwitch } from "@/components/ui/view-switch";
 import { TabPanel } from "@/components/ui/tab-panel";
 import { Badge } from "@/components/ui/badge";
+import { DefinitionExamples } from "@/components/parameter-topology/DefinitionExamples";
 
 import {
   catalogWritesEnabled,
@@ -1114,9 +1115,9 @@ export function CatalogPage({
                     {reading.recommendedDefinition.displayName}</a>。</p> : null}
                   <DefinitionDocumentation documentation={revision.documentation} empty={<p className="parameter-catalog__muted">该定义暂未提供说明。</p>} />
                 </section>
-                <section className="parameter-library-detail__section"><h2>示例</h2>
+                <section className="parameter-library-detail__section"><h2>{revision.dtsExamples?.length ? "DTS 示例" : "示例"}</h2>
                   <p className="parameter-catalog__muted">仅用于理解定义，并非默认配置或推荐值。</p>
-                  {revision.examples?.length ? <pre className="parameter-library-code">{JSON.stringify(revision.examples, null, 2)}</pre> : <p className="parameter-library-detail__empty">该定义暂未提供示例。</p>}
+                  {revision.dtsExamples?.length || revision.examples?.length ? <DefinitionExamples {...revision} showLabel={false} /> : <p className="parameter-library-detail__empty">该定义暂未提供示例。</p>}
                 </section>
               </div>
             <section className="parameter-library-detail__facts"><h2>类型与约束</h2>
@@ -1552,6 +1553,10 @@ function CatalogDetailBody({
         <dd>{revision.unit?.symbol ?? "未设置"}</dd>
         <dt>说明</dt>
         <dd><DefinitionDocumentation documentation={revision.documentation} empty="无" /></dd>
+        {revision.dtsExamples?.length || revision.examples?.length ? <>
+          <dt>{revision.dtsExamples?.length ? "DTS 示例" : "示例"}</dt>
+          <dd><DefinitionExamples {...revision} showLabel={false} /></dd>
+        </> : null}
         <dt>使用</dt>
         <dd>
           {definition.usageSummary.policyCount === null
@@ -1624,7 +1629,13 @@ export function CatalogHistoryBody({
                     return <tr key={label} data-changed={currentValue !== undefined && value !== currentValue ? "true" : undefined}>
                       <th scope="row">{label}</th><td>{renderValue(value)}</td>{currentRevision ? <td>{renderValue(currentValue)}</td> : null}
                     </tr>;
-                  })}</tbody>
+                  })}
+                    <tr data-changed={currentRevision && JSON.stringify(revisionExamples(item)) !== JSON.stringify(revisionExamples(currentRevision)) ? "true" : undefined}>
+                      <th scope="row">示例</th>
+                      <td>{renderRevisionExamples(item)}</td>
+                      {currentRevision ? <td>{renderRevisionExamples(currentRevision)}</td> : null}
+                    </tr>
+                  </tbody>
                 </table>
                 <p className="parameter-catalog__muted">历史修订 <code>{item.id}</code> · 发布记录 <code>{item.publishedInCatalogReleaseId}</code></p>
               </details>
@@ -1651,9 +1662,17 @@ function revisionFields(revision: RevisionItem): [string, string][] {
     ["显示名", revision.displayName || "未设置"],
     ["说明", revision.documentation ?? ""],
     ["单位", revision.unit?.symbol ?? "未设置"],
-    ["取值约束", JSON.stringify(revision.valueShape.schema, null, 2)],
-    ["示例", revision.examples?.length ? JSON.stringify(revision.examples, null, 2) : "未说明"]
+    ["取值约束", JSON.stringify(revision.valueShape.schema, null, 2)]
   ];
+}
+
+function revisionExamples(revision: RevisionItem) {
+  return revision.dtsExamples?.length ? { dtsExamples: revision.dtsExamples } : { examples: revision.examples ?? [] };
+}
+
+function renderRevisionExamples(revision: RevisionItem) {
+  return revision.dtsExamples?.length || revision.examples?.length
+    ? <DefinitionExamples {...revision} showLabel={Boolean(revision.dtsExamples?.length)} /> : "未说明";
 }
 
 function CatalogTimelineBody({ timeline }: { timeline: CatalogDefinitionTimelineResponse | null }) {
