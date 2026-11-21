@@ -1,5 +1,5 @@
 import pg from "pg";
-import { catalogOwnersAvailable, readCatalogSubjectOwners } from "../ownerSchema";
+import { readCatalogSubjectOwners } from "../ownerSchema";
 
 import type {
   CatalogDriftViolation,
@@ -795,21 +795,28 @@ const projectionCacheRole = `case when not exists (
     '${catalogDefinitionRelation}'::regclass,
     'parameter_catalog.definition_revisions'::regclass
   ]) as projection(relation)
-  where pg_catalog.row_security_active(relation)
+  join pg_catalog.pg_class on oid = relation
+  where relkind not in ('r', 'p')
+     or pg_catalog.row_security_active(relation)
      or not pg_catalog.has_table_privilege(relation, 'SELECT')
 ) then current_user::text end`;
 
 export const readReleaseHeader = async (
   client: CatalogSnapshotClient,
   releaseId?: string,
-  pool: pg.Pool | null = null,
+  { cache = false, checkOwnerEpoch = cache }: { cache?: boolean; checkOwnerEpoch?: boolean } = {},
 ): Promise<ReleaseHeader | undefined> => {
   const current = releaseId === undefined;
-  // Older Catalog schemas have no owner epoch. Select only granted columns in
-  // the current schema so column-scoped readers can also capture snapshots.
-  const cache = pool && snapshotCache(pool);
-  const hasOwnerEpoch = cache && (cache.hasOwnerEpoch || await catalogOwnersAvailable(client));
-  const ownerEpoch = !hasOwnerEpoch
+  // Resolve existence and privileges before referencing the column in SQL.
+  const canReadOwnerEpoch = checkOwnerEpoch && (await client.query<{ allowed: boolean }>(`
+    select exists (
+      select 1 from pg_catalog.pg_attribute
+      where attrelid = 'parameter_catalog.catalog_state'::regclass
+        and attname = 'subject_owner_epoch' and not attisdropped
+        and pg_catalog.has_column_privilege(attrelid, attnum, 'SELECT')
+    ) as allowed
+  `)).rows[0]?.allowed;
+  const ownerEpoch = !canReadOwnerEpoch
     ? "null"
     : current
       ? "state.subject_owner_epoch::text"
@@ -818,7 +825,7 @@ export const readReleaseHeader = async (
     `select
        ${current ? "state.current_catalog_release_id" : "null"} as pointer_id,
        ${ownerEpoch} as subject_owner_epoch,
-       ${cache ? projectionCacheRole : "null"} as cache_role,
+       ${cache && canReadOwnerEpoch ? projectionCacheRole : "null"} as cache_role,
        release.id,
        release.predecessor_release_id,
        release.release_version,
@@ -838,8 +845,6 @@ export const readReleaseHeader = async (
      ${current ? "" : "where release.id = $1"}`,
     current ? [] : [releaseId],
   );
-  // Memoize the additive migration only after a header using its column succeeds.
-  if (cache && hasOwnerEpoch) cache.hasOwnerEpoch = true;
   return release.rows[0];
 };
 
@@ -1156,7 +1161,6 @@ export const loadProjection = async (
 
 type LoadedSnapshot = CurrentCatalogSnapshot | PinnedCatalogSnapshot;
 type SnapshotCache = {
-  hasOwnerEpoch: boolean;
   ready: Map<string, LoadedSnapshot>;
   pending: Map<string, Promise<LoadedSnapshot>>;
 };
@@ -1166,7 +1170,7 @@ const maxCachedSnapshots = 4;
 function snapshotCache(pool: pg.Pool): SnapshotCache {
   let cache = snapshotCaches.get(pool);
   if (!cache) {
-    cache = { hasOwnerEpoch: false, ready: new Map(), pending: new Map() };
+    cache = { ready: new Map(), pending: new Map() };
     snapshotCaches.set(pool, cache);
   }
   return cache;
@@ -1178,6 +1182,7 @@ export async function loadSnapshotBody(
   row: ReleaseHeader,
   scope: "current",
   expected: CatalogReleasePin,
+  validate?: () => Promise<void>,
 ): Promise<CurrentCatalogSnapshot>;
 export async function loadSnapshotBody(
   pool: pg.Pool | null,
@@ -1192,10 +1197,12 @@ export async function loadSnapshotBody(
   row: ReleaseHeader,
   scope: "current" | "pinned",
   expected: CatalogReleasePin,
+  validate?: () => Promise<void>,
 ): Promise<LoadedSnapshot> {
   const metadata = projectionMetadata(row, scope, expected);
   const build = async (): Promise<LoadedSnapshot> => {
     const snapshot = await buildProjection(client, metadata, scope, expected);
+    await validate?.();
     return scope === "current"
       ? Object.freeze(Object.assign(snapshot, {
           snapshotKind: scope,
@@ -1206,7 +1213,7 @@ export async function loadSnapshotBody(
           pin: Object.freeze(locatorPin(row.id, row.release_digest)),
         }));
   };
-  if (!pool || !row.cache_role) return build();
+  if (!pool || !row.cache_role || row.subject_owner_epoch === null) return build();
 
   // Published predecessors are immutable. The immediate predecessor anchors their closure.
   const key = JSON.stringify([
@@ -1219,6 +1226,9 @@ export async function loadSnapshotBody(
     ready.set(key, cached);
     return cached;
   }
+  // Caller-owned current reads retain their transaction view. A shared cold
+  // build must be able to commit and recheck before publishing its snapshot.
+  if (scope === "current" && !validate) return build();
   const inFlight = pending.get(key);
   if (inFlight) return inFlight;
 
@@ -1237,14 +1247,23 @@ export async function loadSnapshotBody(
   }
 }
 
+const ownerEpochChanged: CatalogKernelError = {
+  kind: "storage-failure",
+  operation: "loadCurrentCatalog",
+  retryable: true,
+};
+
 export const loadCurrentCatalogSnapshot = async (
   pool: CatalogReadSource,
   expected: CatalogReleasePin,
   { fresh = false } = {},
-): Promise<Result<CurrentCatalogSnapshot, CatalogKernelError>> =>
-  withCatalogReadTransaction(pool, "loadCurrentCatalog", async (client) => {
-    const cachePool = fresh ? null : catalogSnapshotCachePool(pool);
-    const row = await readReleaseHeader(client, undefined, cachePool);
+): Promise<Result<CurrentCatalogSnapshot, CatalogKernelError>> => {
+  const cachePool = fresh ? null : catalogSnapshotCachePool(pool);
+  const load = () => withCatalogReadTransaction<CurrentCatalogSnapshot>(pool, "loadCurrentCatalog", async (client, commit) => {
+    const row = await readReleaseHeader(client, undefined, {
+      cache: cachePool !== null,
+      checkOwnerEpoch: cachePool !== null || commit !== undefined,
+    });
     if (!row?.pointer_id) {
       return {
         ok: false,
@@ -1266,9 +1285,27 @@ export const loadCurrentCatalogSnapshot = async (
         error: { kind: "release-mismatch", expected, actual: captured },
       };
     }
-    const snapshot = await loadSnapshotBody(cachePool, client, row, "current", expected);
+    const validate = commit && (async () => {
+      // Use the same connection after its snapshot transaction ends so this
+      // observes committed changes and works even with a single-client pool.
+      await commit();
+      const after = await readReleaseHeader(client, undefined, {
+        checkOwnerEpoch: row.subject_owner_epoch !== null,
+      });
+      const actual = after?.id ? releaseIdentity(after) : null;
+      if (!actual || actual.id !== expected.id || actual.digest !== expected.digest) {
+        throw new CatalogSnapshotReadFailure({ kind: "release-mismatch", expected, actual });
+      }
+      if (after?.subject_owner_epoch !== row.subject_owner_epoch) {
+        throw new CatalogSnapshotReadFailure(ownerEpochChanged);
+      }
+    });
+    const snapshot = await loadSnapshotBody(cachePool, client, row, "current", expected, validate);
     return { ok: true, value: snapshot };
   });
+  const result = await load();
+  return !result.ok && result.error === ownerEpochChanged ? load() : result;
+};
 
 export { locatorPin };
 

@@ -48,7 +48,7 @@ export const loadPinnedCatalogSnapshot = async (
 ): Promise<Result<PinnedCatalogSnapshot, CatalogKernelError>> =>
   withCatalogReadTransaction(pool, "loadPinnedCatalog", async (client) => {
     const cachePool = fresh ? null : catalogSnapshotCachePool(pool);
-    const row = await readReleaseHeader(client, pin.id, cachePool);
+    const row = await readReleaseHeader(client, pin.id, { cache: cachePool !== null });
     if (!row) {
       return {
         ok: false,

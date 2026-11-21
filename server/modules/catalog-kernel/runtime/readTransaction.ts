@@ -78,7 +78,11 @@ const releaseClient = (client: pg.PoolClient, destroy: boolean): void => {
 export const withCatalogReadTransaction = async <T>(
   pool: CatalogReadSource,
   operation: Extract<CatalogKernelOperation, "loadCurrentCatalog" | "loadPinnedCatalog">,
-  work: (client: CatalogSnapshotClient) => Promise<Result<T, CatalogKernelError>>,
+  work: (
+    client: CatalogSnapshotClient,
+    // Available only when this helper owns the transaction.
+    commit?: () => Promise<void>,
+  ) => Promise<Result<T, CatalogKernelError>>,
 ): Promise<Result<T, CatalogKernelError>> => {
   if (readTransactionBrand in pool) {
     try {
@@ -88,7 +92,7 @@ export const withCatalogReadTransaction = async <T>(
       return { ok: false, error: storageFailure(operation, isRetryableStorage(error)) };
     }
   }
-  let client: pg.PoolClient | undefined;
+  let client: pg.PoolClient;
   try {
     client = await pool.connect();
   } catch (error) {
@@ -97,12 +101,16 @@ export const withCatalogReadTransaction = async <T>(
 
   let transactionOpen = false;
   let destroy = false;
+  const commit = async () => {
+    if (!transactionOpen) return;
+    await client.query("commit");
+    transactionOpen = false;
+  };
   try {
     await client.query("begin isolation level repeatable read read only");
     transactionOpen = true;
-    const result = await work(client);
-    await client.query("commit");
-    transactionOpen = false;
+    const result = await work(client, commit);
+    await commit();
     return result;
   } catch (error) {
     destroy = isConnectionBroken(error);
