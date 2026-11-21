@@ -424,7 +424,7 @@ describe("CatalogPage", { timeout: 15_000 }, () => {
         <button onClick={() => history.onHistoryOpenChange(false)}>关闭测试历史</button>
         {history.timeline ? <p>历史已加载</p> : null}
       </> };
-    const counts = () => [catalog, subjects, registry.getRegistry, list, definition, owner, revisions, timeline, review]
+    const counts = () => [catalog, subjects, vi.mocked(registry.getRegistry), list, definition, owner, revisions, timeline, review]
       .map(read => read.mock.calls.length);
     const view = render(<CatalogHarness {...props} />);
     const user = userEvent.setup();
