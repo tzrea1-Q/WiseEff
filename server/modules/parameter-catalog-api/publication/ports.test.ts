@@ -35,7 +35,7 @@ describe("publication preview memory work", () => {
       candidate: { ...candidate, artifactDigest: artifact.artifactDigest, createdAt: "2026-11-17T00:00:00Z" },
     }));
     const parse = vi.spyOn(bundleCodec, "parseBundleBytes");
-    const db = { query: vi.fn(), transaction: vi.fn() } as unknown as Database;
+    const db = { query: vi.fn().mockResolvedValue({ rows: [{ available: true }] }), transaction: vi.fn() } as unknown as Database;
     const query = vi.fn().mockResolvedValue({ rows: [] });
     const commands = bindCatalogPublicationCommands({ db, pool: { query } as Parameters<typeof currentPointer.readCurrentCatalogPointer>[0] });
     const result = await commands.previewCandidate({

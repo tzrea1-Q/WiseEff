@@ -119,6 +119,7 @@ describe("fresh database fixture policy", () => {
       "server/modules/catalog-kernel/security/retainedDismissedIdentities.integration.test.ts": ["retainedfresh:true", "retainedids:false"],
       "server/modules/catalog-publication/persistence/markdownSourceUpgrade.integration.test.ts": ["md_source_upgrade:false"],
       "server/modules/catalog-publication/persistence/schema.integration.test.ts": ["cp02pop:false"],
+      "server/modules/catalog-publication/previewGrowth.integration.test.ts": ["previewgrowth:false"],
       // The cleanup upgrade must create its API LOGIN before the erasure routines exist.
       "server/modules/catalog-publication/runtime/definitionCleanupUpgrade.integration.test.ts": ["cleanup_acl_upgrade:false"],
       "server/modules/catalog-publication/runtime/draftReadUpgrade.integration.test.ts": ["draft_acl_upgrade:false", "structure_baseline_upgrade:false"],

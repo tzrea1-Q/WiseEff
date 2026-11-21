@@ -425,13 +425,14 @@ export const previewPublicationCandidate = (input: PreviewInput) => preview(inpu
 async function preview(input: PreviewInput, useSnapshot: boolean):
   Promise<{ ok: true; value: PreviewPublicationValue } | { ok: false; error: PreviewPublicationError }> {
   const [first] = input.changeSet;
-  const snapshotsAvailable = (await input.db.query<{ available: boolean }>(
+  const checkSnapshotSchema = async () => (await input.db.query<{ available: boolean }>(
     `select exists (select from pg_catalog.pg_attribute where attrelid=to_regclass('catalog_publication.preview_snapshots')
       and attname='has_dts_examples' and not attisdropped) as available`,
   )).rows[0]?.available;
   const spelling = input.changeSet.length === 1 && (first?.op === "rename-subject" || first?.op === "set-subject-alias") ? first : undefined;
   let snapshot: PreviewSnapshot | undefined;
-  if (snapshotsAvailable && useSnapshot && spelling && !input.predecessorArtifact) {
+  let snapshotsAvailable: boolean | undefined;
+  if (useSnapshot && spelling && !input.predecessorArtifact && (snapshotsAvailable = await checkSnapshotSchema())) {
     const found = await withPreviewBaseline(input.db, tx => getValidatedPreviewSnapshot(tx, input.predecessorDigest));
     if (found.ok) snapshot = found.value;
     else if (found.error.kind !== "not-found") return { ok: false, error: { kind: "predecessor-incomplete", detail: found.error.kind } };
@@ -590,6 +591,7 @@ async function preview(input: PreviewInput, useSnapshot: boolean):
       reason: successorChange.reason ?? null,
     } } : {}),
     ...(replacementChange ? { definitionReplacement: replacementChange } : {}) };
+  snapshotsAvailable ??= await checkSnapshotSchema();
   const baseSnapshot = snapshotsAvailable && spelling && bundle ? identitySnapshotOf(bundle, predecessorTarget) : undefined;
   const artifact = built.value.artifact;
   const verifiedIdentityBase = snapshot ?? baseSnapshot;
