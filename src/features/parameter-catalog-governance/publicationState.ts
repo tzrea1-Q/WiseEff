@@ -4,7 +4,9 @@ import type { CatalogDomainState } from "@/application/parameter-catalog/states"
 import { catalogStateFromFailure } from "@/application/parameter-catalog/states";
 import { catalogErrorCopy } from "@/features/parameter-catalog/copy";
 import { parseDtsValue } from "@/domain/parameter-topology/parseDtsValue";
-import { decodeDtsString } from "@/domain/dts/dtsValueClient";
+import {
+  dtsExampleIssue, dtsExampleMessages, dtsExampleToJson, MAX_DTS_EXAMPLE_CHARS, MAX_DTS_EXAMPLES, normalizeDtsExample
+} from "@/domain/parameter-catalog/dtsExamples";
 import type {
   CatalogCreatePublicationCandidateRequest,
   CatalogPublicationCandidateResponse,
@@ -26,6 +28,8 @@ export const publicationSupportedValueTypes = [
   "mixed"
 ] as const;
 export type PublicationValueType = (typeof publicationSupportedValueTypes)[number];
+export type PublicationValueSchema = Extract<NonNullable<CatalogCreatePublicationCandidateRequest["changeSet"]>[number],
+  { op: "create-definition" }>["content"]["valueSchema"];
 
 export const publicationSupportedUnits = ["mA", "mV", "ms", "uOhm", "µA"] as const;
 export type PublicationUnit = string;
@@ -78,6 +82,7 @@ export type PublicationDraft = {
   maximum: string;
   unit: string;
   examples: string;
+  dtsExamples?: readonly string[];
   reason: string;
 };
 
@@ -158,6 +163,7 @@ export const publicationCopy = {
   unit: "单位",
   unitNone: "无单位",
   examples: "示例（DTS 或 JSON）",
+  dtsExamples: "DTS 原文示例",
   examplesPlaceholder: '可粘贴完整属性语句，如 trx_plim = "5017", "6|9|10";，也可填写 DTS 取值或 JSON 示例数组',
   invalidExamples: "示例格式无效，请填写 DTS 属性语句、DTS 取值或 JSON 示例数组。",
   reason: "变更说明",
@@ -223,7 +229,8 @@ export function fingerprintPublicationDraft(draft: PublicationDraft): string {
     minimum: draft.minimum.trim(),
     maximum: draft.maximum.trim(),
     unit: draft.unit,
-    examples: draft.examples.trim()
+    examples: draft.examples.trim(),
+    ...(draft.dtsExamples?.length ? { dtsExamples: draft.dtsExamples } : {})
   });
 }
 
@@ -308,7 +315,7 @@ export function publicationValueTypeLabel(type: PublicationValueType): string {
   }
 }
 
-function valueSchemaOf(draft: PublicationDraft) {
+export function valueSchemaOf(draft: Pick<PublicationDraft, "valueType" | "minimum" | "maximum">): PublicationValueSchema {
   if (draft.valueType === "boolean") {
     return { type: "boolean" as const };
   }
@@ -390,27 +397,7 @@ export function parsePublicationExamples(draft: PublicationDraft) {
     try {
       if (!emptyProperty && !raw) throw new SyntaxError("Missing DTS property value");
       const value = parseDtsValue(propertyKey, raw).value;
-      if (draft.valueType === "bytes" || draft.valueType === "mixed") return [raw];
-      switch (value.kind) {
-        case "strings": {
-          const strings = value.values.map(decodeDtsString);
-          return [draft.valueType === "string" && strings.length === 1 ? strings[0] : strings];
-        }
-        case "cells": {
-          const cells = value.groups.flat().map((cell) => {
-            if (cell.kind === "phandle") return `&${cell.label}`;
-            const number = Number(cell.value);
-            if (!Number.isSafeInteger(number)) throw new RangeError("Unsafe JSON integer");
-            return number;
-          });
-          if (value.groups.some((group) => group.length === 0)) throw new SyntaxError("Empty DTS cell group");
-          return [(draft.valueType === "integer" || draft.valueType === "number") && cells.length === 1 ? cells[0] : cells];
-        }
-        case "bytes": return [value.values];
-        case "boolean": return [draft.valueType === "empty" ? null : true];
-        case "empty": return [null];
-        case "mixed": return [raw];
-      }
+      return [dtsExampleToJson({ value, raw }, draft.valueType)];
     } catch {
       throw new Error(publicationCopy.invalidExamples);
     }
@@ -441,8 +428,26 @@ export function parsePublicationExamples(draft: PublicationDraft) {
   return parsed;
 }
 
-export function definitionContentOf(draft: PublicationDraft) {
+export function publicationDtsExampleError(text: string, propertyKey: string, schema: PublicationValueSchema): string | undefined {
+  const normalized = normalizeDtsExample(text);
+  if (normalized.length > MAX_DTS_EXAMPLE_CHARS) return `每个 DTS 示例最多 ${MAX_DTS_EXAMPLE_CHARS} 字符。`;
+  const issue = dtsExampleIssue(normalized, propertyKey.trim(), schema);
+  return issue ? dtsExampleMessages[issue] : undefined;
+}
+
+export function parsePublicationDtsExamples(draft: PublicationDraft, schema = valueSchemaOf(draft)) {
+  if (draft.subjectKind === "configuration-schema" || !draft.dtsExamples?.length) return undefined;
+  if (draft.dtsExamples.length > MAX_DTS_EXAMPLES) throw new Error(`最多填写 ${MAX_DTS_EXAMPLES} 个 DTS 示例。`);
+  return draft.dtsExamples.map((text, index) => {
+    const message = publicationDtsExampleError(text, draft.propertyKey, schema);
+    if (message) throw new Error(`第 ${index + 1} 个示例。${message}`);
+    return normalizeDtsExample(text);
+  });
+}
+
+export function definitionContentOf(draft: PublicationDraft, valueSchema = valueSchemaOf(draft)) {
   const examples = parsePublicationExamples(draft);
+  const dtsExamples = parsePublicationDtsExamples(draft, valueSchema);
   const unit = draft.unit.trim();
   const description = draft.description.trim();
   return {
@@ -450,16 +455,18 @@ export function definitionContentOf(draft: PublicationDraft) {
     documentation: draft.documentation,
     ...(description ? { description } : {}),
     ...(unit ? { unit } : {}),
-    valueSchema: valueSchemaOf(draft),
-    ...(examples ? { examples } : {})
+    valueSchema,
+    ...(examples ? { examples } : {}),
+    ...(dtsExamples ? { dtsExamples } : {})
   };
 }
 
-function definitionRevisionContentOf(draft: PublicationDraft) {
+function definitionRevisionContentOf(draft: PublicationDraft, valueSchema?: PublicationValueSchema) {
   return {
-    ...definitionContentOf(draft),
+    ...definitionContentOf(draft, valueSchema),
     ...(!draft.unit.trim() ? { unit: null } : {}),
-    ...(!draft.examples.trim() ? { examples: null } : {})
+    ...(!draft.examples.trim() ? { examples: null } : {}),
+    ...(draft.subjectKind !== "configuration-schema" && draft.dtsExamples?.length === 0 ? { dtsExamples: null } : {})
   };
 }
 
@@ -477,7 +484,7 @@ export function buildCreateDefinitionChangeSet(
 }
 
 export function buildPublicationChangeSet(
-  draft: PublicationDraft
+  draft: PublicationDraft, revisionSchema?: PublicationValueSchema
 ): CatalogCreatePublicationCandidateRequest["changeSet"] {
   if (draft.mode === "create-subject") {
     const selectorKind = draft.subjectKind === "driver" ? "driver-compatible"
@@ -506,7 +513,7 @@ export function buildPublicationChangeSet(
         op: "revise-definition",
         definitionId: draft.definitionId,
         class: draft.reviseClass,
-        content: definitionRevisionContentOf(draft)
+        content: definitionRevisionContentOf(draft, revisionSchema)
       }
     ];
   }
@@ -517,7 +524,7 @@ export function buildPublicationChangeSet(
         definitionId: draft.definitionId,
         class: draft.reviseClass,
         ...(draft.reason.trim() ? { reason: draft.reason.trim() } : {}),
-        content: definitionRevisionContentOf(draft)
+        content: definitionRevisionContentOf(draft, revisionSchema)
       }
     ];
   }
@@ -623,6 +630,7 @@ const FIELD_COPY: Record<string, { input: keyof PublicationDraft; message: strin
   unit: { input: "unit", message: "所选单位不受支持。" },
   valueSchema: { input: "valueType", message: "取值类型或约束不受支持。" },
   examples: { input: "examples", message: "示例格式无效。" },
+  dtsExamples: { input: "dtsExamples", message: dtsExampleMessages["invalid-dts-example"] },
   subjectId: { input: "subjectId", message: "请选择已发布主体。" },
   changeSet: { input: "propertyKey", message: "变更内容不被接受，请检查属性键、类型与约束。" }
 };
@@ -634,6 +642,10 @@ export function publicationFieldError(error: unknown): { input: keyof Publicatio
   const field = error.details.field;
   if (typeof field !== "string" || !field.trim()) {
     return null;
+  }
+  const reason = field === "dtsExamples" ? error.details.reason : field;
+  if (typeof reason === "string" && Object.hasOwn(dtsExampleMessages, reason)) {
+    return { input: "dtsExamples", message: dtsExampleMessages[reason as keyof typeof dtsExampleMessages] };
   }
   return FIELD_COPY[field] ?? null;
 }

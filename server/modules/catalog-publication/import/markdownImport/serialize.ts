@@ -41,7 +41,12 @@ function serialize(snapshot: CatalogReleaseNode, definitionIds: readonly string[
       }
       if (revision.documentation === "-") rows.push([F.documentation, revision.documentation]);
       const escape = (value: string) => value === "-" ? "\\-" : value.replace(/\\/gu, "\\\\").replace(/\|/gu, "\\|");
-      blocks.push(`## \`${propertyKey}\` ${revision.displayName}\n| 字段 | 值 |\n| --- | --- |\n${rows.map(([key, value]) => `| ${key} | ${escape(value)} |`).join("\n")}\n\n${revision.documentation === "-" ? "" : revision.documentation}`);
+      const body = revision.documentation === "-" ? "" : revision.documentation;
+      const dtsExamples = !documentationOnly && revision.dtsExamples?.length ? ["### DTS 示例", ...revision.dtsExamples.map((example) => {
+        const fence = "`".repeat(Math.max(2, ...(example.match(/`+/gu) ?? []).map((run) => run.length)) + 1);
+        return `${fence}dts\n${example}\n${fence}`;
+      })].join("\n\n") : "";
+      blocks.push(`## \`${propertyKey}\` ${revision.displayName}\n| 字段 | 值 |\n| --- | --- |\n${rows.map(([key, value]) => `| ${key} | ${escape(value)} |`).join("\n")}\n\n${[body, dtsExamples].filter(Boolean).join("\n\n")}`);
     }
   }
   return `${blocks.join("\n\n")}\n`;

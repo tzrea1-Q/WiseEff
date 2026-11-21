@@ -11,6 +11,7 @@ export function parseMarkdown(document: string): SyntaxTree {
   let state: TableState = "header";
   let body: string[] = [];
   let fence = "";
+  let dtsSection: { line: number; lines: { text: string; line: number }[] } | undefined;
 
   const problem = (field: string, message: string, line: number) => {
     diagnostics.push({
@@ -23,8 +24,36 @@ export function parseMarkdown(document: string): SyntaxTree {
       ...(definition ? { definitionLine: definition.line } : {}),
     });
   };
+  const finishDtsSection = () => {
+    if (!dtsSection || !definition) return;
+    const { line, lines } = dtsSection;
+    dtsSection = undefined;
+    const blocks: NonNullable<Definition["dtsExamples"]>["blocks"] = [];
+    const nonblank = lines.filter((item) => item.text.trim());
+    const clearLine = nonblank.length === 1 && /^[ \t]*-[ \t]*$/u.test(nonblank[0]!.text) ? nonblank[0]!.line : undefined;
+    let open: { fence: string; line: number; content: string[]; dts: boolean } | undefined;
+    for (const item of clearLine ? [] : lines) {
+      if (open) {
+        if (closesFence(item.text, open.fence)) {
+          if (open.dts) blocks.push({ text: open.content.join("\n"), line: open.line,
+            contentLine: open.line + Math.max(0, open.content.findIndex((text) => text.trim()) + 1) });
+          open = undefined;
+        } else open.content.push(item.text);
+        continue;
+      }
+      const match = /^[ \t]*(`{3,}|~{3,})([^\r]*)$/u.exec(item.text);
+      if (match) {
+        open = { fence: match[1]!, line: item.line, content: [], dts: match[2]!.trim() === "dts" };
+        if (!open.dts) problem("DTS 示例", "DTS 示例代码围栏的语言须为 dts。", item.line);
+      } else if (item.text.trim()) problem("DTS 示例", "DTS 示例区只能填写 dts 代码块，清空时只写一行 -。", item.line);
+    }
+    if (open) problem("DTS 示例", "DTS 示例代码围栏未闭合。", open.line);
+    if (!nonblank.length) problem("DTS 示例", "请至少填写一个 dts 代码块。", line);
+    definition.dtsExamples ??= { line, blocks, ...(clearLine !== undefined ? { clearLine } : {}) };
+  };
   const finish = () => {
     if (!definition) return;
+    finishDtsSection();
     if (state === "header" || state === "separator") {
       problem("字段表", "请按模板填写字段表及表头分隔行。", definition.line);
     }
@@ -34,6 +63,17 @@ export function parseMarkdown(document: string): SyntaxTree {
     fence = "";
   };
   const beginBody = (text: string, line: number) => {
+    if (dtsSection && /^ {0,3}#{1,3}(?:[ \t]|$)/u.test(text)) finishDtsSection();
+    if (text.trimEnd() === "### DTS 示例") {
+      if (definition?.dtsExamples) problem("DTS 示例", "每条定义只能填写一个 DTS 示例区。", line);
+      dtsSection = { line, lines: [] };
+      return;
+    }
+    if (dtsSection) {
+      dtsSection.lines.push({ text, line });
+      fence = /^[ \t]*(`{3,}|~{3,})([^\r]*)$/u.exec(text)?.[1] ?? "";
+      return;
+    }
     body.push(text);
     if (definition && text.trim() && definition.documentationLine === undefined) {
       definition.documentationLine = line;
@@ -41,13 +81,14 @@ export function parseMarkdown(document: string): SyntaxTree {
     fence = /^\s*(`{3,}|~{3,})/u.exec(text)?.[1] ?? "";
   };
 
-  for (const [index, text] of document.replace(/\r\n?/g, "\n").split("\n").entries()) {
+  for (const [index, text] of document.replace(/\r\n?/gu, "\n").split("\n").entries()) {
     const line = index + 1;
     // Downloaded guides are visible blockquotes before the data; body quotes remain definition content.
     if (!subject && /^>($|\s)/u.test(text)) continue;
     if (fence && definition) {
-      body.push(text);
-      if (new RegExp(`^\\s*${fence[0]}{${fence.length},}\\s*$`, "u").test(text)) fence = "";
+      if (dtsSection) dtsSection.lines.push({ text, line });
+      else body.push(text);
+      if (closesFence(text, fence)) fence = "";
       continue;
     }
     if (/^#\s/u.test(text)) {
@@ -120,4 +161,8 @@ export function parseMarkdown(document: string): SyntaxTree {
   }
   finish();
   return { subjects, diagnostics };
+}
+
+function closesFence(text: string, fence: string): boolean {
+  return new RegExp(`^[ \\t]*${fence[0]}{${fence.length},}[ \\t]*$`, "u").test(text);
 }

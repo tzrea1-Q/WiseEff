@@ -1422,6 +1422,7 @@ function supportedContentFromPreview(
     unit?: string;
     valueSchema: unknown;
     examples?: unknown[];
+    dtsExamples?: string[];
   },
 ): SupportedDefinitionContent {
   return {
@@ -1433,6 +1434,7 @@ function supportedContentFromPreview(
     ...(parsed.examples === undefined
       ? {}
       : { examples: parsed.examples as SupportedDefinitionContent["examples"] }),
+    ...(parsed.dtsExamples === undefined ? {} : { dtsExamples: parsed.dtsExamples }),
   };
 }
 

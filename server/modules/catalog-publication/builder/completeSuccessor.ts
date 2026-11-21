@@ -40,6 +40,7 @@ import {
   CATALOG_SUBJECT_IDENTITY_CAPABILITY_REVISION,
   CATALOG_SUBJECT_RULES_CAPABILITY_REVISION,
   validateSupportedDefinitionContent,
+  validateDtsExamples,
 } from "./capabilities";
 import {
   canonicalDigest,
@@ -149,8 +150,10 @@ export function impactSummaryFromReport(impact: CatalogImpactReport): {
   };
 }
 
-const capabilityContract = (changeSet: readonly CatalogChange[], documents: readonly CatalogReleaseDocument[], hasSubjectRules: boolean): CapabilityContract => {
+const capabilityContract = (changeSet: readonly CatalogChange[], documents: readonly CatalogReleaseDocument[], hasSubjectRules: boolean, hasDtsExamples: boolean): CapabilityContract => {
   const identity = CATALOG_CAPABILITY_ALLOW_LIST;
+  const { maxDtsExamples, maxDtsExampleChars, ...legacyBudgets } = identity.budgets;
+  const budgets = hasDtsExamples ? { ...legacyBudgets, maxDtsExamples, maxDtsExampleChars } : legacyBudgets;
   const revision = hasSubjectRules
     ? CATALOG_SUBJECT_RULES_CAPABILITY_REVISION
     : documents.some(subjectIdentityProvenance) ? CATALOG_SUBJECT_IDENTITY_CAPABILITY_REVISION
@@ -160,7 +163,7 @@ const capabilityContract = (changeSet: readonly CatalogChange[], documents: read
   return {
     revision,
     allowListId: identity.id,
-    allowListDigest: canonicalDigest({ ...identity, revision } as unknown as ContractJsonValue),
+    allowListDigest: canonicalDigest({ ...identity, revision, budgets } as unknown as ContractJsonValue),
     valueTypes: [...identity.valueTypes],
     units: [...identity.units],
   };
@@ -482,6 +485,7 @@ const buildDefinitionDocument = (
       selectorKind: subject.content.selector.kind,
     },
     ...(content.examples != null ? { examples: content.examples } : {}),
+    ...(content.dtsExamples != null ? { dtsExamples: content.dtsExamples } : {}),
     contentDigest: "sha256:" + "0".repeat(64),
   };
   revision.contentDigest = canonicalDigest(revisionContentModel(revision));
@@ -542,6 +546,10 @@ const applyCreateDefinition = (
   if (subject.content.lifecycle !== "active") {
     return { kind: "subject-not-active", subjectId: change.subjectId };
   }
+  const dtsExamples = validateDtsExamples(content.value.dtsExamples, `${path}.content.dtsExamples`, CATALOG_CAPABILITY_ALLOW_LIST, {
+    propertyKey: parsed.value, subjectKind: subject.content.kind, schema: content.value.valueSchema,
+  });
+  if (!dtsExamples.ok) return dtsExamples.error;
   const key = naturalKey(subject.content.id, parsed.value);
   if (claimedNaturalKeys.has(key)) {
     return {
@@ -563,10 +571,11 @@ export const revisedDefinitionContent = (
   current: CatalogReleaseDefinitionDocument["content"]["revision"],
   content: SupportedDefinitionContent,
 ) => {
-  const { description: oldDescription, unit: oldUnit, examples: oldExamples, ...retained } = current;
+  const { description: oldDescription, unit: oldUnit, examples: oldExamples, dtsExamples: oldDtsExamples, ...retained } = current;
   const description = content.description === undefined ? oldDescription : content.description;
   const unit = content.unit === undefined ? oldUnit : content.unit;
   const examples = content.examples === undefined ? oldExamples : content.examples;
+  const dtsExamples = content.dtsExamples === undefined ? oldDtsExamples : content.dtsExamples;
   return {
     ...retained,
     displayName: content.displayName,
@@ -575,8 +584,23 @@ export const revisedDefinitionContent = (
     ...(description != null ? { description } : {}),
     ...(unit != null ? { unit } : {}),
     ...(examples != null ? { examples } : {}),
+    ...(dtsExamples != null ? { dtsExamples } : {}),
   };
 };
+
+function validateRevisedDtsExamples(
+  current: CatalogReleaseDefinitionDocument, content: SupportedDefinitionContent, path: string,
+) {
+  const { propertyKey, revision } = current.content;
+  const { selectorKind } = revision.matching;
+  return validateDtsExamples(
+    content.dtsExamples === undefined ? revision.dtsExamples : content.dtsExamples,
+    `${path}.content.dtsExamples`, CATALOG_CAPABILITY_ALLOW_LIST,
+    { propertyKey,
+      subjectKind: selectorKind === "configuration-schema-id" ? "configuration-schema" : selectorKind === "driver-compatible" ? "driver" : "node-type",
+      schema: content.valueSchema },
+  );
+}
 
 /**
  * Apply one reversible lifecycle change. The new revision keeps the permanent
@@ -611,6 +635,8 @@ const applyDefinitionLifecycleChange = (
   if (!current) {
     return { kind: "invalid-input", reason: `definition not found:${change.definitionId}` };
   }
+  const dtsExamples = validateRevisedDtsExamples(current, content.value, path);
+  if (!dtsExamples.ok) return dtsExamples.error;
   if (current.content.revision.lifecycle === targetLifecycle) {
     return { kind: "noop", document: current };
   }
@@ -670,6 +696,10 @@ const applyReviseDefinition = (
   );
   if (!current) {
     return { kind: "invalid-input", reason: `definition not found:${change.definitionId}` };
+  }
+  if (content?.ok) {
+    const dtsExamples = validateRevisedDtsExamples(current, content.value, path);
+    if (!dtsExamples.ok) return dtsExamples.error;
   }
   const revisionContent = current.content.revision;
   if (change.successorDefinitionId === change.definitionId) {
@@ -1217,7 +1247,8 @@ export async function buildCompleteSuccessor(
   }
 
   const contract = capabilityContract(input.changeSet, successor.documents,
-    bundle.releases.some(release => release.documents.some(subjectRulesProvenance)));
+    bundle.releases.some(release => release.documents.some(subjectRulesProvenance)),
+    bundle.releases.some(release => definitionDocuments(release).some(document => document.content.revision.dtsExamples !== undefined)));
   const impact = { ...buildImpact(predecessorTarget, successor, requestedClasses), capabilityContractRevision: contract.revision };
   const impactReportDigest = canonicalDigest(impact as unknown as ContractJsonValue);
   const artifactBytes = encodeBundleBytes(bundle);

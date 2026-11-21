@@ -6,7 +6,11 @@
  * not widen. `$ref`, pattern, and format stay forbidden.
  */
 import type { ContractJsonValue, Result } from "../../parameter-catalog-contract/index";
-import type { CompiledCatalogRelease } from "../../catalog-kernel/compiler/types";
+import type { CatalogReleaseSubjectDocument, CompiledCatalogRelease } from "../../catalog-kernel/compiler/types";
+import {
+  dtsExampleIssue, exampleMatchesSchema, hasDtsExampleControlCharacters, MAX_DTS_EXAMPLE_CHARS,
+  MAX_DTS_EXAMPLES, normalizeDtsExample,
+} from "../../../../src/domain/parameter-catalog/dtsExamples";
 
 import type {
   BuildCompleteSuccessorError,
@@ -72,6 +76,8 @@ export const CATALOG_CAPABILITY_ALLOW_LIST: CapabilityAllowListIdentity = {
     maxArraySchemaDepth: 4,
     maxSchemaContainerNodes: 256,
     maxItemsBound: 4096,
+    maxDtsExamples: MAX_DTS_EXAMPLES,
+    maxDtsExampleChars: MAX_DTS_EXAMPLE_CHARS,
   },
 };
 
@@ -82,6 +88,7 @@ const CONTENT_KEYS = new Set([
   "unit",
   "valueSchema",
   "examples",
+  "dtsExamples",
 ]);
 const MIXED_SCHEMA_KEYS = new Set(["description"]);
 const DOCUMENTATION_FORBIDDEN = /[\u0000\u007F-\u009F]/u;
@@ -346,41 +353,34 @@ export const validateValueSchema = (
   return capabilityFail("unsupported-value-schema-type", path);
 };
 
-export const exampleMatchesSchema = (
-  schema: SupportedValueSchema,
-  example: unknown,
-): boolean => {
-  if (!("type" in schema)) {
-    return true;
+export { exampleMatchesSchema };
+
+export function validateDtsExamples(
+  input: unknown, path: string, allowList: CapabilityAllowListIdentity,
+  context?: { propertyKey: string; subjectKind: CatalogReleaseSubjectDocument["content"]["kind"] | null; schema?: SupportedValueSchema },
+): Result<SupportedDefinitionContent["dtsExamples"], BuildCompleteSuccessorError> {
+  if (input === undefined) return ok(undefined);
+  if (context?.subjectKind === "configuration-schema") return capabilityFail("dts-examples-require-dts-subject", path);
+  const { maxDtsExamples, maxDtsExampleChars } = allowList.budgets;
+  if (maxDtsExamples === undefined || maxDtsExampleChars === undefined) return capabilityFail("unknown-field", path);
+  if (input === null) return ok(null);
+  if (!Array.isArray(input) || input.length === 0) return capabilityFail("invalid-dts-example", path);
+  if (input.length > maxDtsExamples) return capabilityFail("resource-budget-exceeded", `${path}[${maxDtsExamples}]`);
+  const examples: string[] = [];
+  for (const [index, raw] of input.entries()) {
+    const examplePath = `${path}[${index}]`;
+    if (typeof raw !== "string") return capabilityFail("invalid-dts-example", examplePath);
+    const text = normalizeDtsExample(raw);
+    if (text.length > maxDtsExampleChars) return capabilityFail("resource-budget-exceeded", examplePath);
+    if (!text.trim() || hasDtsExampleControlCharacters(text)) return capabilityFail("invalid-dts-example", examplePath);
+    if (context) {
+      const issue = dtsExampleIssue(text, context.propertyKey, context.schema);
+      if (issue) return capabilityFail(issue, examplePath);
+    }
+    examples.push(text);
   }
-  if (schema.type === "integer") {
-    if (!isIntegerNumber(example)) return false;
-    if (schema.minimum !== undefined && example < schema.minimum) return false;
-    if (schema.maximum !== undefined && example > schema.maximum) return false;
-    return true;
-  }
-  if (schema.type === "number") {
-    if (!isFiniteNumber(example)) return false;
-    if (schema.minimum !== undefined && example < schema.minimum) return false;
-    if (schema.maximum !== undefined && example > schema.maximum) return false;
-    return true;
-  }
-  if (schema.type === "boolean") {
-    return typeof example === "boolean";
-  }
-  if (schema.type === "null") {
-    return example === null;
-  }
-  if (schema.type === "array") {
-    if (!Array.isArray(example)) return false;
-    if (schema.minItems !== undefined && example.length < schema.minItems) return false;
-    if (schema.maxItems !== undefined && example.length > schema.maxItems) return false;
-    const items = schema.items;
-    if (!items) return true;
-    return example.every((entry) => exampleMatchesSchema(items, entry));
-  }
-  return typeof example === "string";
-};
+  return ok(examples);
+}
 
 export const validateSupportedDefinitionContentAt = (
   content: unknown,
@@ -460,6 +460,8 @@ export const validateSupportedDefinitionContentAt = (
     }
     examples = content.examples as readonly ContractJsonValue[];
   }
+  const dtsExamples = validateDtsExamples(content.dtsExamples, `${path}.dtsExamples`, allowList);
+  if (!dtsExamples.ok) return dtsExamples;
   return ok({
     displayName,
     documentation: content.documentation,
@@ -467,6 +469,7 @@ export const validateSupportedDefinitionContentAt = (
     ...(unit !== undefined ? { unit } : {}),
     valueSchema: schema.value,
     ...(examples !== undefined ? { examples } : {}),
+    ...(dtsExamples.value !== undefined ? { dtsExamples: dtsExamples.value } : {}),
   });
 };
 
@@ -481,6 +484,8 @@ export const admitCompiledReleaseSchemas = (
   allowList: CapabilityAllowListIdentity = CATALOG_CAPABILITY_ALLOW_LIST,
 ): Result<void, { readonly detail: string }> => {
   for (const release of compiled.model.releases) {
+    const subjects = new Map(release.documents.flatMap((document) =>
+      document.kind === "subject" ? [[document.content.id, document.content.kind] as const] : []));
     for (const document of release.documents) {
       if (document.kind !== "definition") continue;
       const path = `definition:${document.content.id}.valueSchema`;
@@ -491,6 +496,20 @@ export const admitCompiledReleaseSchemas = (
             ? `${result.error.detail}:${result.error.path}`
             : result.error.kind;
         return { ok: false, error: { detail } };
+      }
+      const examples = document.content.revision.dtsExamples;
+      if (examples !== undefined) {
+        const dtsPath = `definition:${document.content.id}.dtsExamples`;
+        const checked = validateDtsExamples(examples, dtsPath, allowList, {
+          propertyKey: document.content.propertyKey, subjectKind: subjects.get(document.content.subjectId) ?? null, schema: result.value,
+        });
+        if (!checked.ok) {
+          const { error } = checked;
+          return { ok: false, error: { detail: error.kind === "unsupported-catalog-capability" ? `${error.detail}:${error.path}` : error.kind } };
+        }
+        if (checked.value?.some((text, index) => text !== examples[index])) {
+          return { ok: false, error: { detail: `noncanonical-dts-example:${dtsPath}` } };
+        }
       }
     }
   }

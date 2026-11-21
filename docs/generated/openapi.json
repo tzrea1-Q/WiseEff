@@ -42592,6 +42592,12 @@
                             "type": "object"
                           }
                         },
+                        "dtsExamples": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
                         "publishedInCatalogReleaseId": {
                           "type": "string"
                         }
@@ -42935,6 +42941,12 @@
                             "type": "array",
                             "items": {
                               "type": "object"
+                            }
+                          },
+                          "dtsExamples": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
                             }
                           },
                           "publishedInCatalogReleaseId": {
@@ -43313,6 +43325,12 @@
                               "type": "object"
                             }
                           },
+                          "dtsExamples": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
                           "publishedInCatalogReleaseId": {
                             "type": "string"
                           }
@@ -43656,6 +43674,12 @@
                               "type": "array",
                               "items": {
                                 "type": "object"
+                              }
+                            },
+                            "dtsExamples": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
                               }
                             },
                             "publishedInCatalogReleaseId": {
@@ -87602,6 +87626,12 @@
               "type": "object"
             }
           },
+          "dtsExamples": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
           "projectIds": {
             "type": "array",
             "items": {
@@ -89381,6 +89411,12 @@
                         "type": "object"
                       }
                     },
+                    "dtsExamples": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
                     "publishedInCatalogReleaseId": {
                       "type": "string"
                     }
@@ -89744,6 +89780,12 @@
                     "type": "array",
                     "items": {
                       "type": "object"
+                    }
+                  },
+                  "dtsExamples": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
                     }
                   },
                   "publishedInCatalogReleaseId": {
@@ -90849,6 +90891,12 @@
                     "type": "object"
                   }
                 },
+                "dtsExamples": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
                 "publishedInCatalogReleaseId": {
                   "type": "string"
                 }
@@ -90997,6 +91045,12 @@
                 "type": "array",
                 "items": {
                   "type": "object"
+                }
+              },
+              "dtsExamples": {
+                "type": "array",
+                "items": {
+                  "type": "string"
                 }
               },
               "publishedInCatalogReleaseId": {
@@ -98018,6 +98072,15 @@
                               "items": {
                                 "type": "object"
                               }
+                            },
+                            "dtsExamples": {
+                              "type": [
+                                "array",
+                                "null"
+                              ],
+                              "items": {
+                                "type": "string"
+                              }
                             }
                           },
                           "required": [
@@ -98132,6 +98195,15 @@
                                     "items": {
                                       "type": "object"
                                     }
+                                  },
+                                  "dtsExamples": {
+                                    "type": [
+                                      "array",
+                                      "null"
+                                    ],
+                                    "items": {
+                                      "type": "string"
+                                    }
                                   }
                                 },
                                 "required": [
@@ -98209,6 +98281,15 @@
                               ],
                               "items": {
                                 "type": "object"
+                              }
+                            },
+                            "dtsExamples": {
+                              "type": [
+                                "array",
+                                "null"
+                              ],
+                              "items": {
+                                "type": "string"
                               }
                             }
                           },
@@ -98290,6 +98371,15 @@
                               "items": {
                                 "type": "object"
                               }
+                            },
+                            "dtsExamples": {
+                              "type": [
+                                "array",
+                                "null"
+                              ],
+                              "items": {
+                                "type": "string"
+                              }
                             }
                           },
                           "required": [
@@ -98360,6 +98450,15 @@
                               ],
                               "items": {
                                 "type": "object"
+                              }
+                            },
+                            "dtsExamples": {
+                              "type": [
+                                "array",
+                                "null"
+                              ],
+                              "items": {
+                                "type": "string"
                               }
                             }
                           },

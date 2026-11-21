@@ -157,6 +157,31 @@ describe("DefinitionEditorBody", () => {
     })] }, expect.anything()));
   });
 
+  it("keeps the published schema and clears DTS source through a documentation revision", async () => {
+    const user = userEvent.setup();
+    const ports = createMockCatalogPorts({ scenario: "ready" });
+    const preview = vi.spyOn(ports.catalog, "createPublicationCandidate");
+    const schema = { type: "array", items: { type: "array", items: { type: "integer", minimum: 0 } }, maxItems: 2 };
+    const source = `${activeDefinition.propertyKey} = <0x1>,\n\t<0x2>; /* Example */`;
+    render(<DefinitionEditorBody authoringAllowed publishingAllowed history={null} actor="org-admin"
+      sessionPermissions={["catalog:author", "catalog:publish"]} domainState={ready} catalog={ports.catalog}
+      catalogReleaseId={CATALOG_RELEASE_ID} definition={{ ...activeDefinition, currentRevision: {
+        ...activeDefinition.currentRevision, valueShape: { kind: "json-schema", schema }, dtsExamples: [source],
+      } }} subjects={[registeredSubject]} />);
+    const textarea = screen.getByLabelText("DTS 原文示例 1");
+    expect(textarea).toHaveValue(source);
+    expect(textarea).toHaveAttribute("spellcheck", "false");
+    fireEvent.change(textarea, { target: { value: "wrong = <0x2>;" } });
+    expect(textarea).toHaveAccessibleDescription(/属性名必须/);
+    await user.click(screen.getByRole("button", { name: "移除第 1 个 DTS 示例" }));
+    expect(screen.getByText(/本次将移除：DTS 示例/)).toBeVisible();
+    await user.type(screen.getByLabelText("修改原因"), "移除过期示例");
+    await user.click(screen.getByRole("button", { name: "保存内容修订" }));
+    expect(preview).toHaveBeenCalledWith(expect.objectContaining({ changeSet: [expect.objectContaining({
+      class: "documentation", content: expect.objectContaining({ dtsExamples: null, valueSchema: schema }),
+    })] }), expect.anything());
+  });
+
   it("retains invalid example text and round-trips string examples without coercion", async () => {
     const user = userEvent.setup();
     const ports = createMockCatalogPorts({ scenario: "ready" });

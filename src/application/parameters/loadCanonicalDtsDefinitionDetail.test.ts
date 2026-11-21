@@ -17,6 +17,7 @@ describe("loadCanonicalDtsDefinitionDetail", () => {
         valueShape: { kind: "json-schema", schema: { type: "string" } },
         constraints: { kind: "none" },
         documentation: "精确修订 3 的参数说明。",
+        dtsExamples: ['gpio_int =\n\t"enabled";'],
         unit: { kind: "symbol", symbol: "mA" },
         publishedInCatalogReleaseId: "release-3"
       }
@@ -41,6 +42,7 @@ describe("loadCanonicalDtsDefinitionDetail", () => {
       propertyKey: "gpio_int",
       displayName: "GPIO 中断（修订 3）",
       documentation: "精确修订 3 的参数说明。",
+      dtsExamples: ['gpio_int =\n\t"enabled";'],
       unit: "mA",
       valueShape: { kind: "json-schema", schema: { type: "string" } }
     });
@@ -54,7 +56,7 @@ describe("loadCanonicalDtsDefinitionDetail", () => {
         displayName: "新说明", documentation: "发布的新说明", contentDigest: "sha256:r4",
         valueShape: { kind: "json-schema", schema: { type: "string" } },
         constraints: { kind: "none" }, unit: null,
-        examples: ["example"], publishedInCatalogReleaseId: "release-4"
+        examples: ["example"], dtsExamples: ['gpio_int =\n\t"example";'], publishedInCatalogReleaseId: "release-4"
       }
     } });
     const { loadCurrentCanonicalDtsDefinitionDetail } = await import("./loadCanonicalDtsDefinitionDetail");
@@ -62,7 +64,8 @@ describe("loadCanonicalDtsDefinitionDetail", () => {
       definitionId: "definition-gpio-int", propertyKey: "gpio_int"
     });
     expect(getDefinition).toHaveBeenCalledWith("definition-gpio-int");
-    expect(detail).toMatchObject({ revisionId: "revision-4", documentation: "发布的新说明", examples: ["example"] });
+    expect(detail).toMatchObject({ revisionId: "revision-4", documentation: "发布的新说明", examples: ["example"],
+      dtsExamples: ['gpio_int =\n\t"example";'] });
   });
 
   it("propagates canonical 404s and rejects a response for a different revision", async () => {

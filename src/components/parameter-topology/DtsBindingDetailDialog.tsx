@@ -20,6 +20,7 @@ import { complexEditorRows } from "@/parameterValueKind";
 import type { BindingEditValidation } from "./BindingDetailPanel";
 import { DtsBindingCompareDialog } from "./DtsBindingCompareDialog";
 import { DtsBindingHistoryDiffDialog } from "./DtsBindingHistoryDiffDialog";
+import { DefinitionExamples } from "./DefinitionExamples";
 import "./parameter-inspector.css";
 
 export type { BindingCompareEntry, BindingHistoryEntry } from "@/domain/parameter-topology/types";
@@ -145,7 +146,7 @@ export function DtsBindingDetailDialog({
                 {latestStatus === "loading" ? <p role="status">正在读取最新目录说明…</p> : null}
                 {latestStatus === "error" ? <p role="status">最新目录说明暂不可用，当前展示项目固定修订。</p> : null}
                 {description ? <p>{description}</p> : null}<DefinitionDocumentation documentation={documentation} />
-                {currentDefinition?.examples?.length ? <div><strong>最新目录示例（仅供参考）</strong><pre>{JSON.stringify(currentDefinition.examples, null, 2)}</pre></div> : null}
+                <DefinitionExamples {...(currentDefinition ?? canonical)} jsonLabel={currentDefinition ? "最新目录示例（仅供参考）" : "示例（仅供参考）"} />
                 {specDetailStatus === "loading" ? <p role="status">正在加载规格详情…</p> : null}
                 {specDetailStatus === "error" ? <div role="alert" aria-label="规格详情加载失败"><p>{specDetailErrorMessage || "参数说明加载失败，当前配置仍可查看。"}</p><Button variant="outline" onClick={onRetrySpecDetail}>重试规格详情</Button></div> : null}
                 <dl>{currentDisplay ? <div><dt>当前值</dt><dd><pre className="parameter-value-content" role="region" aria-label="当前生效值" tabIndex={0 /* eslint-disable-line jsx-a11y/no-noninteractive-tabindex -- Full parameter values must support keyboard scrolling. */}>{currentDisplay}</pre></dd></div> : null}<Field label="单位" value={unit} /><Field label="约束" value={constraints} /><Field label="所属模块" value={formatModulePathLabel(row.modulePath, row.moduleName)} /><Field label="重要性" value={{ high: "高", medium: "中", low: "低" }[row.importance]} />

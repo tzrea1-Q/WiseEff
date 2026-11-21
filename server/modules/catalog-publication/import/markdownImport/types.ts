@@ -22,6 +22,7 @@ export type Definition = {
   fields: Field[];
   documentation: string;
   documentationLine?: number;
+  dtsExamples?: { line: number; clearLine?: number; blocks: { text: string; line: number; contentLine: number }[] };
 };
 export type Subject = {
   heading: string;

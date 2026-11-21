@@ -145,6 +145,7 @@ export type CanonicalDtsDefinitionDetail = {
   documentation: string | null;
   unit: string | null;
   examples?: readonly unknown[];
+  dtsExamples?: readonly string[];
   recommendedDefinition?: { id: string; propertyKey: string; displayName: string };
   catalogReleaseId: string;
 };

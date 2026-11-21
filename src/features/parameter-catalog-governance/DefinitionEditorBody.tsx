@@ -6,6 +6,7 @@ import type { CatalogActorKind } from "@/application/parameter-catalog/authority
 import { catalogStateFromFailure, type CatalogDomainState } from "@/application/parameter-catalog/states";
 import type { ParameterCatalogRepository } from "@/application/ports/ParameterCatalogRepository";
 import { SpecRelatedKnowledgeSection, type SpecRelatedKnowledgeSource } from "@/components/parameter-topology/ParameterSpecDetail";
+import { DefinitionExamples } from "@/components/parameter-topology/DefinitionExamples";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 import type {
@@ -35,14 +36,19 @@ import {
   definitionContentOf,
   emptyPublicationDraft,
   parsePublicationExamples,
+  parsePublicationDtsExamples,
   publicationCopy,
+  publicationFieldError,
   publicationJobIsPending,
   publicationStatusCopy,
   publicationSuccessKind,
+  valueSchemaOf,
   type PublicationDraft,
+  type PublicationValueSchema,
   type PublicationValueType
 } from "./publicationState";
 import { createGovernanceIdempotencyKey } from "./governanceState";
+import { DtsExamplesEditor } from "./DtsExamplesEditor";
 
 export type DefinitionEditorBodyProps = {
   actor: CatalogActorKind;
@@ -81,7 +87,7 @@ export type DefinitionEditorBodyProps = {
 /** Editor state for the definition's content, derived from its current revision. */
 type ContentDraft = Pick<
   PublicationDraft,
-  "displayName" | "documentation" | "description" | "unit" | "valueType" | "minimum" | "maximum" | "examples"
+  "displayName" | "documentation" | "description" | "unit" | "valueType" | "minimum" | "maximum" | "examples" | "dtsExamples"
 >;
 
 const contentDraftOf = (definition: CatalogDefinitionResponse["item"]): ContentDraft => {
@@ -100,6 +106,7 @@ const contentDraftOf = (definition: CatalogDefinitionResponse["item"]): ContentD
     description: "",
     unit: revision.unit?.symbol ?? "",
     examples: revision.examples?.length ? JSON.stringify(revision.examples) : "",
+    ...(revision.dtsExamples !== undefined ? { dtsExamples: revision.dtsExamples } : {}),
     valueType,
     minimum,
     maximum
@@ -164,7 +171,8 @@ const schemaValueTypeLabels: Record<PublicationValueType, string> = {
 };
 
 const fingerprintContent = (draft: ContentDraft): string =>
-  [draft.displayName, draft.documentation, draft.unit, draft.valueType, draft.minimum, draft.maximum, draft.examples].join(
+  [draft.displayName, draft.documentation, draft.unit, draft.valueType, draft.minimum, draft.maximum, draft.examples,
+    JSON.stringify(draft.dtsExamples ?? [])].join(
     "\u0000"
   );
 
@@ -317,7 +325,9 @@ export function DefinitionEditorBody({
     (definition.lifecycle === "active" || (actor === "platform-admin" && definition.lifecycle === "deprecated")) &&
     definitionSubject?.membership.status === "active" &&
     (actor === "platform-admin" || (definitionSubject.registration.status !== "retired" && definition.registration.status !== "retired"));
-  const targetSubjectAllowed = selectableSubjects.some((subject) => subject.id === subjectId);
+  const targetSubject = selectableSubjects.find((subject) => subject.id === subjectId);
+  const targetSubjectAllowed = Boolean(targetSubject);
+  const targetSubjectKind = targetSubject?.canonicalType ?? targetSubject?.type;
   const canPublish = editable && targetSubjectAllowed && publishingAllowed && canExecutePublicationAction(
     actor, "publish-publication", publicationState, sessionPermissions
   );
@@ -344,12 +354,14 @@ export function DefinitionEditorBody({
       (mergeChoices[project.projectId] ?? project.mergeConflict.choice) !== project.mergeConflict.choice);
   const removedOptionalContent = [
     currentContent.unit.trim() && !content.unit.trim() ? "单位" : null,
-    currentContent.examples.trim() && !content.examples.trim() ? "示例" : null
+    currentContent.examples.trim() && !content.examples.trim() ? "示例" : null,
+    currentContent.dtsExamples?.length && !content.dtsExamples?.length ? "DTS 示例" : null
   ].filter(Boolean);
   const schemaChanged =
     content.valueType !== currentContent.valueType ||
     content.minimum !== currentContent.minimum ||
     content.maximum !== currentContent.maximum;
+  const valueSchema = schemaChanged ? valueSchemaOf(content) : definition.currentRevision.valueShape.schema as PublicationValueSchema;
   const dirty = (phase === "compose" || phase === "preview") &&
     (identityChanged || contentChanged || deprecationChanged || Boolean(reason.trim()) || selectedProjects.length > 0);
 
@@ -407,7 +419,8 @@ export function DefinitionEditorBody({
 
   const runPreview = async (mergeIntoDefinitionId?: string) => {
     if (!editable || !targetSubjectAllowed || pending) return;
-    if (!validateExamples()) return;
+    const draft = contentDraft(propertyKey);
+    if (!validateExamples(draft)) return;
     if (selectedProjects.length === 0 && actor !== "platform-admin") {
       setError("请选择至少一个受影响的项目。");
       return;
@@ -434,7 +447,7 @@ export function DefinitionEditorBody({
           projectIds: [...selectedProjects],
           reason: reason.trim(),
           ...(mergeIntoDefinitionId ? { mergeIntoDefinitionId, mergeChoices } : {}),
-          ...definitionContentOf({ ...emptyPublicationDraft(), ...content, mode: "revise-definition", definitionId: definition.id, propertyKey: propertyKey.trim(), reason: reason.trim() })
+          ...definitionContentOf(draft, valueSchema)
         },
         { catalogReleaseId, idempotencyKey: key }
       );
@@ -452,20 +465,22 @@ export function DefinitionEditorBody({
     }
   };
 
-  const contentDraft = (): PublicationDraft => ({
+  const contentDraft = (key = definition.propertyKey): PublicationDraft => ({
     ...emptyPublicationDraft(),
     mode: "revise-definition",
     definitionId: definition.id,
     // A value-shape change is a semantic revision; wording/unit alone is documentation.
     reviseClass: schemaChanged ? "semantic" : "documentation",
-    propertyKey: definition.propertyKey,
+    propertyKey: key.trim(),
+    subjectKind: targetSubjectKind ?? "driver",
     ...content,
     reason: reason.trim()
   });
 
-  const validateExamples = () => {
+  const validateExamples = (draft = contentDraft()) => {
     try {
-      parsePublicationExamples(contentDraft());
+      parsePublicationExamples(draft);
+      parsePublicationDtsExamples(draft, valueSchema);
       return true;
     } catch (error) {
       setError(`${error instanceof Error ? error.message : publicationCopy.invalidExamples}当前输入已保留。`);
@@ -488,7 +503,7 @@ export function DefinitionEditorBody({
       setIdempotencyKey(key);
       const candidate = await catalog.createPublicationCandidate(
         { changeSet: deprecationChanged ? [{ op: "revise-definition", definitionId: definition.id, class: "semantic",
-          successorDefinitionId: deprecated ? successor : null, reason: reason.trim() }] : buildPublicationChangeSet(contentDraft()) as never },
+          successorDefinitionId: deprecated ? successor : null, reason: reason.trim() }] : buildPublicationChangeSet(contentDraft(), valueSchema) as never },
         { catalogReleaseId }
       );
       if (deprecationChanged && !organizationAdmin) {
@@ -787,6 +802,9 @@ export function DefinitionEditorBody({
                     onChange={(event) => setContent({ ...content, examples: event.target.value })}
                   />
                 </label>
+                {targetSubjectKind === "driver" || targetSubjectKind === "node-type" ?
+                  <DtsExamplesEditor examples={content.dtsExamples} propertyKey={propertyKey} schema={valueSchema}
+                    onChange={(dtsExamples) => setContent({ ...content, dtsExamples: dtsExamples.length || currentContent.dtsExamples?.length ? dtsExamples : undefined })} /> : null}
                 <label className="definition-editor__field definition-editor__field--full">
                   <span className="definition-editor__field-label">说明</span>
                   <textarea
@@ -884,6 +902,10 @@ export function DefinitionEditorBody({
                   <dd>{definition.currentRevision.unit?.symbol ?? "未设置"}</dd>
                   <dt>说明</dt>
                   <dd aria-label="已发布参数说明"><DefinitionDocumentation documentation={definition.currentRevision.documentation} empty="无" /></dd>
+                  {definition.currentRevision.dtsExamples?.length || definition.currentRevision.examples?.length ? <>
+                    <dt>{definition.currentRevision.dtsExamples?.length ? "DTS 示例" : "示例"}</dt>
+                    <dd><DefinitionExamples {...definition.currentRevision} showLabel={false} /></dd>
+                  </> : null}
                   <dt>使用</dt>
                   <dd>
                     {definition.usageSummary.policyCount === null
@@ -1023,6 +1045,10 @@ export function DefinitionEditorBody({
               <dd>{`修订 #${definition.currentRevision.revisionNumber}`}</dd>
               <dt>说明</dt>
               <dd aria-label="已发布参数说明"><DefinitionDocumentation documentation={definition.currentRevision.documentation} empty="无" /></dd>
+              {definition.currentRevision.dtsExamples?.length || definition.currentRevision.examples?.length ? <>
+                <dt>{definition.currentRevision.dtsExamples?.length ? "DTS 示例" : "示例"}</dt>
+                <dd><DefinitionExamples {...definition.currentRevision} showLabel={false} /></dd>
+              </> : null}
               <dt>使用</dt>
               <dd>
                 {definition.usageSummary.policyCount === null
@@ -1349,6 +1375,8 @@ export function DefinitionEditorBody({
 }
 
 function failureText(error: unknown): string {
+  const dtsError = publicationFieldError(error);
+  if (dtsError?.input === "dtsExamples") return `${dtsError.message}当前输入已保留。`;
   if (error instanceof WiseEffApiError) {
     switch (error.details.field) {
       case "definition-successor-missing": return "后继定义不存在，或后继链缺少定义。";

@@ -63,6 +63,7 @@ export const revisionContentModel = (
   if (revision.examples !== undefined) {
     model["/examples"] = revision.examples as ContractJsonValue;
   }
+  if (revision.dtsExamples !== undefined) model["/dtsExamples"] = revision.dtsExamples as ContractJsonValue;
   return model;
 };
 
