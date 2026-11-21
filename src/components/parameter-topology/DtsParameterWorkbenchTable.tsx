@@ -338,6 +338,7 @@ export function DtsParameterWorkbenchTable({
           const isChecked = selectedBindingIds?.has(row.bindingId) ?? false;
           const actionContext = bindingActionContext(row);
           const displayRaw = formatDtsValueForUi(row.rawValue, row.effectiveValue);
+          const displayLines = displayRaw.split("\n");
           const displayName = row.currentDisplayName?.trim() || row.displayName?.trim();
           const hasDisplayName = Boolean(displayName && displayName !== row.propertyKey);
           return (
@@ -417,7 +418,12 @@ export function DtsParameterWorkbenchTable({
                 <DeviceIdentity row={row} />
               </span>
               <span role="cell" data-label="当前值">
-                <code title={displayRaw}>{displayRaw}</code>
+                {displayLines.length > 1 ? (
+                  <span className="dts-parameter-workbench-table__value-summary" title={row.rawValue ?? displayRaw}>
+                    <code>{displayLines[0]}…</code>
+                    <small>共 {displayLines.length} 行</small>
+                  </span>
+                ) : <code title={displayRaw}>{displayRaw}</code>}
               </span>
               <span role="cell" data-label="重要性">
                 <ImportanceCell row={row} />

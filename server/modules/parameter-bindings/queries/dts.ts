@@ -14,6 +14,7 @@ export type CanonicalValueRow = {
   value_state: "present" | "deleted";
   source_occurrence_id: string | null;
   source_format: "dts" | "json" | null;
+  source_raw_text: string | null;
   source_pin_format: "dts" | "json" | null;
   config_set_id: string | null;
   file_id: string | null;
@@ -51,6 +52,7 @@ export async function readCanonicalHistoryValueRows(
            value.value_state,
            coalesce(pin.source_occurrence_id, binding.source_occurrence_id) as source_occurrence_id,
            coalesce(pin.format, occurrence.occurrence_kind) as source_format,
+           source_property.raw_text as source_raw_text,
            pin.format as source_pin_format,
            occurrence.config_set_id,
            coalesce(pin.file_id, occurrence.file_id) as file_id,
@@ -70,6 +72,9 @@ export async function readCanonicalHistoryValueRows(
        and pin.organization_id = binding.organization_id
        and pin.project_id = binding.project_id
        and pin.source_occurrence_id = binding.source_occurrence_id
+      left join dts_property_occurrences source_property
+        on source_property.id = pin.property_occurrence_id
+       and source_property.file_version_id = pin.file_version_id
       left join parameter_catalog.project_parameter_source_occurrences occurrence
         on occurrence.id = binding.source_occurrence_id
        and occurrence.organization_id = binding.organization_id

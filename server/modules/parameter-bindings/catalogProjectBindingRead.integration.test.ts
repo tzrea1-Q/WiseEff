@@ -53,11 +53,12 @@ const MODULE = "pmod-849-binding-read";
 const SUBJECT_ID = CatalogSubjectId("csub_acme_power");
 const RESIDUAL_SPEC = "spec-849-binding-read-residual";
 const RESIDUAL_BINDING = "binding-849-binding-read-residual";
+const SOURCE_VALUE = "<\n\t\t\t0x3E8 /* input current in mA */\n\t\t>";
 const DTS = `/dts-v1/;
 / {
 	charger {
 		compatible = "acme,power";
-		iin_max = <1000>;
+		iin_max = ${SOURCE_VALUE};
 	};
 };
 `;
@@ -387,7 +388,14 @@ describe("canonical project binding read chronology", () => {
     const materialized = await read(projectReader, PROJECT);
     expect(materialized.status).toBe(200);
     expect(materialized.body.items).toEqual([
-      expect.objectContaining({ id: canonicalBindingId, projectId: PROJECT })
+      expect.objectContaining({
+        id: canonicalBindingId,
+        projectId: PROJECT,
+        rawValue: SOURCE_VALUE,
+        effectiveValue: {
+          kind: "cells", bits: 32, groups: [[{ kind: "integer", raw: "0x3E8", value: "1000" }]],
+        },
+      })
     ]);
     expect(materialized.body.items.map((item) => item.id)).not.toContain(RESIDUAL_BINDING);
     expect(await state()).toEqual(beforeMaterializedRead);
