@@ -828,7 +828,7 @@ export function JsonBindingPanel({
                        {visibleLatestDefinition.recommendedDefinition.displayName}</a>。</p> : null}
                      {!visibleLatestDefinition && activeViewBinding.description ? <p>{activeViewBinding.description}</p>
                        : <DefinitionDocumentation documentation={visibleLatestDefinition ? visibleLatestDefinition.documentation : activeViewBinding.documentation} />}
-                     {visibleLatestDefinition?.examples?.length ? <div><strong>最新目录示例（仅供参考）</strong><pre>{JSON.stringify(visibleLatestDefinition.examples, null, 2)}</pre></div> : null}
+                     {visibleLatestDefinition?.examples?.length ? <div><strong>最新目录示例（仅供参考）</strong><pre>{visibleLatestDefinition.examples.map((example) => JSON.stringify(example)).join("\n")}</pre></div> : null}
                     <pre className="json-binding-card__preview-code">{prettyJson(activeViewBinding.rawValue)}</pre>
                     <p className="json-binding-detail__hint">类型：JSON · {activeViewBinding.schemaState === "valid" ? "有效配置" : "待校验"}</p>
                   </section>

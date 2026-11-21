@@ -9105,6 +9105,27 @@ td small {
   overflow-wrap: anywhere;
 }
 
+.definition-example-list {
+  min-width: 0;
+  contain: inline-size;
+  display: grid;
+  gap: var(--space-2);
+}
+
+.definition-example-list pre.definition-example-source,
+.definition-editor__field textarea.definition-example-source {
+  font-family: var(--font-code);
+  white-space: pre;
+  overflow-wrap: normal;
+  overflow: auto;
+}
+
+.definition-example-list pre.definition-example-source > code {
+  font: inherit;
+  white-space: inherit;
+  overflow-wrap: normal;
+}
+
 .parameter-value-content:focus-visible {
   outline: calc(2 * var(--stroke-hairline)) solid var(--ring);
   outline-offset: var(--space-1);

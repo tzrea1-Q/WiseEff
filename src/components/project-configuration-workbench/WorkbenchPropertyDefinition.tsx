@@ -9,6 +9,7 @@ import { CATALOG_READ_PAGE_PATH } from "@/application/parameter-catalog/urlAncho
 import { presentError } from "@/infrastructure/http/presentError";
 import { withOrganizationScope } from "@/infrastructure/http/organizationScope";
 import { formatDtsValueSchema } from "@/domain/dts/dtsValueSchema";
+import { DefinitionExamples } from "@/components/parameter-topology/DefinitionExamples";
 
 type DefinitionInput = {
   projectId: string; revisionId: string | null; fileId: string | null; nodePath: string | null; propertyName: string | null;
@@ -84,6 +85,7 @@ export function WorkbenchPropertyDefinitionContent({ state, propertyName, organi
           {detail.recommendedDefinition.displayName}</a>。</p> : null}
         {detail.documentation?.trim() ? <details><summary>参数说明</summary><DefinitionDocumentation documentation={detail.documentation} /></details> : <p className="muted">尚无参数说明。</p>}
         <dl><div><dt>单位</dt><dd>{detail.unit || "未提供"}</dd></div><div><dt>取值约束</dt><dd>{constraints || "未提供业务约束；仍需符合下方类型语法。"}</dd></div></dl>
+        <DefinitionExamples {...detail} />
       </> : <><p className="muted">当前属性没有唯一关联的参数定义，单位与业务约束尚不可用。</p>
         {status === "missing" || status === "ambiguous" ? <p role="note">{status === "ambiguous" ? "保存目标存在歧义" : "尚无可确认的保存目标"}，当前输入可保留在本地，暂不能保存为待审核草稿。</p> : null}</>}
   </section>;

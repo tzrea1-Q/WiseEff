@@ -108,6 +108,7 @@ export type SupportedDefinitionContent = {
   readonly unit?: M1AllowedUnit | null;
   readonly valueSchema: SupportedValueSchema;
   readonly examples?: readonly ContractJsonValue[] | null;
+  readonly dtsExamples?: readonly string[] | null;
   /**
    * Lifecycle the revision is minted with. Absent means `active` for a new
    * definition; the reversible lifecycle operations set it explicitly.
@@ -314,6 +315,8 @@ export type CapabilityAllowListIdentity = {
     readonly maxDocumentationChars: number;
     readonly maxDescriptionChars: number;
     readonly maxExamples: number;
+    readonly maxDtsExamples?: number;
+    readonly maxDtsExampleChars?: number;
     readonly maxChangeSetOps: number;
     readonly maxArraySchemaDepth?: number;
     readonly maxSchemaContainerNodes?: number;

@@ -29,6 +29,7 @@ export async function loadCanonicalDtsDefinitionDetail(
     documentation: revision.documentation,
     unit: revision.unit?.symbol ?? null,
     examples: revision.examples,
+    ...(revision.dtsExamples !== undefined ? { dtsExamples: revision.dtsExamples } : {}),
     catalogReleaseId: revision.publishedInCatalogReleaseId
   };
 }
@@ -58,6 +59,7 @@ export async function loadCurrentCanonicalDtsDefinitionDetail(
     documentation: revision.documentation,
     unit: revision.unit?.symbol ?? null,
     examples: revision.examples,
+    ...(revision.dtsExamples !== undefined ? { dtsExamples: revision.dtsExamples } : {}),
     catalogReleaseId: revision.publishedInCatalogReleaseId
   };
 }

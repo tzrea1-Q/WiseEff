@@ -107,6 +107,7 @@ export interface CatalogReleaseDefinitionDocument {
         readonly notes?: string;
       };
       readonly examples?: readonly ContractJsonValue[];
+      readonly dtsExamples?: readonly string[];
     };
   };
 }

@@ -5,6 +5,7 @@ import type { CatalogReleaseBundle } from "./types";
 import {
   catalogManifestSchema,
   catalogOwnerReleaseSchema,
+  definitionDtsExamplesSchema,
 } from "./contractArtifacts";
 
 interface ValidateFunction {
@@ -42,7 +43,10 @@ function matchesPaddedBase64Syntax(value: string): boolean {
 
 function bundleSchemaForValidation() {
   const schema = structuredClone(catalogOwnerReleaseSchema) as {
-    $defs: { sourceInventoryEntry: { properties: { bytes: { pattern?: string; format?: string } } } };
+    $defs: {
+      sourceInventoryEntry: { properties: { bytes: { pattern?: string; format?: string } } };
+      definitionRevision: { properties: Record<string, unknown> };
+    };
   };
   const bytes = schema.$defs?.sourceInventoryEntry?.properties?.bytes;
   if (bytes?.pattern !== paddedBase64Pattern || bytes.format !== undefined) {
@@ -53,6 +57,8 @@ function bundleSchemaForValidation() {
   // canonical padding bits by decoding and re-encoding the exact source bytes.
   delete bytes.pattern;
   bytes.format = paddedBase64Format;
+  // Add authoring support without changing the frozen schema bytes for old bundles.
+  schema.$defs.definitionRevision.properties.dtsExamples = definitionDtsExamplesSchema;
   return schema;
 }
 

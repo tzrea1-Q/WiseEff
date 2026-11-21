@@ -234,6 +234,7 @@ const contentFingerprint = (content: SupportedDefinitionContent): string =>
     "/unit": content.unit ?? null,
     "/valueSchema": content.valueSchema,
     ...(content.examples !== undefined ? { "/examples": content.examples } : {}),
+    ...(content.dtsExamples !== undefined ? { "/dtsExamples": content.dtsExamples } : {}),
   } as unknown as ContractJsonValue);
 
 const predecessorContent = (
@@ -246,6 +247,7 @@ const predecessorContent = (
       ...(revision.unit !== undefined ? { unit: revision.unit } : {}),
       valueSchema: revision.valueSchema,
       ...(revision.examples !== undefined ? { examples: revision.examples } : {}),
+      ...(revision.dtsExamples !== undefined ? { dtsExamples: revision.dtsExamples } : {}),
     },
     "predecessor.content",
   );

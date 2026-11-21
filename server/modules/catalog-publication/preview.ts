@@ -104,7 +104,8 @@ const asSupportedContent = (value: unknown): SupportedDefinitionContent | null =
   if (!isRecord(value) || typeof value.displayName !== "string" || typeof value.documentation !== "string") {
     return null;
   }
-  if (!isRecord(value.valueSchema) || typeof value.valueSchema.type !== "string") {
+  if (!isRecord(value.valueSchema) || (typeof value.valueSchema.type !== "string" &&
+    (value.valueSchema.type !== undefined || typeof value.valueSchema.description !== "string"))) {
     return null;
   }
   if (value.description != null && typeof value.description !== "string") {

@@ -750,7 +750,15 @@ it("publishes a mixed Markdown create and revision in one Candidate", async () =
       const response = await fetch(`${server.baseUrl}${path}`, { method: "POST", headers: { "content-type": "application/json", [CATALOG_RELEASE_HEADER]: pin.id }, body: JSON.stringify(body) });
       return { status: response.status, body: await response.json() };
     };
-    const document = "# Driver `acme,power`\n## `iin_max` Input current limit\n| 字段 | 值 |\n| --- | --- |\n| 操作 | 修订 |\n| 简述 | 新说明 |\n## `mixed_new` New definition\n| 字段 | 值 |\n| --- | --- |\n| 类型 | integer |";
+    const dtsExample = "\tmixed_new = <0x1 0x2>, /* First group */\n\t\t<0x3 0x4>;  ";
+    const invalidSource = await post("/api/v2/catalog/publication-candidates", { changeSet: [{ op: "create-definition",
+      subjectId: "csub_acme_power", propertyKey: "mixed_new", content: { displayName: "New definition", documentation: "",
+        valueSchema: { description: "Named modes and numeric cells" }, dtsExamples: ['wrong = "mode", <1>;'] } }] });
+    expect(invalidSource).toMatchObject({ status: 400, body: { error: { details: {
+      field: "dtsExamples", reason: "dts-example-property-mismatch",
+    } } } });
+    const document = "# Driver `acme,power`\n## `iin_max` Input current limit\n| 字段 | 值 |\n| --- | --- |\n| 操作 | 修订 |\n| 简述 | 新说明 |\n## `mixed_new` New definition\n| 字段 | 值 |\n| --- | --- |\n| 类型 | array<array<integer>> |\n| 示例 | [[1,2],[3,4]] |"
+      + `\n\n### DTS 示例\n\`\`\`dts\n${dtsExample}\n\`\`\``;
     const preview = await post("/api/v2/catalog/publication-candidates", { markdownImport: { document, fileName: "revision.md" } });
     expect(preview.status).toBe(201);
     const plan = catalogMarkdownImportResponseSchema.parse(preview.body).item;
@@ -768,6 +776,7 @@ it("publishes a mixed Markdown create and revision in one Candidate", async () =
       where h.release_id = $1 and h.definition_id = 'pdef_acme_power_iin_max'`, [pointer.current.id]);
     expect(head.rows[0]).toMatchObject({ revision_number: "2", content: { displayName: "Input current limit", description: "新说明",
       documentation: "Maximum accepted input current.", unit: "mA", valueSchema: { type: "integer", minimum: 0 } } });
+    expect(head.rows[0]?.content).not.toHaveProperty("dtsExamples");
     const created = await client.query<{ id: string; property_key: string }>(`select d.id, d.property_key from parameter_catalog.catalog_release_definition_heads h
       join parameter_catalog.parameter_definitions d on d.id = h.definition_id
       where h.release_id = $1 and d.property_key = 'mixed_new'`, [pointer.current.id]);
@@ -820,10 +829,15 @@ it("publishes a mixed Markdown create and revision in one Candidate", async () =
         return bundle.ok ? targetReleaseOf(bundle.bundle) ?? null : null;
       },
     };
+    const read = await requestJson<{ item: { currentRevision: object } }>(createCatalogReadHttpServer(readPorts),
+      `/api/v2/catalog/definitions/${created.rows[0]!.id}?catalogReleaseId=${pin.id}`);
+    expect(read.status).toBe(200);
+    expect(read.body.item.currentRevision).toMatchObject({ documentation: null, dtsExamples: [dtsExample], examples: [[[1, 2], [3, 4]]] });
     const exported = await requestJson<{ item: { document: string; skipped: { id: string; reason: string }[] } }>(createCatalogReadHttpServer(readPorts),
       `/api/v2/catalog/revision-document?catalogReleaseId=${pin.id}&definitionId=${created.rows[0]!.id}&definitionId=pdef_acme_power_iin_max`);
     expect(exported.status).toBe(200);
     expect(exported.body.item.skipped).toEqual([{ id: "pdef_acme_power_iin_max", reason: "retired" }]);
+    expect(exported.body.item.document).toContain(dtsExample);
     const unchanged = await post("/api/v2/catalog/publication-candidates", { markdownImport: { document: exported.body.item.document, fileName: "export.md" } });
     expect(catalogMarkdownImportResponseSchema.parse(unchanged.body).item).toMatchObject({ candidate: null, noChange: true,
       entries: [{ outcome: "skip", diagnostics: [expect.objectContaining({ message: "无变化。" })] }] });

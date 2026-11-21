@@ -520,6 +520,7 @@ const revisionContentModel = (
     const value = pointerValue(revision, pointer);
     if (value !== undefined) content[pointer] = value as ContractJsonValue;
   }
+  if (revision.dtsExamples !== undefined) content["/dtsExamples"] = revision.dtsExamples as ContractJsonValue;
   return content;
 };
 

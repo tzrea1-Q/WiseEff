@@ -10,6 +10,7 @@
  * `completed` / `blocked` / `failed` / `pending` separately.
  */
 import { createHash } from "node:crypto";
+import { dtsExampleMessages } from "../../../src/domain/parameter-catalog/dtsExamples";
 
 import {
   CatalogReleaseId,
@@ -829,6 +830,9 @@ export function createParameterCatalogMigrationService(
           case "subject-not-found":
             return fail({ kind: "preview-unavailable", reason: "subject-not-found" });
           case "unsupported-catalog-capability":
+            if (Object.hasOwn(dtsExampleMessages, built.error.detail)) {
+              return fail({ kind: "invalid-command", reason: built.error.detail });
+            }
             return fail({
               kind: "target-identity-conflict",
               reason: built.error.detail.includes("duplicate-natural-key")

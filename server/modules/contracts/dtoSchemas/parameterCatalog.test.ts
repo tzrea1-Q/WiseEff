@@ -17,6 +17,8 @@ import {
   catalogTypedPublicationCandidateRequestSchema,
   catalogSupportedDefinitionContentSchema,
   catalogDefinitionDtoSchema,
+  catalogDefinitionRevisionDtoSchema,
+  catalogReplacementPreviewRequestSchema,
   catalogDocumentResponseSchema,
   catalogFailureClientBehaviors,
   catalogKernelReadOperations,
@@ -79,6 +81,22 @@ describe("canonical definition authoring after legacy contract removal", () => {
       items: { type: "integer" as const, minimum: 0, maximum: 65535 },
     };
     expect(catalogSupportedDefinitionContentSchema.parse({ ...content, valueSchema }).valueSchema).toEqual(valueSchema);
+  });
+
+  it("preserves verbatim DTS strings and distinguishes omission from explicit revision clears", () => {
+    const dtsExamples = ["\tlimit =\n\t\t<0x30>; // source  "];
+    expect(catalogSupportedDefinitionContentSchema.parse(content)).not.toHaveProperty("dtsExamples");
+    expect(catalogSupportedDefinitionContentSchema.parse({ ...content, dtsExamples: null }).dtsExamples).toBeNull();
+    expect(catalogSupportedDefinitionContentSchema.parse({ ...content, dtsExamples }).dtsExamples).toEqual(dtsExamples);
+    expect(catalogSupportedDefinitionContentSchema.safeParse({ ...content, dtsExamples: [3] }).success).toBe(false);
+    expect(catalogReplacementPreviewRequestSchema.parse({ ...content, dtsExamples, oldDefinitionId: "pdef_old", newSubjectId: "csub_new",
+      newPropertyKey: "limit", projectIds: [], reason: "Correction" }).dtsExamples).toEqual(dtsExamples);
+    const revision = { id: "drev_limit", definitionId: "pdef_limit", revisionNumber: 1, contentDigest: "sha256:limit",
+      displayName: "Limit", valueShape: { kind: "json-schema", schema: content.valueSchema }, constraints: { kind: "none" },
+      documentation: null, unit: null, publishedInCatalogReleaseId: "crel_limit" };
+    expect(catalogDefinitionRevisionDtoSchema.parse(revision)).not.toHaveProperty("dtsExamples");
+    expect(catalogDefinitionRevisionDtoSchema.parse({ ...revision, dtsExamples }).dtsExamples).toEqual(dtsExamples);
+    expect(catalogDefinitionRevisionDtoSchema.safeParse({ ...revision, dtsExamples: null }).success).toBe(false);
   });
 });
 

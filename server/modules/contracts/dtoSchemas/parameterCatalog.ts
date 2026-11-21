@@ -365,6 +365,7 @@ export const catalogDefinitionRevisionDtoSchema = catalogObject({
   unit: catalogObject({ kind: z.literal("symbol"), symbol: z.string() }).nullable(),
   /** Published examples, available for lossless content editing. */
   examples: z.array(z.lazy(() => catalogJsonValueSchema)).optional(),
+  dtsExamples: z.array(z.string()).optional(),
   publishedInCatalogReleaseId: z.string()
 });
 
@@ -832,7 +833,8 @@ export const catalogSupportedDefinitionContentSchema = catalogObject({
   description: z.string().max(512).nullable().optional(),
   unit: z.string().min(1).max(32).nullable().optional(),
   valueSchema: catalogSupportedValueSchemaSchema,
-  examples: z.array(catalogJsonValueSchema).nullable().optional()
+  examples: z.array(catalogJsonValueSchema).nullable().optional(),
+  dtsExamples: z.array(z.string()).nullable().optional()
 });
 
 export const catalogNestedDefinitionDraftSchema = catalogObject({
@@ -1751,6 +1753,7 @@ export const catalogReplacementPreviewRequestSchema = catalogObject({
   unit: z.string().min(1).max(32).optional(),
   valueSchema: catalogSupportedValueSchemaSchema,
   examples: z.array(catalogJsonValueSchema).optional(),
+  dtsExamples: z.array(z.string()).optional(),
   projectIds: z.array(z.string()).max(200),
   mergeIntoDefinitionId: z.string().min(1).optional(),
   mergeChoices: z.record(z.string(), z.enum(["source", "target"])).optional(),

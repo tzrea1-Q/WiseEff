@@ -1,7 +1,8 @@
 import type { ContractJsonValue } from "../../../parameter-catalog-contract/index";
 import type { CatalogReleaseDefinitionDocument } from "../../../catalog-kernel/compiler/types";
-import { CATALOG_CAPABILITY_ALLOW_LIST, validateSupportedDefinitionContent } from "../../builder/capabilities";
+import { CATALOG_CAPABILITY_ALLOW_LIST, validateDtsExamples, validateSupportedDefinitionContent } from "../../builder/capabilities";
 import { MAX_DEFINITION_UNIT_CHARS, type SupportedDefinitionContent, type SupportedValueSchema } from "../../builder/types";
+import { dtsExampleMessages } from "../../../../../src/domain/parameter-catalog/dtsExamples";
 import { diagnostic, type Definition, type Field, type ImportDiagnostic, type Subject } from "./types";
 import { formatValueType, unwrapArraySchema } from "./schema";
 
@@ -124,6 +125,8 @@ export function buildContent(section: Subject, definition: Definition, current?:
     }
     exampleLines.push(row.line);
   }
+  const dtsSection = definition.dtsExamples;
+  const dtsExamples = dtsSection?.clearLine !== undefined ? null : dtsSection?.blocks.map((block) => block.text);
   const content: SupportedDefinitionContent = {
     displayName: definition.displayName,
     documentation: first("说明") ? (current && clears(first("说明")) ? "" : first("说明")!.value)
@@ -132,8 +135,10 @@ export function buildContent(section: Subject, definition: Definition, current?:
     ...((clears(first("单位")) && current) ? { unit: null } : (first("单位") || current?.unit != null) ? { unit: first("单位")?.value ?? current?.unit } : {}),
     valueSchema: valueSchema as SupportedValueSchema,
     ...(examples.length ? { examples } : current && fields.has("示例") ? { examples: null } : current?.examples != null ? { examples: current.examples } : {}),
+    ...(dtsExamples !== undefined ? { dtsExamples } : {}),
   };
   const checked = validateSupportedDefinitionContent(content, "content");
+  let dtsSchema = checked.ok ? checked.value.valueSchema : undefined;
   if (fields.get("示例") && fields.get("示例")!.length > 8) {
     problem("示例", "最多填写 8 个示例。", fields.get("示例")![8]!.line);
   }
@@ -145,7 +150,10 @@ export function buildContent(section: Subject, definition: Definition, current?:
     for (const key of keys) {
       if (key === "valueSchema" && unknownRevisionType) continue;
       const result = validateSupportedDefinitionContent({ ...baseline, [key]: content[key] }, "content");
-      if (key === "valueSchema") schemaValid = result.ok;
+      if (key === "valueSchema" && result.ok) {
+        schemaValid = true;
+        dtsSchema = result.value.valueSchema;
+      }
       if (!result.ok && content[key] !== undefined) {
         const path = result.error.kind === "unsupported-catalog-capability" ? result.error.path : "";
         const label = path.endsWith(".minimum") ? "最小值"
@@ -166,6 +174,28 @@ export function buildContent(section: Subject, definition: Definition, current?:
         if (!result.ok) {
           problem("示例", "示例不符合类型、边界或数量限制。", exampleLines[index] ?? definition.line);
         }
+      }
+    }
+  }
+  const { maxDtsExamples, maxDtsExampleChars } = CATALOG_CAPABILITY_ALLOW_LIST.budgets;
+  const effectiveDtsExamples = dtsExamples === undefined ? current?.dtsExamples : dtsExamples;
+  if (dtsSection && section.kind === "configuration-schema") {
+    problem("DTS 示例", dtsExampleMessages["dts-examples-require-dts-subject"], dtsSection.line);
+  } else if (dtsSection?.clearLine !== undefined && !revision) {
+    problem("DTS 示例", "仅可在修订时清空 DTS 示例。", dtsSection.clearLine);
+  } else if (effectiveDtsExamples) {
+    if (maxDtsExamples !== undefined && effectiveDtsExamples.length > maxDtsExamples) {
+      problem("DTS 示例", `最多填写 ${maxDtsExamples} 个 DTS 示例。`, dtsSection?.blocks[maxDtsExamples]?.line ?? definition.line);
+    }
+    for (const [index, example] of effectiveDtsExamples.slice(0, maxDtsExamples).entries()) {
+      const result = validateDtsExamples([example], "content.dtsExamples", CATALOG_CAPABILITY_ALLOW_LIST, {
+        propertyKey: definition.propertyKey, subjectKind: section.kind, schema: dtsSchema,
+      });
+      if (!result.ok && result.error.kind === "unsupported-catalog-capability") {
+        const detail = result.error.detail;
+        const message = detail === "resource-budget-exceeded" ? `每个 DTS 示例最多 ${maxDtsExampleChars} 字符。`
+          : dtsExampleMessages[detail as keyof typeof dtsExampleMessages] ?? dtsExampleMessages["invalid-dts-example"];
+        problem("DTS 示例", message, dtsSection?.blocks[index]?.contentLine ?? first("类型")?.line ?? definition.line);
       }
     }
   }

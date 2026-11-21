@@ -83,7 +83,7 @@ Subtype 基数是排他的：一个 subject 必须有一个 Driver 行 xor 一�
 | `Driver`                | 由权威 `compatible` matcher 选择的 CatalogSubject 子类型，持有 Driver 专属 nature/cardinality 事实。                                                                   |
 | `NodeType`              | 仅在没有 Driver 匹配时，由正式规范化 node-name matcher 选择的 CatalogSubject 子类型；不是观察到的 module label 或弱 Driver。                                           |
 | `ParameterDefinition`   | 一个永久 `(subject_id, property_key)` 目录键的稳定不透明身份；只包含身份和 current-revision 指针，不包含可变定义内容。                                                 |
-| `DefinitionRevision`    | 所有持久化定义内容字段的不可变快照，包括 documentation、unit、constraint、default、lifecycle 内容与 matching/interpretation 元数据。                                   |
+| `DefinitionRevision`    | 所有持久化定义内容字段的不可变快照，包括 documentation、unit、constraint、default、JSON 示例、DTS 主体的可选 DTS 原文示例、lifecycle 内容与 matching/interpretation 元数据。 |
 | `DefinitionProposal`    | 可评审的 Platform 目录变更意图；接受只产生或批准 publication intent/仓库变更，绝不物化目录行。                                                                         |
 | `ParameterObservation`  | 可以被匹配或进入评审的不可变项目/来源证据；绝不变成定义。                                                                                                              |
 | `SubjectRegistration`   | 一个持久 `(organization_id, subject_id)` 身份，lifecycle 为 active 或 retired；在所有 lifecycle 状态下都引用恰好一个保留的 current placement。                         |

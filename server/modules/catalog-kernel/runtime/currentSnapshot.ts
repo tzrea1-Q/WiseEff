@@ -171,6 +171,7 @@ const mapContent = (raw: Record<string, unknown>): DefinitionContent => {
     unit: unit ? present({ kind: "symbol", symbol: unit }) : absent,
     schemaDefault: absent,
     examples,
+    ...(Array.isArray(raw.dtsExamples) ? { dtsExamples: structuredClone(raw.dtsExamples) as string[] } : {}),
     matching: {
       sourceProperty: matching.sourceProperty ?? "",
       selectorKind: matching.selectorKind ?? "driver-compatible",
@@ -244,7 +245,8 @@ const classifyPublicationChanges = (
   }
   if (
     JSON.stringify(previous.documentation) !== JSON.stringify(current.documentation) ||
-    JSON.stringify(previous.description) !== JSON.stringify(current.description)
+    JSON.stringify(previous.description) !== JSON.stringify(current.description) ||
+    JSON.stringify(previous.dtsExamples) !== JSON.stringify(current.dtsExamples)
   ) {
     changes.push("documentation");
   }
