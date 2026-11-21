@@ -14,7 +14,7 @@ function renderSurface(authoringAllowed: boolean, surfaceOverrides: Partial<Publ
   vi.spyOn(ports.catalog, "getPublicationSurface").mockImplementation(async () => {
     if (surfaceError) throw new Error("publication surface unavailable");
     const response = await readSurface();
-    return { item: { ...response.item, authoringAllowed, publishingAllowed: false, ...surfaceOverrides } };
+    return { item: { ...response.item, authoringAllowed, publishingAllowed: false, reviewHighRiskAllowed: false, ...surfaceOverrides } };
   });
   function Harness() {
     const [search, setSearch] = useState("");
@@ -57,7 +57,7 @@ describe("Catalog definition action capability", () => {
     const hrefs: string[] = [];
     function Harness() {
       const [search, setSearch] = useState(`?catalogReleaseId=${CATALOG_RELEASE_ID}`);
-      return <CatalogOrganizationSurface {...ports} actor="org-admin" sessionPermissions={["catalog:author", "catalog:publish"]}
+      return <CatalogOrganizationSurface {...ports} actor="org-admin" sessionPermissions={["catalog:author", "catalog:review-high-risk"]}
         organizationId={CATALOG_ORGANIZATION_ID} currentPersonId="catalog-reader" search={search}
         onAnchorChange={(href) => { hrefs.push(href); setSearch(new URL(href, window.location.origin).search); }} />;
     }
@@ -113,7 +113,7 @@ describe("Catalog definition action capability", () => {
       authoringAllowed: true, publishingAllowed: true, blockers: [] } });
     const preview = vi.spyOn(ports.catalog, "createPublicationCandidate");
     render(<CatalogOrganizationSurface {...ports} actor="org-admin" search=""
-      sessionPermissions={["catalog:author", "catalog:publish"]} organizationId={CATALOG_ORGANIZATION_ID}
+      sessionPermissions={["catalog:author", "catalog:review-high-risk"]} organizationId={CATALOG_ORGANIZATION_ID}
       currentPersonId="catalog-reader" onAnchorChange={vi.fn()} />);
     const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: `恢复 ${retired.propertyKey}` }));
@@ -171,7 +171,7 @@ describe("Catalog definition action capability", () => {
     expect(page).toContainElement(notice);
     expect(toolbar.compareDocumentPosition(notice) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(notice.compareDocumentPosition(navigator) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(notice).toHaveTextContent("可以保存草稿并预览，但发布需要 catalog:publish。");
+    expect(notice).toHaveTextContent(publicationSurfaceCopy.authorOnly);
   });
 
   it("shows the published name next to a monospace property key", async () => {
