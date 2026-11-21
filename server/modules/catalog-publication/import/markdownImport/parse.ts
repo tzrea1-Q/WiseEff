@@ -64,7 +64,7 @@ export function parseMarkdown(document: string): SyntaxTree {
   };
   const beginBody = (text: string, line: number) => {
     if (dtsSection && /^ {0,3}#{1,3}(?:[ \t]|$)/u.test(text)) finishDtsSection();
-    if (text === "### DTS 示例") {
+    if (text.trimEnd() === "### DTS 示例") {
       if (definition?.dtsExamples) problem("DTS 示例", "每条定义只能填写一个 DTS 示例区。", line);
       dtsSection = { line, lines: [] };
       return;
@@ -81,7 +81,7 @@ export function parseMarkdown(document: string): SyntaxTree {
     fence = /^\s*(`{3,}|~{3,})/u.exec(text)?.[1] ?? "";
   };
 
-  for (const [index, text] of document.replace(/\r\n/gu, "\n").split("\n").entries()) {
+  for (const [index, text] of document.replace(/\r\n?/gu, "\n").split("\n").entries()) {
     const line = index + 1;
     // Downloaded guides are visible blockquotes before the data; body quotes remain definition content.
     if (!subject && /^>($|\s)/u.test(text)) continue;

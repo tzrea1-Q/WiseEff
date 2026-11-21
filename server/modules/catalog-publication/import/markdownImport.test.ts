@@ -75,7 +75,7 @@ describe("Definition import planner", () => {
     [dtsFence("<1"), 10, "格式无效"],
     [dtsFence("other = <1>;"), 10, "属性名"],
     [dtsFence('"wrong shape"'), 10, "类型或约束"],
-    [dtsFence("<1>\r  "), 10, "控制字符"],
+    [dtsFence("<1>\u0007"), 10, "控制字符"],
   ])("locates invalid DTS sections at their source line %#", (body, line, message) => {
     const result = planMarkdownImport(dtsDocument + dtsSection(body), "invalid.md", firstAcmePredecessor().first);
     expect(result.changeSet).toBeNull();
