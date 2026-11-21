@@ -9120,6 +9120,18 @@ td small {
   overflow: auto;
 }
 
+.definition-example-list pre.definition-example-source {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunken);
+  font-size: var(--text-sm);
+}
+
+.definition-example-list > strong {
+  font-size: var(--text-base);
+}
+
 .definition-example-list pre.definition-example-source > code {
   font: inherit;
   white-space: inherit;
