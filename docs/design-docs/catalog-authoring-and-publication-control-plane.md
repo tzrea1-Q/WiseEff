@@ -115,11 +115,11 @@ Server-side classifier (clients cannot lower it):
 
 Policy row `catalog_publication.publication_policies` (singleton or versioned):
 
-- `low_risk_single_actor_publish`: boolean, default false.
+- `low_risk_single_actor_publish`: legacy boolean retained for compatibility, default false.
 - `publication_enabled`: boolean, default false until CP-12.
 - `capability_contract_revision`: text.
 
-High-risk always needs `catalog:review-high-risk` by a different real principal than the author. The worker/manager identity cannot be that principal.
+A real user with `catalog:publish` or `catalog:review-high-risk` can approve a low-risk Candidate. High-risk Candidates require `catalog:review-high-risk`. The author can approve their own Candidate with the applicable capability. The worker or manager executes the recorded approval from a real user.
 
 ## 6. API freeze
 
@@ -127,7 +127,7 @@ Do not hand-write a parallel OpenAPI. CP-07 extends the existing generated `/api
 
 | Method and path | Contract |
 | --- | --- |
-| Existing proposal create/submit/withdraw/accept/reject | Retained. Accept still does not materialize. Accept of a structured publication reference records Authorization intent, not Catalog rows. Self-accept remains `proposal-self-approval-forbidden` unless the self-hosted low-risk policy applies to a **low-risk** Candidate and the actor has `catalog:publish`. |
+| Existing proposal create/submit/withdraw/accept/reject | Retained. Accept still does not materialize. Accept of a structured publication reference records Authorization intent, not Catalog rows. The organization proposal’s separate accept/reject flow still returns `proposal-self-approval-forbidden` for the proposal author. |
 | `POST /api/v2/catalog/publication-candidates` | Build-and-freeze preview. Input: proposal revision and/or tagged ChangeSet, plus `X-WiseEff-Catalog-Release`. Output: Candidate id, impact summary, risk class, capability contract, **no** requirement that the user type digest/version/Git URL. |
 | `GET /api/v2/catalog/publication-candidates/{candidateId}` | Immutable Candidate projection for the caller’s scope. |
 | `POST /api/v2/catalog/publication-candidates/{candidateId}/publish` | Policy-gated approve-and/or-enqueue. Body: `{ "idempotencyKey": "…" }`. Returns a job, not a definition. |
@@ -143,7 +143,7 @@ Existing reasons in `parameter-catalog-api-transition.md` stay. Add:
 | --- | --- | --- |
 | `publication-not-authorized` | 403 | Missing Authorization or capability |
 | `publication-capability-missing` | 403 | No `catalog:author` / `catalog:publish` / `catalog:review-high-risk` |
-| `publication-self-approval-forbidden` | 403 | High-risk self-approve, or low-risk self-approve while policy is off |
+| `publication-self-approval-forbidden` | 403 | Legacy publication failure retained for historical records |
 | `publication-policy-disabled` | 403 | Feature flag/policy off |
 | `publication-frozen` | 409 | Application upgrade/maintenance freeze |
 | `candidate-stale` | 409 | Draft moved or base drifted; rebuild required |

@@ -168,10 +168,9 @@ export const publicationCopy = {
   refreshJob: "刷新处理状态",
   rebase: "重新预览",
   noInternalIds: "不必填写内部编号、发布版本、摘要或仓库地址。",
-  requiredApproval:
-    "发布需要具备发布权限的人员确认。高风险必须由另一位复核人批准。单人策略未开启时不能自行批准，也不能在本页把风险改成低。",
-  highRiskApproval: "高风险：必须由另一位具备高风险复核权限的人员批准。",
-  lowRiskApproval: "低风险仍需发布权限确认。单人策略未开启时不能自行批准。",
+  requiredApproval: "核对发布预览后确认。高风险变更需要高风险复核权限。",
+  highRiskApproval: "高风险变更需要具备高风险复核权限的人员核对影响并确认发布。",
+  lowRiskApproval: "低风险变更可由具备发布或高风险复核权限的人员确认。",
   added: "新增定义",
   changed: "变更定义",
   addedSubjects: "新增主体",
@@ -638,9 +637,7 @@ export function publicationFieldError(error: unknown): { input: keyof Publicatio
   return FIELD_COPY[field] ?? null;
 }
 
-export function publicationApprovalCopy(riskClass: CatalogPublicationCandidateResponse["item"]["riskClass"], actor?: CatalogActorKind): string {
-  if (actor === "org-admin") return riskClass === "high"
-    ? "高风险：组织管理员可自行批准，请仔细核对影响。" : "组织管理员可核对当前影响后确认发布。";
+export function publicationApprovalCopy(riskClass: CatalogPublicationCandidateResponse["item"]["riskClass"]): string {
   return riskClass === "high" ? publicationCopy.highRiskApproval : publicationCopy.lowRiskApproval;
 }
 

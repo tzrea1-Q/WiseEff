@@ -1380,7 +1380,8 @@ button.parameter-catalog__tree-toggle:hover {
   font-size: var(--text-sm);
 }
 
-.parameter-catalog-publication-dialog__modes label {
+.parameter-catalog-publication-dialog__modes label,
+.parameter-catalog-publication-dialog__form label:has(> input[type="checkbox"]) {
   display: flex;
   flex-direction: row;
   align-items: center;
@@ -1397,14 +1398,14 @@ button.parameter-catalog__tree-toggle:hover {
 
 .parameter-catalog-publication-dialog__form label,
 .parameter-catalog-publication-dialog__form select,
-.parameter-catalog-publication-dialog__form input,
+.parameter-catalog-publication-dialog__form input:not([type="checkbox"]),
 .parameter-catalog-publication-dialog__form textarea {
   display: grid;
   gap: var(--space-1);
   min-width: 0;
 }
 
-.parameter-catalog-publication-dialog__form input,
+.parameter-catalog-publication-dialog__form input:not([type="checkbox"]),
 .parameter-catalog-publication-dialog__form select,
 .parameter-catalog-publication-dialog__form textarea {
   width: 100%;
@@ -1417,13 +1418,13 @@ button.parameter-catalog__tree-toggle:hover {
   font: 400 var(--text-base) / var(--leading-base) var(--font-sans);
 }
 
-.parameter-catalog-publication-dialog__form input:hover,
+.parameter-catalog-publication-dialog__form input:not([type="checkbox"]):hover,
 .parameter-catalog-publication-dialog__form select:hover,
 .parameter-catalog-publication-dialog__form textarea:hover {
   border-color: var(--border-strong);
 }
 
-.parameter-catalog-publication-dialog__form input:focus-visible,
+.parameter-catalog-publication-dialog__form input:not([type="checkbox"]):focus-visible,
 .parameter-catalog-publication-dialog__form select:focus-visible,
 .parameter-catalog-publication-dialog__form textarea:focus-visible {
   outline: none;
@@ -1437,6 +1438,14 @@ button.parameter-catalog__tree-toggle:hover {
 .parameter-catalog-publication-dialog__form button:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+.parameter-catalog-publication-dialog__form input[type="checkbox"] {
+  flex: none;
+  width: var(--space-4);
+  height: var(--space-4);
+  margin: 0;
+  accent-color: var(--accent);
 }
 
 .parameter-catalog-publication-dialog__form textarea {

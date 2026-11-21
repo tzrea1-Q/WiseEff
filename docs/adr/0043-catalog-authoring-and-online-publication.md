@@ -87,20 +87,14 @@ Capabilities (frozen names):
 | Capability | Meaning |
 | --- | --- |
 | `catalog:author` | Create and edit drafts / ChangeSets and request a Candidate preview. |
-| `catalog:publish` | Request execution of an already-authorized Candidate, or approve within policy. |
-| `catalog:review-high-risk` | Independently approve a high-risk Candidate. For non-admin actors, the authoring principal cannot satisfy this with a second synthetic identity. |
+| `catalog:publish` | Approve a low-risk Candidate. |
+| `catalog:review-high-risk` | Approve a high-risk or low-risk Candidate. |
 
 The default role matrix grants `catalog:author`, `catalog:publish`, and `catalog:review-high-risk` to organization administrators (`admin`) and platform administrators (`platform-admin`). Catalog publication requires a real user. The server computes actor, scope, risk, and policy from trusted context.
 
-An Org Admin who holds `catalog:publish` may approve a Candidate they authored, including high-risk. That exception does not apply to other roles.
+The Candidate author can confirm publication when they hold the required capability. Shared subject corrections also require the platform administrator role in the operating organization. The `catalog_publication.low_risk_single_actor_publish` field remains readable for compatibility. Publication approval uses the current capabilities and the Candidate’s risk classification.
 
-Self-hosted single-actor publish for **non-admin** publishers is allowed only when:
-
-1. the instance policy `catalog_publication.low_risk_single_actor_publish` is explicitly enabled;
-2. the Candidate is classified **low-risk** by the server;
-3. the actor holds a real `catalog:publish` grant.
-
-For non-admin actors, high-risk changes still require an independent `catalog:review-high-risk` principal. Adding a Definition is not automatically low-risk. New Driver, selector change, tighter constraints, unit/semantic change, or matcher/fallback impact is high-risk.
+The server classifies a new Driver, selector change, tighter constraints, unit or semantic change, or matcher/fallback impact as high risk.
 
 Disabling the publication feature stops new authoring/publish. It does not hide or delete already published definitions.
 

@@ -86,20 +86,14 @@
 | 能力 | 含义 |
 | --- | --- |
 | `catalog:author` | 创建/编辑草稿与 ChangeSet，并请求 Candidate 预览。 |
-| `catalog:publish` | 请求执行已授权 Candidate，或在策略内批准。 |
-| `catalog:review-high-risk` | 独立批准高风险 Candidate。非 admin 编写者不能用第二个合成身份满足此项。 |
+| `catalog:publish` | 批准低风险 Candidate。 |
+| `catalog:review-high-risk` | 批准高风险或低风险 Candidate。 |
 
 默认角色矩阵向组织管理员（`admin`）和平台超级管理员（`platform-admin`）授予 `catalog:author`、`catalog:publish`、`catalog:review-high-risk`。目录发布要求真实用户操作。服务端从可信上下文确定操作人、作用范围、风险与策略。
 
-持有 `catalog:publish` 的 Org Admin 可以批准自己起草的 Candidate，**包括高风险**。该例外不适用于其他角色。
+候选作者持有相应权限即可确认发布。共享主体纠错还要求操作人在当前组织具有平台管理员角色。`catalog_publication.low_risk_single_actor_publish` 字段保留读取兼容性，发布批准依据当前权限和候选风险级别。
 
-**非 admin** 发布人的自托管单人发布仅当：
-
-1. 实例策略 `catalog_publication.low_risk_single_actor_publish` 显式启用；
-2. 服务端把该 Candidate 分为 **low-risk**；
-3. actor 持有真实的 `catalog:publish` 授权。
-
-对非 admin，高风险变更仍要求独立的 `catalog:review-high-risk` 主体。新增 Definition 不天然低风险。新 Driver、selector 变化、更严约束、单位/语义变化或 matcher/fallback 影响属于高风险。
+新 Driver、selector 变化、更严约束、单位或语义变化、影响 matcher 或 fallback 的改动，均由服务端归为高风险。
 
 关闭发布能力只停止新编写/发布，不隐藏或删除已发布定义。
 

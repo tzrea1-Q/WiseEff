@@ -253,12 +253,12 @@ Status prints non-secret identity: database OID, database name, current Release 
 
 ```bash
 npx tsx scripts/catalog-publication-ops.ts policy enable --actor <user-id> \
-  --confirmation ephemeral-test-only [--low-risk-single-actor]
+  --confirmation ephemeral-test-only
 npx tsx scripts/catalog-publication-ops.ts policy disable --actor <user-id> \
   --confirmation ephemeral-test-only
 ```
 
-Enable is refused unless `current_database()` matches the ephemeral test name pattern and the confirmation token matches. `--low-risk-single-actor` is independent and defaults to the current policy value (not bundled on).
+Enable is refused unless `current_database()` matches the ephemeral test name pattern and the confirmation token matches. The legacy `low_risk_single_actor_publish` field and its CLI options remain available for compatibility. Approval uses the Candidate’s risk and the actor’s capabilities.
 
 **Durable / non-ephemeral instance:** check then execute against observed identity. Do not use the ephemeral confirmation. Re-run status after any drift; do not reuse a stale check.
 
@@ -269,8 +269,7 @@ npx tsx scripts/catalog-publication-ops.ts policy check enable --actor <user-id>
   --expected-digest sha256:... \
   --expected-policy-revision <n> \
   --expected-frozen true|false \
-  --expected-adopted true \
-  [--low-risk-single-actor|--no-low-risk-single-actor]
+  --expected-adopted true
 
 npx tsx scripts/catalog-publication-ops.ts policy enable --actor <user-id> \
   --expected-database-oid <oid> \
@@ -278,8 +277,7 @@ npx tsx scripts/catalog-publication-ops.ts policy enable --actor <user-id> \
   --expected-digest sha256:... \
   --expected-policy-revision <n> \
   --expected-frozen true|false \
-  --expected-adopted true \
-  [--low-risk-single-actor|--no-low-risk-single-actor]
+  --expected-adopted true
 ```
 
 Enable requires exact Catalog adoption (current Artifact + Receipt). It does not advance `current`, does not clear freeze, and does not require a prior online publication. Disable keeps Catalog, Artifact, Receipt, and project values. Closing publication does not restore legacy `advance` after a Receipt exists.
@@ -320,7 +318,7 @@ Work directory unless noted: `/srv/wiseeff/ops/self-hosted`. CLI runs inside the
 | 1. Read post-upgrade state | `./scripts/collect-catalog-publication-status.sh` (or `compose ps`, image `curl` manager `/health/live`, `policy status`, `freeze status`) | No | Running image/tag, roles, current Release, policy revision, freeze; JSON `pinsForPolicyCheck` | Missing manager LOGIN on a stack that already had `publication-manager` |
 | 2. Inspect source bundle / adopt check | `inspect` with `CATALOG_BASELINE_READONLY_DATABASE_URL`; `adopt --check` with expected id/digest/bundle | No | JSON identity matches the collected bundle | Drift, missing history, or missing Artifact bytes |
 | 3. Adopt + ACL + capabilities | `adopt --execute`; Org Admin already has `catalog:author` / `catalog:publish` / `catalog:review-high-risk`. Grant those only for non-admin publishers | Yes | Receipt kind `adopted-preexisting`; Org Admin can author and self-approve after re-login | Do not use test capabilities; do not grant platform-admin |
-| 4. Policy check / enable / disable | `policy check enable` then `policy enable` with the **fresh** status pins; optional `--low-risk-single-actor` | Yes | `publication_enabled=true`; freeze unchanged | Stale pins, not adopted, ephemeral confirmation on a durable name |
+| 4. Policy check / enable / disable | `policy check enable` then `policy enable` with the **fresh** status pins | Yes | `publication_enabled=true`; freeze unchanged | Stale pins, not adopted, ephemeral confirmation on a durable name |
 | 5. Page business loop | `/parameter-admin/specs` create/revise/preview/publish; workbench "Submit selected" control | Yes | Receipt `effective`; official value content; history after restart | Queued/running after timeout is failure; do not POST save APIs by hand |
 | 6. Abnormal stop | `policy disable`; `freeze set` if maintenance; upgrade recovery for restore | Yes | Publication closed; Catalog/values retained | Do not DROP history or re-bootstrap |
 

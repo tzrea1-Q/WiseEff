@@ -136,7 +136,8 @@ export function SubjectIdentityPublicationDialog(props: {
   const canPreview = surface?.authoringAllowed === true && (!requiresSelector || Boolean(selector.trim())) &&
     (!needsDriverRules || Boolean(driverRules)) && ((action !== "transfer" && action !== "owner") || Boolean(from)) && !busy && !success;
   const canReview = surface?.publishingAllowed === true || surface?.reviewHighRiskAllowed === true;
-  const canPublish = canReview && flow.candidateVerified && Boolean(impact) && !rules?.conflictCounts.length && !stale && !busy && !job;
+  const canPublish = surface?.reviewHighRiskAllowed === true && flow.candidateVerified && Boolean(impact)
+    && !rules?.conflictCounts.length && !stale && !busy && !job;
 
   useEffect(() => {
     const stored = flow.restore(false, () => null);
@@ -270,7 +271,7 @@ export function SubjectIdentityPublicationDialog(props: {
       </>}
     </ModalDialog>
     <PublicationConfirmation confirm={confirm} allowed={confirm === "publish" ? canPublish : canPreview}
-      risk="high" actor="platform-admin" pending={pending} onPreview={preview}
+      risk="high" pending={pending} onPreview={preview}
       onPublish={() => { if (canPublish) void flow.publish(emptyPublicationDraft(), false, flow.captureError); }}
       onCancel={() => setConfirm(null)} />
   </>;

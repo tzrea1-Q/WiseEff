@@ -9,6 +9,7 @@ import { createMockCatalogPorts } from "@/application/parameter-catalog/mockAdap
 import {
   CATALOG_RELEASE_ID,
   activeDefinition,
+  catalogPublicationJob,
   readyCatalogDocument,
   registeredSubject,
   retiredSubject,
@@ -267,10 +268,13 @@ describe("DefinitionEditorBody", () => {
     })] }, expect.anything()));
   });
 
-  it("previews withdrawal of deprecation for independent review without submitting publication", async () => {
+  it.each([true, false])("previews deprecation withdrawal with high-risk review permission=%s", async (canReview) => {
     const user = userEvent.setup();
     const { catalog } = renderDialog(undefined, undefined, {
       actor: "platform-admin",
+      sessionPermissions: canReview ? ["catalog:author", "catalog:review-high-risk"] : ["catalog:author"],
+      publishingAllowed: false,
+      reviewHighRiskAllowed: canReview,
       definition: { ...activeDefinition, lifecycle: "deprecated", currentRevision: {
         ...activeDefinition.currentRevision, successorDefinitionId: "pdef_successor"
       } },
@@ -282,7 +286,9 @@ describe("DefinitionEditorBody", () => {
       impactSummary: { addedDefinitionCount: 0, changedDefinitionCount: 1, addedSubjectCount: 0,
         definitionSuccessorChange: { definitionId: activeDefinition.id, successorDefinitionId: null, successorLabel: null, reason: "撤销误弃用" } }
     } });
-    const publish = vi.spyOn(catalog, "publishPublicationCandidate");
+    const publish = vi.spyOn(catalog, "publishPublicationCandidate").mockResolvedValue({
+      item: { ...catalogPublicationJob, candidateId: "ccand_withdrawal" }
+    });
     await user.click(screen.getByRole("checkbox", { name: "弃用此定义" }));
     await user.type(screen.getByLabelText("修改原因"), "撤销误弃用");
     await user.click(screen.getByRole("button", { name: "预览弃用修订" }));
@@ -292,6 +298,14 @@ describe("DefinitionEditorBody", () => {
       successorDefinitionId: null, reason: "撤销误弃用"
     }] }, { catalogReleaseId: CATALOG_RELEASE_ID });
     expect(publish).not.toHaveBeenCalled();
+    if (!canReview) {
+      expect(screen.queryByRole("button", { name: "确认发布定义候选" })).not.toBeInTheDocument();
+      return;
+    }
+    await user.click(screen.getByRole("button", { name: "确认发布定义候选" }));
+    await waitFor(() => expect(publish).toHaveBeenCalledWith(
+      "ccand_withdrawal", { idempotencyKey: "idem-847-correction" }, { catalogReleaseId: CATALOG_RELEASE_ID }
+    ));
   });
 
   it("allows an author to preview an active unregistered definition without publication authority", async () => {
@@ -579,7 +593,10 @@ describe("DefinitionEditorBody", () => {
 
   it("requires a reason for an exact Definition semantic revision without policyTarget or migration", async () => {
     const user = userEvent.setup();
-    const { catalog, preview, execute, continueReplacement } = renderDialog();
+    const { catalog, preview, execute, continueReplacement } = renderDialog(undefined, undefined, {
+      sessionPermissions: ["catalog:author", "catalog:publish", "catalog:review-high-risk"],
+      reviewHighRiskAllowed: true
+    });
     const createCandidate = vi.spyOn(catalog, "createPublicationCandidate");
     const publishCandidate = vi.spyOn(catalog, "publishPublicationCandidate");
     const save = screen.getByRole("button", { name: "保存内容修订" });

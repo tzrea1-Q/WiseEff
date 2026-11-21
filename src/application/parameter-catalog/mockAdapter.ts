@@ -551,6 +551,8 @@ export function createMockCatalogPorts(options: CatalogMockOptions = {}): {
     },
     async getPublicationSurface() {
       assertReadyForRead(store);
+      const session = options.getSession?.();
+      const policyAllowsPublication = store.publicationOutcome !== "policy-disabled" && store.publicationOutcome !== "frozen";
       return {
         item: {
           publicationEnabled: store.publicationOutcome !== "policy-disabled",
@@ -559,9 +561,10 @@ export function createMockCatalogPorts(options: CatalogMockOptions = {}): {
           frozen: store.publicationOutcome === "frozen",
           adopted: true,
           currentReleaseId: CATALOG_RELEASE_ID,
-          authoringAllowed: store.publicationOutcome !== "policy-disabled" && store.publicationOutcome !== "frozen",
-          publishingAllowed: store.publicationOutcome !== "policy-disabled" && store.publicationOutcome !== "frozen",
-          reviewHighRiskAllowed: false,
+          authoringAllowed: policyAllowsPublication,
+          publishingAllowed: policyAllowsPublication,
+          reviewHighRiskAllowed: policyAllowsPublication && (!session ||
+            (session.isActive && (session.actorKind === "org-admin" || session.actorKind === "platform-admin"))),
           blockers: [
             ...(store.publicationOutcome === "policy-disabled" ? (["publication-policy-disabled"] as const) : []),
             ...(store.publicationOutcome === "frozen" ? (["publication-frozen"] as const) : [])

@@ -89,6 +89,27 @@ test("reviews Huawei shared aliases and driver rules from module management", as
     await signInCatalogActor(page, "platform-admin", route);
     await page.getByRole("button", { name: `共享标识：${name}` }).click();
     const identity = page.getByRole("dialog", { name: `共享标识：${name}` });
+    const aliasLabel = "保留旧名为正式目录别名";
+    const keepOldAlias = identity.getByRole("checkbox", { name: aliasLabel });
+    await expect(keepOldAlias).toBeChecked();
+    await page.screenshot({ path: testInfo.outputPath("huawei-rename-alias-checkbox-1440x900.png"), animations: "disabled" });
+    const layout = await keepOldAlias.evaluate(input => {
+      const checkbox = input.getBoundingClientRect();
+      const range = document.createRange();
+      range.setStartAfter(input);
+      range.setEndAfter(input.parentElement!.lastChild!);
+      const caption = range.getBoundingClientRect();
+      return { width: checkbox.width, height: checkbox.height, gap: caption.left - checkbox.right,
+        verticalOffset: Math.abs(checkbox.top + checkbox.height / 2 - caption.top - caption.height / 2) };
+    });
+    await testInfo.attach("rename alias checkbox geometry", { body: JSON.stringify(layout), contentType: "application/json" });
+    expect(Math.max(layout.width, layout.height)).toBeLessThanOrEqual(20);
+    expect(layout.gap).toBeGreaterThan(0);
+    expect(layout.verticalOffset).toBeLessThanOrEqual(3);
+    await identity.getByText(aliasLabel, { exact: true }).click();
+    await expect(keepOldAlias).not.toBeChecked();
+    await keepOldAlias.press("Space");
+    await expect(keepOldAlias).toBeChecked();
     await identity.getByRole("combobox", { name: "共享标识操作" }).click();
     await page.getByRole("option", { name: "新增正式别名" }).click();
     await identity.getByLabel("正式别名", { exact: true }).fill("direct_charger");
@@ -266,6 +287,23 @@ test("reviews Huawei shared aliases and driver rules from module management", as
     await expect(nodePreview).toContainText("原定义、登记、项目绑定和历史值保留原主体身份");
     await assertNoPageOverflow(page);
     await catalogScreenshot(page, testInfo, "catalog-node-successor-preview-1440x900");
+
+    await openSharedIdentity(route, name);
+    const rename = page.getByRole("dialog", { name: /^共享标识：/u });
+    const renamed = "huawei,direct-charger";
+    await rename.getByLabel("新规范标识").fill(renamed);
+    await expect(rename.getByRole("checkbox", { name: "保留旧名为正式目录别名" })).toBeChecked();
+    await rename.getByRole("button", { name: "生成发布预览" }).click();
+    await confirmGovernanceDialog(page, "确认预览");
+    await expect(rename.getByRole("region", { name: "共享标识发布预览" })).toContainText("旧名继续匹配");
+    await rename.getByRole("button", { name: "提交发布" }).click();
+    await confirmGovernanceDialog(page, "确认发布");
+    await expect(rename.getByRole("status")).toContainText("发布已入队");
+    expect(await runPublicationManagerOnce({ db, pool, installer: createCatalogInstaller(pool),
+      resolvePublisherActor: async (id) => createUserInvocation(await getAuthContext(db, id)) })).toBe("claimed");
+    await expect(rename.getByRole("status")).toContainText("目录发布已生效", { timeout: 30_000 });
+    await expect(rename.getByText(`${name}（启用）`, { exact: true })).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath("huawei-rename-self-published-1440x900.png"), animations: "disabled" });
   } finally {
     await db.close();
   }
