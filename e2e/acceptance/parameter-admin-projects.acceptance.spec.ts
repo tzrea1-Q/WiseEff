@@ -199,16 +199,17 @@ test.describe("parameter-admin project list", () => {
       }
 
       await page.setViewportSize({ width: 1440, height: 900 });
-      let releaseBindings!: () => void;
-      let bindingsHeld!: () => void;
-      const bindingsGate = new Promise<void>((resolve) => { releaseBindings = resolve; });
-      const bindingsRequestHeld = new Promise<void>((resolve) => { bindingsHeld = resolve; });
+      let releaseProjectList!: () => void;
+      let projectListHeld!: () => void;
+      const projectListGate = new Promise<void>((resolve) => { releaseProjectList = resolve; });
+      const projectListRequestHeld = new Promise<void>((resolve) => { projectListHeld = resolve; });
       const routeTaskSettlements: Promise<PromiseSettledResult<void>[]>[] = [];
-      const requiredBindings = (url: URL) => url.pathname === "/api/v2/projects/aurora/parameter-bindings";
-      await page.route(requiredBindings, (route) => {
+      // The shell's parameters domain waits for this list during runtime hydration.
+      const runtimeProjectList = (url: URL) => url.pathname === "/api/v1/projects";
+      await page.route(runtimeProjectList, (route) => {
         const task = (async () => {
-          bindingsHeld();
-          await bindingsGate;
+          projectListHeld();
+          await projectListGate;
           if (!route.request().failure()) await route.continue();
         })();
         const settlement = Promise.allSettled([task]);
@@ -220,7 +221,7 @@ test.describe("parameter-admin project list", () => {
         .finally(() => { signInSettled = true; });
       let failure: PromiseRejectedResult | undefined;
       try {
-        await Promise.race([bindingsRequestHeld, signIn.then(() => bindingsRequestHeld)]);
+        await Promise.race([projectListRequestHeld, signIn.then(() => projectListRequestHeld)]);
         await page.waitForLoadState("domcontentloaded");
         await expect(page.locator("#main-content")).toHaveAttribute("data-runtime-state", "loading");
         await expect(page.locator("#main-content > .page-content")).toHaveAttribute("inert", "");
@@ -228,9 +229,9 @@ test.describe("parameter-admin project list", () => {
       } catch (reason) {
         failure = { status: "rejected", reason };
       } finally {
-        releaseBindings();
+        releaseProjectList();
         await Promise.all(routeTaskSettlements);
-        const settled = await Promise.allSettled([signIn, page.unroute(requiredBindings)]);
+        const settled = await Promise.allSettled([signIn, page.unroute(runtimeProjectList)]);
         const settledRoutes = (await Promise.all(routeTaskSettlements)).flat();
         failure ??= [...settled, ...settledRoutes].find((result) => result.status === "rejected");
       }

@@ -32,6 +32,8 @@ export type ReviewInboxRow = {
   typeLabel?: string;
   projectId: string;
   project: string;
+  parameterId?: string;
+  targetValue?: string;
   module: string;
   title: string;
   submitter: string;
@@ -46,7 +48,7 @@ export type ReviewInboxRow = {
   view: "pending" | "history";
 };
 
-type Props = Pick<PageProps, "runtimeMode" | "sessionPermissions" | "sessionRoles"> & {
+type Props = Pick<PageProps, "runtimeMode" | "sessionPermissions" | "sessionRoles" | "parameterActions"> & {
   projectId: string;
   repository?: ParameterCatalogRepository;
   sourceRepository?: ParameterFileRepository;
@@ -76,7 +78,7 @@ const searchProfile: SearchProfile<ReviewInboxRow> = { fields: [
   { name: "context", weight: 2, getValues: (row) => [row.project, row.module, row.submitter, row.assignedTo, row.status] }
 ] };
 
-export function ReviewInbox({ projectId, repository, sourceRepository, state, search, runtimeMode, sessionPermissions, sessionRoles, mineOnly = false, canReview = false,
+export function ReviewInbox({ projectId, repository, sourceRepository, state, search, runtimeMode, sessionPermissions, sessionRoles, parameterActions, mineOnly = false, canReview = false,
   legacyRows, renderLegacyDetail, onLegacySelect, renderRowSelection, renderRowTitle, selectAll, queueActions,
   onRequestsChanged, loading: legacyLoading = false, error: legacyError, onVisibleLegacyIds, onNavigate, busy = false, onBusyChange }: Props) {
   const [query, setQuery] = useState(search);
@@ -86,8 +88,8 @@ export function ReviewInbox({ projectId, repository, sourceRepository, state, se
   const identityScope = useMemo(() => ({ repository, sourceRepository, projectId, mineOnly, canReview, userId: state.currentUserId, roleId: state.activeRoleId }),
     [repository, sourceRepository, projectId, mineOnly, canReview, state.currentUserId, state.activeRoleId]);
   const loadScope = useMemo(() => ({ ...identityScope, identity: identityScope,
-    projects: state.configDraft.projects, users: state.users, parameters: state.parameters, refresh
-  }), [identityScope, state.configDraft.projects, state.users, state.parameters, refresh]);
+    projects: state.configDraft.projects, users: state.users, refresh
+  }), [identityScope, state.configDraft.projects, state.users, refresh]);
   const [canonicalProjection, setCanonicalProjection] = useState<{
     scope: typeof loadScope; rows: ReviewInboxRow[]; error: string | null;
   } | null>(null);
@@ -125,7 +127,7 @@ export function ReviewInbox({ projectId, repository, sourceRepository, state, se
   }, []);
 
   useEffect(() => {
-    const { repository, projectId, mineOnly, canReview, projects, users, parameters } = loadScope;
+    const { repository, projectId, mineOnly, canReview, projects, users } = loadScope;
     if (!repository || !projectId) return;
     let cancelled = false;
     const scope = mineOnly ? { mine: true } : undefined;
@@ -150,12 +152,13 @@ export function ReviewInbox({ projectId, repository, sourceRepository, state, se
             : request.reviewerName ?? (request.reviewerUserId ? userName(request.reviewerUserId) : undefined),
           status: request.cancellation ? "已取消" : canonicalStatusLabels[request.status], view: request.status === "pending" ? "pending" : "history" })),
         ...[...values, ...batches].map((request): ReviewInboxRow => {
-          const parameter = "bindingId" in request ? parameters.find((item) => item.id === request.bindingId) : undefined;
           return { id: request.id, kind: "value", projectId, project,
-            module: parameter?.module || "软件配置",
-            objectLabel: parameter?.name || ("targets" in request ? `${request.targets.length} 项来源变更` : "参数变更"),
+            parameterId: "bindingId" in request ? request.bindingId : undefined,
+            module: "软件配置",
+            objectLabel: "targets" in request ? `${request.targets.length} 项来源变更` : "参数变更",
+            targetValue: "bindingId" in request && request.action !== "delete" ? request.targetValue : undefined,
             changeSummary: "targets" in request ? "整批审核与应用" : request.action === "delete" ? "删除属性"
-              : `目标值 ${request.targetValue}${parameter?.unit ? ` ${parameter.unit}` : ""}`,
+              : `目标值 ${request.targetValue}`,
             title: request.reason, submitter: request.submitterName ?? userName(request.submitterUserId),
             assignedToId: request.assignedToUserId,
             assignedTo: request.assignedToName ?? (request.assignedToUserId ? userName(request.assignedToUserId) : "项目审核人"),
@@ -183,13 +186,35 @@ export function ReviewInbox({ projectId, repository, sourceRepository, state, se
     return () => { cancelled = true; };
   }, [loadScope, identityScope]);
 
-  const canonicalRows = currentProjection?.rows ?? [];
+  const ensureProjectParameters = runtimeMode === "api" ? parameterActions?.ensureProjectParameters : undefined;
+  const projectParameters = useMemo(() => runtimeMode === "api"
+    ? state.parameters.filter((parameter) => parameter.projectId === projectId)
+    : state.parameters, [runtimeMode, state.parameters, projectId]);
+  const parameterById = useMemo(() => new Map(projectParameters.map((parameter) => [parameter.id, parameter])), [projectParameters]);
+  const canonicalRows = useMemo(() => (currentProjection?.rows ?? []).map((row) => {
+    const parameter = row.parameterId ? parameterById.get(row.parameterId) : undefined;
+    return parameter ? { ...row, module: parameter.module || row.module, objectLabel: parameter.name || row.objectLabel,
+      changeSummary: row.targetValue !== undefined && parameter.unit ? `${row.changeSummary} ${parameter.unit}` : row.changeSummary } : row;
+  }), [currentProjection, parameterById]);
   const allRows = [...canonicalRows, ...legacyRows];
   const scopedRows = allRows.filter((row) => row.view === view);
+  const metadataProjectIds = useMemo(() => {
+    if (!ensureProjectParameters) return [];
+    return [...new Set([...canonicalRows, ...legacyRows].filter((row) => row.view === view && row.parameterId
+      && (type === "all" || row.kind === type) && (view !== "pending" || !assignedOnly || row.assignedToId === state.currentUserId))
+      .map((row) => row.projectId || projectId))]
+      .filter((id) => state.configDraft.projects.some((project) => project.id === id));
+  }, [ensureProjectParameters, canonicalRows, legacyRows, view, type, assignedOnly, state.currentUserId, state.configDraft.projects, projectId]);
+  useEffect(() => {
+    void ensureProjectParameters?.(metadataProjectIds);
+  }, [ensureProjectParameters, metadataProjectIds]);
+  const metadataStatuses = metadataProjectIds.map((id) => state.projectParameterStatuses?.[id] ?? "idle");
+  const metadataLoading = Boolean(ensureProjectParameters && metadataStatuses.some((status) => status === "idle" || status === "loading"));
+  const failedMetadataProjects = metadataProjectIds.filter((id) => state.projectParameterStatuses?.[id] === "error");
   const moduleRegistry = buildPowerManagementModuleTree(state.configDraft.parameterModules, scopedRows.map((row) => row.module));
   const moduleIdsByName = new Map(moduleRegistry.map((node) => [node.name, node.id]));
   const moduleNodes = buildParameterModuleFilterNodes(scopedRows.map((row) => {
-    const parameter = state.parameters.find((item) => item.module === row.module);
+    const parameter = row.parameterId ? parameterById.get(row.parameterId) : projectParameters.find((item) => item.module === row.module);
     return { moduleId: moduleIdsByName.get(row.module) ?? parameter?.moduleId ?? legacyModuleIdFromName(row.module),
       moduleName: row.module, modulePath: parameter?.modulePath };
   }), moduleRegistry);
@@ -257,7 +282,16 @@ export function ReviewInbox({ projectId, repository, sourceRepository, state, se
     if (key === "view") setAssignedOnly(false);
     writeQuery(next);
   };
-  const changed = () => { setRefresh((version) => version + 1); setDetailRefresh((version) => version + 1); onRequestsChanged?.(); };
+  const changed = () => {
+    setRefresh((version) => version + 1);
+    setDetailRefresh((version) => version + 1);
+    onRequestsChanged?.();
+  };
+  const refreshMetadata = () => void ensureProjectParameters?.(failedMetadataProjects, { force: true });
+  const changedCanonicalProject = () => {
+    changed();
+    void ensureProjectParameters?.([projectId], { force: true });
+  };
   useReviewQueueKeyboard({ enabled: !interactionBusy, rowIds: visibleRows.map((row) => row.id), selectedId: selected?.id ?? "", onSelect: select,
     onOpenSelected: () => detailRef.current?.focus(), queueRef, detailRef });
   const filtered = type !== "all" || (view === "pending" && assignedOnly) || Boolean(searchText.trim()) || Object.values(filters).some((values) => values.length);
@@ -336,6 +370,8 @@ export function ReviewInbox({ projectId, repository, sourceRepository, state, se
       <TabPanel id={`${tabsId}-${view}-panel`} aria-labelledby={`${tabsId}-${view}-tab`}>
         {incomplete ? <SectionError message={`${canonicalRows.length && error ? "队列未能更新，以下为上次读取的结果。" : hasRecords ? "部分请求未能加载，以下结果不完整。" : ""}${error ?? legacyError ?? ""}`} onRetry={changed} /> : null}
         {loading || legacyLoading ? <SectionSkeleton label={mineOnly ? "正在加载我的提交…" : "正在加载审核队列…"} /> : null}
+        {metadataLoading ? <SectionSkeleton label="正在加载请求关联的项目参数…" /> : null}
+        {failedMetadataProjects.length > 0 ? <SectionError message="部分请求的关联参数加载失败。" onRetry={refreshMetadata} /> : null}
         {view === "pending" && visibleRows.some((row) => row.kind === "legacy") ? queueActions : null}
         {visibleRows.length ? <div className="table-wrap review-table-wrap"><Table aria-label={queueLabel} id="review-queue-table">
           <colgroup>
@@ -392,13 +428,14 @@ export function ReviewInbox({ projectId, repository, sourceRepository, state, se
       <p className="review-inbox__detail-context sr-only">{selected.project} · {selected.typeLabel ?? typeLabels[selected.kind]}</p>
       {selected.kind === "source" && sourceRepository ? <SourceRevisionReviewPanel key={JSON.stringify([projectId, state.currentUserId, state.activeRoleId, mineOnly, canReview, selected.id])}
         projectId={projectId} requestId={selected.id} repository={sourceRepository} currentUserId={state.currentUserId} canReview={canReview}
-        canViewOrganization={canManageOrganization} refreshVersion={detailRefresh} onRequestsChanged={changed} onBusyChange={setDetailBusy} />
+        canViewOrganization={canManageOrganization} refreshVersion={detailRefresh} onRequestsChanged={changedCanonicalProject} onBusyChange={setDetailBusy} />
       : selected.kind === "legacy" ? renderLegacyDetail(selected) : selected.kind === "value" ? <CanonicalProjectValueReviewPanel
         key={JSON.stringify([projectId, state.currentUserId, state.activeRoleId, mineOnly, canReview, selected.kind, selected.id])} refreshVersion={detailRefresh} projectId={projectId} repository={repository} currentUserId={state.currentUserId} canReview={canReview}
-        mineOnly={mineOnly} initialRequestId={selected.id} detailOnly externalView={view} users={state.users} parameters={state.parameters} onRequestsChanged={changed} onBusyChange={setDetailBusy}
+        mineOnly={mineOnly} initialRequestId={selected.id} detailOnly externalView={view} users={state.users} parameters={projectParameters}
+        onRequestsChanged={changedCanonicalProject} onBusyChange={setDetailBusy}
         onSelectRequest={(id) => { if (id) select(id); }} /> : <CanonicalMemberRemovalReviewPanel key={JSON.stringify([projectId, state.currentUserId, state.activeRoleId, mineOnly, canReview, selected.kind, selected.id])} refreshVersion={detailRefresh}
           projectId={projectId} repository={repository} currentUserId={state.currentUserId} canReview={canReview} mineOnly={mineOnly}
-          initialRequestId={selected.id} detailOnly externalView={view} users={state.users} onRequestsChanged={changed} onSelectRequest={select} onBusyChange={setDetailBusy} />}
+          initialRequestId={selected.id} detailOnly externalView={view} users={state.users} onRequestsChanged={changedCanonicalProject} onSelectRequest={select} onBusyChange={setDetailBusy} />}
     </aside> : requestedId && !loading && !legacyLoading && !error && !legacyError ? <aside className="review-detail review-inbox__unselected">
       {hiddenSelection ? <><p role="status">当前请求被筛选条件隐藏，清除筛选后可继续查看。</p><Button type="button" variant="outline" onClick={clearFilters}>显示当前请求</Button></>
         : <><p role="alert">无法打开该请求，它可能已移出当前项目队列。</p><Button type="button" variant="outline" onClick={() => {

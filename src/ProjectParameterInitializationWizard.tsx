@@ -3,11 +3,13 @@ import { Eye, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Dispatch } from "react";
 import type { AppAction } from "@/application/state/appState";
+import type { ParameterRuntimeActions } from "@/application/parameters/parameterRuntime";
 import type { ParameterInitializationRepository } from "@/application/ports/ParameterInitializationRepository";
 import { toInitializationUiCandidate, type InitializationUiCandidate } from "@/application/parameters/initializationUiMappers";
 import { HorizontalDragScroll } from "@/components/HorizontalDragScroll";
 import { ModalDialog } from "@/components/common/ModalDialog";
 import { SearchField } from "@/components/common/SearchField";
+import { SectionError, SectionSkeleton } from "@/components/common/SectionState";
 import { DefinitionDocumentation } from "@/components/parameters/DefinitionDocumentation";
 import { filterItems } from "@/lib/search";
 import { projectAdminSearchProfile } from "@/lib/search/profiles";
@@ -30,6 +32,7 @@ type Props = {
   onClose: () => void;
   onPreview?: ParameterInitializationRepository["previewSnapshot"];
   onCompletePreview?: ParameterInitializationRepository["previewCompleteCopy"];
+  ensureProjectParameters?: ParameterRuntimeActions["ensureProjectParameters"];
   onSubmit?: (
     action: Extract<AppAction, { type: "SUBMIT_PARAMETER_INITIALIZATION" }>,
     snapshots: SemanticInitializationSnapshotItem[],
@@ -74,7 +77,7 @@ const wizardSteps = [
   }
 ] as const;
 
-export function ProjectParameterInitializationWizard({ state, dispatch, onClose, onPreview, onCompletePreview, onSubmit }: Props) {
+export function ProjectParameterInitializationWizard({ state, dispatch, onClose, onPreview, onCompletePreview, onSubmit, ensureProjectParameters }: Props) {
   const [completeCopy, setCompleteCopy] = useState(false);
   const [configSnapshots, setConfigSnapshots] = useState<InitializationConfigSnapshot[]>([]);
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
@@ -103,9 +106,18 @@ export function ProjectParameterInitializationWizard({ state, dispatch, onClose,
   const activeStep = wizardSteps[currentStepIndex];
   const isApiMode = Boolean(onPreview && onSubmit);
   const projects = state.configDraft.projects;
+  const snapshotProjectIds = useMemo(() => new Set(canonicalSnapshots.map((snapshot) => snapshot.sourceProjectId)), [canonicalSnapshots]);
+  const sourceParameters = useMemo(() => isApiMode
+    ? state.parameters.filter((parameter) => snapshotProjectIds.has(parameter.projectId))
+    : state.parameters, [isApiMode, snapshotProjectIds, state.parameters]);
+  useEffect(() => {
+    if (isApiMode) void ensureProjectParameters?.([...snapshotProjectIds]);
+  }, [ensureProjectParameters, isApiMode, snapshotProjectIds]);
+  const sourceStatuses = [...snapshotProjectIds].map((id) => state.projectParameterStatuses?.[id] ?? "idle");
+  const failedSourceProjectIds = [...snapshotProjectIds].filter((id) => state.projectParameterStatuses?.[id] === "error");
   const initializationConfig = useMemo(
-    () => resolveInitializationConfig(state.configDraft, state.parameters),
-    [state.configDraft, state.parameters]
+    () => resolveInitializationConfig(state.configDraft, sourceParameters),
+    [state.configDraft, sourceParameters]
   );
   const hasAvailableSourceProjects = projects.length > 0;
   const isEmptyInitialization = startFromEmpty || !hasAvailableSourceProjects;
@@ -133,11 +145,11 @@ export function ProjectParameterInitializationWizard({ state, dispatch, onClose,
   );
   const moduleNameById = useMemo(
     () => new Map(
-      [...initializationConfig.parameterLibrary, ...state.parameters]
+      [...initializationConfig.parameterLibrary, ...sourceParameters]
         .filter((parameter) => parameter.moduleId)
         .map((parameter) => [parameter.moduleId!, parameter.module])
     ),
-    [initializationConfig.parameterLibrary, state.parameters]
+    [initializationConfig.parameterLibrary, sourceParameters]
   );
   const supplementSourceProjectIds = sourceProjectIds.filter((projectId) => projectId !== primarySourceProjectId);
   const filteredSourceProjects = useMemo(
@@ -816,6 +828,10 @@ export function ProjectParameterInitializationWizard({ state, dispatch, onClose,
             <span className="eyebrow">第 3 步</span>
             <h3 id="project-init-step-title">{isApiMode ? "从来源项目选择参数" : activeStep.title}</h3>
             <p>{isApiMode ? "浏览所选来源的参数，逐项确认来源值与文件定位。" : activeStep.description}</p>
+            {ensureProjectParameters && sourceStatuses.some((status) => status === "idle" || status === "loading")
+              ? <SectionSkeleton label="正在加载来源项目的参数详情…" /> : null}
+            {ensureProjectParameters && failedSourceProjectIds.length > 0 ? <SectionError message="部分来源项目的参数详情加载失败。"
+              onRetry={() => void ensureProjectParameters(failedSourceProjectIds, { force: true })} /> : null}
           </div>
           <div className="project-init-scope-meta">
             <p>{scopeStatsMessage}</p>

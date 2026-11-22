@@ -8,6 +8,7 @@ import type {
   WorkflowAssigneeCandidates
 } from "@/application/ports/ParameterRepository";
 import { resolveDtsStructuredRepository } from "@/application/parameters/dtsStructuredRuntime";
+import type { ParameterRuntimeActions } from "@/application/parameters/parameterRuntime";
 import { resolveParameterFileRepository } from "@/application/parameters/parameterFileRuntime";
 import { selectPrimaryProjectDtsFile } from "@/application/parameters/selectPrimaryProjectDtsFile";
 import { selectPrimaryProjectJsonFile } from "@/application/parameters/selectPrimaryProjectJsonFile";
@@ -88,6 +89,7 @@ export type ApiProjectTopologyWorkspaceProps = {
   /** Test seam — inject parameter file repository instead of resolving from runtime mode. */
   parameterFileRepository?: ParameterFileRepository;
   canonicalRepository?: ParameterCatalogRepository;
+  loadProjectParameters?: ParameterRuntimeActions["loadProjectParameters"];
   listConfigSets?: (projectId: string) => Promise<Array<{ id: string; name: string }>>;
   listDrafts?: (projectId: string) => Promise<readonly TrayHydrationDraft[]>;
   /** Server-side draft delete; tray removal must not leave the draft alive on the server. */
@@ -342,6 +344,7 @@ export function ApiProjectTopologyWorkspace({
   moduleRegistryRepository,
   parameterFileRepository,
   canonicalRepository,
+  loadProjectParameters,
   listConfigSets,
   listDrafts,
   deleteDraft,
@@ -498,7 +501,7 @@ export function ApiProjectTopologyWorkspace({
     let cancelled = false;
     const resolveListDrafts = listDraftsRef.current;
     setValueDraftRead({ kind: "loading" });
-    void (resolveListDrafts?.(projectId) ?? Promise.resolve([])).then((drafts) => {
+    void (loadProjectParameters?.(projectId).drafts ?? resolveListDrafts?.(projectId) ?? Promise.resolve([])).then((drafts) => {
       if (!cancelled) setValueDraftRead({ kind: "ready", drafts });
     }).catch((error) => {
       if (!cancelled) setValueDraftRead({ kind: "error", message: presentError(error, "请稍后重试。") });
@@ -506,7 +509,7 @@ export function ApiProjectTopologyWorkspace({
     return () => {
       cancelled = true;
     };
-  }, [projectId, repository, runtimeMode, draftsReloadToken, valueDraftRetryToken]);
+  }, [projectId, repository, runtimeMode, draftsReloadToken, valueDraftRetryToken, loadProjectParameters]);
 
   useEffect(() => {
     let cancelled = false;
@@ -641,6 +644,7 @@ export function ApiProjectTopologyWorkspace({
       : { projectId, state: "loading", bindings: [] });
     const read = canonicalRepository?.listProtectedProjectBindings;
     const request = Promise.resolve().then(() => {
+      if (loadProjectParameters) return loadProjectParameters(projectId).bindings;
       if (!read) throw new Error("当前未配置受保护项目 JSON 绑定读取能力");
       return read(projectId);
     });
@@ -660,7 +664,15 @@ export function ApiProjectTopologyWorkspace({
         : { projectId, state: "error", bindings: [], message });
     });
     return () => { cancelled = true; };
-  }, [canonicalRepository, projectId, reloadToken]);
+  }, [canonicalRepository, projectId, reloadToken, loadProjectParameters]);
+
+  const refreshProjectParameters = (id: string) => {
+    void loadProjectParameters?.(id, { force: true }).settled;
+  };
+  const retryWorkspace = () => {
+    refreshProjectParameters(projectId);
+    setReloadToken((token) => token + 1);
+  };
 
   const jsonState = protectedJson?.projectId === projectId ? protectedJson : null;
   const jsonBindings = jsonState?.state === "ready" ? jsonState.bindings
@@ -770,6 +782,7 @@ export function ApiProjectTopologyWorkspace({
             : { targetValue }),
         reason: input.reason
       });
+      refreshProjectParameters(requestProjectId);
       if (!isCurrentProjectRequest(requestProjectId, requestGeneration)) {
         return {
           valid: false,
@@ -959,6 +972,7 @@ export function ApiProjectTopologyWorkspace({
         acknowledgeNonstandard: input.acknowledgeNonstandard,
         spellingOverride: input.spellingOverride
       });
+      refreshProjectParameters(requestProjectId);
       if (!isCurrentProjectRequest(requestProjectId, requestGeneration)) return;
 
       setPendingDrafts((current) => {
@@ -1030,6 +1044,7 @@ export function ApiProjectTopologyWorkspace({
     }
     try {
       await resolveDeleteDraft(draftId);
+      refreshProjectParameters(requestProjectId);
       if (!isCurrentProjectRequest(requestProjectId, requestGeneration)) return;
       const removed = pendingDraftsRef.current.find((draft) => draft.draftId === draftId);
       const remaining = pendingDraftsRef.current.filter((draft) => draft.draftId !== draftId);
@@ -1179,6 +1194,7 @@ export function ApiProjectTopologyWorkspace({
           }
           return { notification: message };
         } finally {
+          if (submittedCount > 0) refreshProjectParameters(input.projectId);
           releaseProjectMutation(input.projectId, "submit", mutationToken);
         }
         return undefined;
@@ -1365,7 +1381,10 @@ export function ApiProjectTopologyWorkspace({
     setEditRequest((current) => ({ bindingId, token: (current?.token ?? 0) + 1 }));
   };
   const draftReadNotices = [
-    { label: "参数值草稿", state: valueDraftRead, retry: () => setValueDraftRetryToken((token) => token + 1) },
+    { label: "参数值草稿", state: valueDraftRead, retry: () => {
+      refreshProjectParameters(projectId);
+      setValueDraftRetryToken((token) => token + 1);
+    } },
     { label: "节点启用草稿", state: enablementDraftRead, retry: () => setEnablementDraftRetryToken((token) => token + 1) }
   ].map(({ label, state, retry }) => state.kind === "error" ? (
     <div key={label} className="project-topology-workspace__error" role="alert" aria-label={`${label}加载失败`}>
@@ -1460,7 +1479,7 @@ export function ApiProjectTopologyWorkspace({
   const jsonContent = jsonState?.state === "error" && (canonicalRepository || loadState.kind !== "ready" || (requestedBindingId && !requestedBinding)) ? (
     <div className="project-topology-workspace__error" role="alert">
       {jsonState.message}
-      <button type="button" className="button subtle" onClick={() => setReloadToken((token) => token + 1)}>重试</button>
+      <button type="button" className="button subtle" onClick={retryWorkspace}>重试</button>
     </div>
   ) : jsonBindings.length > 0 ? (
     <JsonBindingPanel
@@ -1509,7 +1528,7 @@ export function ApiProjectTopologyWorkspace({
           notice={notice || unavailableBinding ? <>{notice}{unavailableBinding}</> : undefined}
           taskState={loadState.kind === "empty" ? { kind: "empty", message: loadState.message }
             : { kind: "error", message: `${loadState.code === "NOT_FOUND" ? "未找到拓扑资源（404）。" : ""}${loadState.message}`,
-              onRetry: () => setReloadToken((token) => token + 1) }} />
+              onRetry: retryWorkspace }} />
       </section>
       )}
       {jsonFormatPanel ?? jsonContent}
@@ -1536,11 +1555,11 @@ export function ApiProjectTopologyWorkspace({
       {refreshingWorkspace ? <p role="status">正在更新参数版本，当前输入已保留…</p> : null}
       {workspaceRefreshError ? <div role="alert" className="project-topology-workspace__error">
         参数版本更新失败：{workspaceRefreshError}
-        <button type="button" className="button subtle" onClick={() => setReloadToken((token) => token + 1)}>重试更新</button>
+        <button type="button" className="button subtle" onClick={retryWorkspace}>重试更新</button>
       </div> : null}
       {jsonState?.state === "ready" && jsonState.message ? <div role="alert" className="project-topology-workspace__error">
         {jsonState.message}
-        <button type="button" className="button subtle" onClick={() => setReloadToken((token) => token + 1)}>重试 JSON 参数</button>
+        <button type="button" className="button subtle" onClick={retryWorkspace}>重试 JSON 参数</button>
       </div> : null}
       {jsonFormatPanel}
         <div id="format-panel-dts" role="tabpanel" aria-labelledby="format-tab-dts" hidden={activeFormatTab === "json" && jsonBindingCount > 0}>

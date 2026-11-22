@@ -1354,14 +1354,16 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     expect(authClient.getCurrentAuthContext).toHaveBeenCalledTimes(1);
   });
 
-  it("hydrates parameter runtime data from the API repository after auth", async () => {
-    window.history.replaceState(null, "", "/parameters");
+  it("reuses project parameters within a scope and reloads the visible project after a runtime reset", async () => {
+    const firstId = initialState.activeProjectId;
+    const secondId = initialState.configDraft.projects.find((project) => project.id !== firstId)!.id;
+    window.history.replaceState(null, "", `/parameters?project=${firstId}`);
     const parameterRepository = createTestParameterRepository();
     const parameterTopologyRepository = createTestParameterTopologyRepository();
     const parameterCatalogRepository = createTestAppPorts().parameterCatalogRepository;
     const listParameterConfigSets = createTestConfigSetList();
 
-    render(
+    const app = (
       <App
         authClient={{
           getCurrentAuthContext: async () => ({
@@ -1386,19 +1388,35 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
         runtimeMode="api"
       />
     );
+    const { rerender } = render(app);
 
     expect(await screen.findAllByText("gpio_int")).not.toHaveLength(0);
     expect(screen.getByLabelText("DTS 参数工作台")).toBeInTheDocument();
     expect(screen.queryByLabelText("项目拓扑工作区")).not.toBeInTheDocument();
     expect(parameterRepository.listProjects).toHaveBeenCalled();
     expect(parameterRepository.listParameters).not.toHaveBeenCalled();
-    expect(parameterCatalogRepository.listProtectedProjectBindings).toHaveBeenCalledWith(initialState.activeProjectId);
+    expect(parameterCatalogRepository.listProtectedProjectBindings).toHaveBeenCalledExactlyOnceWith(firstId);
     // Legacy history is no longer prefetched organization-wide; consumers load it through scoped calls.
     expect(parameterRepository.listChangeRequests).not.toHaveBeenCalled();
     expect(parameterRepository.listSubmissionRounds).not.toHaveBeenCalled();
-    expect(parameterRepository.listDrafts).toHaveBeenCalled();
+    expect(parameterRepository.listDrafts).toHaveBeenCalledExactlyOnceWith(firstId);
     expect(parameterTopologyRepository.getTopology).toHaveBeenCalled();
     expect(listParameterConfigSets).toHaveBeenCalledWith(initialState.activeProjectId);
+
+    await changeSelectValue(screen.getByRole("combobox", { name: "项目" }), secondId);
+    await waitFor(() => expect(listParameterConfigSets).toHaveBeenCalledWith(secondId));
+    await changeSelectValue(screen.getByRole("combobox", { name: "项目" }), firstId);
+    expect(vi.mocked(parameterCatalogRepository.listProtectedProjectBindings!).mock.calls).toEqual([[firstId], [secondId]]);
+    expect(vi.mocked(parameterRepository.listDrafts).mock.calls).toEqual([[firstId], [secondId]]);
+
+    const replacementRepository = createTestParameterRepository();
+    const replacementCatalog = createTestAppPorts().parameterCatalogRepository;
+    rerender(<App {...app.props} parameterRepository={replacementRepository} parameterCatalogRepository={replacementCatalog} />);
+
+    expect(await screen.findAllByText("gpio_int")).not.toHaveLength(0);
+    expect(replacementRepository.listProjects).toHaveBeenCalledTimes(1);
+    expect(replacementCatalog.listProtectedProjectBindings).toHaveBeenCalledExactlyOnceWith(firstId);
+    expect(replacementRepository.listDrafts).toHaveBeenCalledExactlyOnceWith(firstId);
   });
 
   it("hydrates debugging runtime data from the API gateway after auth", async () => {

@@ -348,6 +348,7 @@ export type PrototypeState = {
   activeRoleId: string;
   configDraft: PowerManagementConfig;
   parameters: ParameterRecord[];
+  projectParameterStatuses?: Record<string, import("@/application/parameters/parameterRuntime").ProjectParameterStatus>;
   changeRequests: ChangeRequest[];
   parameterDrafts: ParameterDraftDto[];
   parameterSubmissionRounds: ParameterSubmissionRound[];

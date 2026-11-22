@@ -83,6 +83,7 @@ type ParametersPageProps = {
   parameterActions?: ParameterPageActions;
   topologyRepository?: ParameterTopologyRepository;
   canonicalRepository?: ParameterCatalogRepository;
+  parameterRepository?: Pick<import("@/application/ports/ParameterRepository").ParameterRepository, "getParameter">;
   listConfigSets?: (projectId: string) => Promise<Array<{ id: string; name: string }>>;
   effectiveProjectId?: string;
   topBarProjectId?: string;
@@ -102,6 +103,7 @@ export function ParametersPage({
   parameterActions,
   topologyRepository,
   canonicalRepository,
+  parameterRepository,
   parameterFileRepository,
   listConfigSets,
   effectiveProjectId,
@@ -148,7 +150,11 @@ export function ParametersPage({
   const [submittingRound, setSubmittingRound] = useState(false);
   const [stashingRound, setStashingRound] = useState(false);
   const previousUserIdRef = useRef(state.currentUserId);
-  const resolvedProjectId = effectiveProjectId || state.activeProjectId;
+  const requestedProjectId = effectiveProjectId || state.activeProjectId;
+  const loadProjectParameters = isApiMode ? parameterActions?.loadProjectParameters : undefined;
+  const projectAvailable = !loadProjectParameters || (state.projectParameterStatuses
+    && state.configDraft.projects.some((project) => project.id === requestedProjectId));
+  const resolvedProjectId = projectAvailable ? requestedProjectId : "";
   const handoffParams = useMemo(() => new URLSearchParams(search), [search]);
   const handoffDefinition = handoffParams.get("definitionId") ?? "";
   const handoffSet = handoffParams.get("configSetId") ?? "";
@@ -168,8 +174,10 @@ export function ParametersPage({
       let definition = handoffDefinition;
       if (!definition) {
         const read = canonicalRepository.listProtectedProjectBindings;
-        if (!read) throw new Error("Project binding lookup is unavailable");
-        const bindings = await read(resolvedProjectId);
+        if (!read && !loadProjectParameters) throw new Error("Project binding lookup is unavailable");
+        const bindings = await (loadProjectParameters
+          ? loadProjectParameters(resolvedProjectId).bindings
+          : read!(resolvedProjectId));
         definition = bindings.items.find((item) => item.id === handoffBinding)?.definitionId ?? "";
       }
       if (!definition) throw new Error("Binding is unavailable");
@@ -181,7 +189,7 @@ export function ParametersPage({
     };
     void resolve().catch(() => { if (active) setResolvedHandoff({ key: handoffKey, error: true }); });
     return () => { active = false; };
-  }, [canonicalRepository, isApiMode, handoffBinding, handoffDefinition, handoffSet, handoffKey, resolvedProjectId, handoffRetry]);
+  }, [canonicalRepository, isApiMode, handoffBinding, handoffDefinition, handoffSet, handoffKey, resolvedProjectId, handoffRetry, loadProjectParameters]);
   useEffect(() => {
     if (!isApiMode) return;
     const guard = (event: Event) => {
@@ -210,16 +218,12 @@ export function ParametersPage({
         : undefined,
     [canonicalDraftTray, resolvedProjectId]
   );
-  const selectedProjectParameters = useMemo(
-    () => state.parameters.filter((parameter) => parameter.projectId === resolvedProjectId),
-    [resolvedProjectId, state.parameters]
-  );
-  const firstProjectParameterId = selectedProjectParameters[0]?.id ?? "";
   const topBarResolvedProjectId = topBarProjectId || resolvedProjectId;
   const projectParameters = useMemo(
     () => state.parameters.filter((parameter) => parameter.projectId === resolvedProjectId),
     [resolvedProjectId, state.parameters]
   );
+  const firstProjectParameterId = projectParameters[0]?.id ?? "";
   const activeParameterById = useMemo(
     () => new Map(projectParameters.map((parameter) => [parameter.id, parameter])),
     [projectParameters]
@@ -281,9 +285,11 @@ export function ParametersPage({
     [moduleFilterNodes, moduleFilters]
   );
   const parameterById = useMemo(
-    () => new Map(state.parameters.map((parameter) => [parameter.id, parameter])),
-    [state.parameters]
+    () => new Map((isApiMode ? [] : state.parameters).map((parameter) => [parameter.id, parameter])),
+    [isApiMode, state.parameters]
   );
+  const parametersRef = useRef(state.parameters);
+  parametersRef.current = state.parameters;
   const modifiedIds = useMemo(
     () => new Set(selectedIds),
     [selectedIds]
@@ -491,9 +497,12 @@ export function ParametersPage({
     }
     if (isApiMode && requestedId && !contextQuery.bindingId) {
       setArchivedLinkNotice(null);
-      const navigateToBinding = (bindingId: string) => {
-        const binding = parameterById.get(bindingId);
-        if (!binding) {
+      let cancelled = false;
+      const navigateToBinding = async (bindingId: string) => {
+        const binding = parametersRef.current.find((parameter) => parameter.id === bindingId)
+          ?? await parameterRepository?.getParameter(bindingId).catch(() => undefined);
+        if (cancelled) return;
+        if (binding?.id !== bindingId || !binding.projectId) {
           setHistoricalLinkNotice("该精确映射的 Binding 当前不可读，不能确定所属项目。");
           return;
         }
@@ -503,11 +512,10 @@ export function ParametersPage({
         params.set("binding", bindingId);
         onNavigate(`/parameters?${params}`);
       };
-      if (parameterById.has(requestedId)) {
-        navigateToBinding(requestedId);
-        return;
+      if (parametersRef.current.some((parameter) => parameter.id === requestedId)) {
+        void navigateToBinding(requestedId);
+        return () => { cancelled = true; };
       }
-      let cancelled = false;
       if (!canonicalRepository) {
         setHistoricalLinkNotice("当前无法解析旧参数链接的精确 Binding 映射。");
         return;
@@ -515,7 +523,7 @@ export function ParametersPage({
       void canonicalRepository.getLegacyIdentifier("project-parameter-binding", requestedId).then(({ item }) => {
         if (cancelled) return;
         if (item.target.kind === "parameter-binding" && !item.historicalOnly) {
-          navigateToBinding(item.target.id);
+          return navigateToBinding(item.target.id);
         } else {
           setHistoricalLinkNotice("该精确映射仅指向历史证据，不能作为当前 Binding 打开。");
         }
@@ -530,7 +538,7 @@ export function ParametersPage({
     setArchivedLinkNotice(null);
   }, [
     contextQuery.parameterId,
-    parameterById,
+    parameterRepository,
     canonicalRepository,
     contextQuery.bindingId,
     isApiMode,
@@ -1051,6 +1059,7 @@ export function ParametersPage({
             canonicalRepository={canonicalRepository}
             parameterFileRepository={parameterFileRepository}
             listConfigSets={listConfigSets}
+            loadProjectParameters={loadProjectParameters}
             listDrafts={listDrafts}
             deleteDraft={deleteDraft}
             listWorkflowAssignees={parameterActions?.listWorkflowAssignees}

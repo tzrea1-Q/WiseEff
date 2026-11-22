@@ -1065,19 +1065,28 @@ describe("ApiProjectTopologyWorkspace", () => {
     expect(within(tray).queryByText(/^本轮 2 项$/)).not.toBeInTheDocument();
   });
 
-  it("shows empty state when no config set exists", async () => {
+  it("replaces the disabled loading search with the empty state when no config set exists", async () => {
     const repository = createRepository();
+    const configSets = createDeferred<Array<{ id: string; name: string }>>();
     render(
       <ApiProjectTopologyWorkspace
         projectId="aurora"
         topologyRepository={repository}
-        listConfigSets={async () => []}
+        listConfigSets={() => configSets.promise}
       />
     );
 
-    expect(
-      await screen.findByText(/该项目尚无参数配置/i)
-    ).toBeVisible();
+    const workbench = screen.getByRole("region", { name: "DTS 参数工作台" });
+    const search = within(workbench).getByRole("searchbox", { name: "搜索 DTS 参数" });
+    expect(workbench).toHaveAttribute("aria-busy", "true");
+    expect(search).toBeVisible();
+    expect(search).toBeDisabled();
+
+    configSets.resolve([]);
+    expect(await screen.findByText("该项目尚无参数配置，请联系项目管理员导入 DTS 文件。")).toBeVisible();
+    const settledWorkbench = screen.getByRole("region", { name: "DTS 参数工作台" });
+    expect(settledWorkbench).not.toHaveAttribute("aria-busy", "true");
+    expect(within(settledWorkbench).queryByRole("searchbox", { name: "搜索 DTS 参数" })).not.toBeInTheDocument();
     expect(repository.getTopology).not.toHaveBeenCalled();
   });
 

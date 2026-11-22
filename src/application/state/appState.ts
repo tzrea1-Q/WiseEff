@@ -5,7 +5,7 @@ import type {
   UpsertDebugSnapshotAction
 } from "@/application/debugging/debuggingRuntime";
 import type { HydrateLogRuntimeAction } from "@/application/logs/logRuntime";
-import type { HydrateParameterRuntimeAction } from "@/application/parameters/parameterRuntime";
+import type { HydrateParameterRuntimeAction, ProjectParameterRuntimeAction } from "@/application/parameters/parameterRuntime";
 import type { LogJobSnapshot } from "@/application/ports/LogAnalysisRepository";
 import { derivePowerManagementRuntimeState } from "@/application/state/derivePowerManagementRuntimeState";
 import { canPerform } from "@/app/permissions";
@@ -105,6 +105,7 @@ export type AppAction =
       clearParameterInitialization?: boolean;
     }
   | HydrateParameterRuntimeAction
+  | ProjectParameterRuntimeAction
   | HydrateLogRuntimeAction
   | {
       type: "SUBMIT_PARAMETER_INITIALIZATION";
@@ -430,6 +431,37 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
         users: nextUsers
       };
     }
+    case "HYDRATE_PARAMETER_PROJECTS": {
+      const { projects } = action;
+      const projectIds = new Set(projects.map((project) => project.id));
+      const activeProjectId = projectIds.has(state.activeProjectId) ? state.activeProjectId : projects[0]?.id ?? "";
+      const statuses = state.projectParameterStatuses;
+      const prune = !statuses || Object.keys(statuses).some((id) => !projectIds.has(id));
+      return {
+        ...state,
+        activeProjectId,
+        parameters: prune ? state.parameters.filter((parameter) => statuses && projectIds.has(parameter.projectId)) : state.parameters,
+        parameterDrafts: prune ? state.parameterDrafts.filter((draft) => statuses && projectIds.has(draft.projectId)) : state.parameterDrafts,
+        projectParameterStatuses: prune
+          ? Object.fromEntries(Object.entries(statuses ?? {}).filter(([id]) => projectIds.has(id)))
+          : statuses,
+        changeRequests: [],
+        parameterSubmissionRounds: [],
+        parameterReviewDecisions: [],
+        // API views use canonical Binding records, scope-specific reads, and
+        // the module registry. The sorted legacy config mirrors are mock-only.
+        configDraft: { ...state.configDraft, projects, parameterLibrary: [], parameterModules: [] }
+      };
+    }
+    case "UPDATE_PROJECT_PARAMETER_CACHE": {
+      const { projectId, status, parameters, drafts } = action;
+      return {
+        ...state,
+        projectParameterStatuses: status ? { ...state.projectParameterStatuses, [projectId]: status } : state.projectParameterStatuses,
+        parameters: parameters ? [...state.parameters.filter((parameter) => parameter.projectId !== projectId), ...parameters] : state.parameters,
+        parameterDrafts: drafts ? [...state.parameterDrafts.filter((draft) => draft.projectId !== projectId), ...drafts] : state.parameterDrafts
+      };
+    }
     case "HYDRATE_PARAMETER_RUNTIME": {
       const projects = action.projects.map((project) => ({ ...project }));
       const parameterLibrary = buildParameterLibraryFromRecords(action.parameters, projects);
@@ -462,6 +494,7 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
         return {
           ...state,
           parameters: [],
+          projectParameterStatuses: undefined,
           changeRequests: [],
           parameterDrafts: [],
           parameterSubmissionRounds: [],

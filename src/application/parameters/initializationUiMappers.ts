@@ -47,6 +47,7 @@ function toLegacySnapshot(item: SemanticInitializationSnapshotItem): ProjectPara
   const candidate = toInitializationUiCandidate(item);
   return {
     ...candidate,
+    displayName: item.displayName?.trim() || item.propertyKey,
     risk: (candidate.risk ?? "Low") as RiskLevel
   };
 }

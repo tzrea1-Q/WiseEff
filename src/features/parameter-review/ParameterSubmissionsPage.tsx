@@ -297,6 +297,7 @@ export function ParameterSubmissionsPage({
         sourceRepository={sourceRepository}
         state={state}
         runtimeMode={runtimeMode}
+        parameterActions={parameterActions}
         sessionPermissions={sessionPermissions}
         sessionRoles={sessionRoles}
         search={inboxParams.toString() ? `?${inboxParams.toString()}` : ""}
