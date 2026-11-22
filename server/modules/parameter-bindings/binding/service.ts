@@ -23,6 +23,7 @@ import {
   loadBindingByComposite,
   loadProjectOwner,
   loadRegistrationForAgreement,
+  loadStoredProjectBindings,
   loadSourceRegistrationAgreement,
   type BindingRow,
   type BindingWriterClient,
@@ -34,6 +35,13 @@ import type {
   Result,
   StabilizeBindingCommand,
 } from "./types";
+
+export const readStoredProjectBindings = (
+  client: BindingWriterClient,
+  organizationId: string,
+  projectId: string,
+  bindingIds: readonly string[],
+): Promise<BindingRow[]> => loadStoredProjectBindings(client, organizationId, projectId, bindingIds);
 
 export type BindingService = {
   stabilize(
