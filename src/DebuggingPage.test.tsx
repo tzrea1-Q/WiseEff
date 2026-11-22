@@ -51,7 +51,8 @@ function renderDebuggingPage({
     const [appState, appDispatch] = useReducer(appReducer, state);
     const dispatch = dispatchOverride ?? appDispatch;
     const [topBarActions, setTopBarActions] = useState<ReactNode | null>(null);
-    const context = useMemo(() => ({ setActions: setTopBarActions }), []);
+    const [, setLeadingTopBarActions] = useState<ReactNode | null>(null);
+    const context = useMemo(() => ({ setActions: setTopBarActions, setLeadingActions: setLeadingTopBarActions }), []);
     return (
       <TopBarActionsContext.Provider value={context}>
         <div className="topbar-page-actions">{topBarActions}</div>
@@ -516,12 +517,12 @@ describe("/debugging-admin 节点元数据", () => {
     renderApp({ path: "/debugging-admin/nodes", initialAppState: adminState, runtimeMode: "mock" });
 
     const firstRow = await screen.findByRole("row", { name: /充电输入限流/ });
-    await userEvent.click(within(firstRow).getByRole("button", { name: "编辑", exact: true }));
+    await userEvent.click(within(firstRow).getByRole("button", { name: "编辑" }));
     fireEvent.change(screen.getByLabelText("HDC 节点路径"), {
       target: { value: "/sys/class/power_supply/battery/test_node" }
     });
     fireEvent.click(screen.getByRole("button", { name: "保存" }));
-    await userEvent.click(within(firstRow).getByRole("button", { name: "编辑", exact: true }));
+    await userEvent.click(within(firstRow).getByRole("button", { name: "编辑" }));
 
     expect(screen.getByLabelText("HDC 节点路径")).toHaveValue("/sys/class/power_supply/battery/test_node");
   });
