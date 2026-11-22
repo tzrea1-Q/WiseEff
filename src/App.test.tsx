@@ -1,5 +1,5 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import userEvent from "@testing-library/user-event";
 
 vi.mock("@/features/agent/XiaozeProvider", () => ({
@@ -34,6 +34,9 @@ import {
   rulesFor
 } from "./test/cssAssertions";
 import { expandModuleTreeNode, selectModuleTreeFilter } from "./test/moduleTreeTestHelpers";
+import { preloadRoutePages } from "./test/preloadRoutePages";
+import { RoutePageBoundary } from "@/app/routes";
+import { lazy, type ReactElement } from "react";
 import {
   createTestAuthClient,
   createTestAppPorts,
@@ -54,6 +57,8 @@ import type { InitializationReviewDto, ProjectInitializationStateDto } from "@/d
 const userState = { ...initialState, activeRoleId: "user", changeRequests: [] };
 const committerState = { ...initialState, activeRoleId: "committer" };
 const adminState = { ...initialState, activeRoleId: "admin" };
+
+beforeAll(preloadRoutePages, 60_000);
 
 it.each([
   ["/parameter-submissions", "mine"],
@@ -597,12 +602,23 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     expect(document.querySelector(".xiaoze-chat-toggle-anchor")).not.toBeInTheDocument();
   });
 
+  it("shows the page loading fallback until a route chunk resolves", async () => {
+    let resolvePage: (module: { default: () => ReactElement }) => void = () => undefined;
+    const DeferredPage = lazy(() => new Promise<{ default: () => ReactElement }>((resolve) => { resolvePage = resolve; }));
+
+    render(<RoutePageBoundary><DeferredPage /></RoutePageBoundary>);
+
+    expect(screen.getByRole("status", { name: "正在加载页面…" })).toBeVisible();
+    await act(async () => resolvePage({ default: () => <main aria-label="已加载页面" /> }));
+    expect(screen.getByRole("main", { name: "已加载页面" })).toBeInTheDocument();
+    expect(screen.queryByRole("status", { name: "正在加载页面…" })).not.toBeInTheDocument();
+  });
+
   it("renders the WiseEff platform homepage on the home route after loading", async () => {
     window.history.replaceState(null, "", "/");
 
     renderAppForCurrentPath();
 
-    expect(screen.getByRole("status", { name: "正在加载页面…" })).toBeVisible();
     expect(await screen.findByRole("main", { name: "雷泽首页" })).toBeInTheDocument();
     expect(screen.queryByRole("status", { name: "正在加载页面…" })).not.toBeInTheDocument();
     const homeRoot = document.querySelector(".linear-template-home");
