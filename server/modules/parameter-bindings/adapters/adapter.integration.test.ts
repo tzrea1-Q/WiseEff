@@ -473,6 +473,43 @@ describe("protected-reference adapters", () => {
     expect(await historyEvents(binding.id)).toEqual(historyBefore);
   });
 
+  it("rejects a source occurrence change between listing and reading the values", async () => {
+    const projectId = `${PROJECT}-occurrence-race`;
+    await pool.query("insert into public.projects (id, organization_id, name, code) values ($1, $2, 'Race', 'S6-RACE')",
+      [projectId, ORG]);
+    const pin = { snapshot, projectId, definitionId: DEFINITION_ID, effectiveRevisionId: REVISION_1 };
+    const binding = await stabilizeNode("race-original", pin);
+    const replacement = await stabilizeNode("race-replacement", pin);
+    const invocation = createUserInvocation(makeTestAuthContext({ organizationId: ORG, roleId: "hardware-user" }));
+    const client = await pool.connect();
+    const query = client.query.bind(client);
+    try {
+      await query("begin");
+      // Simulate a migration rewriting otherwise immutable source identity.
+      await query("set local session_replication_role = replica");
+      await query("delete from parameter_catalog.project_parameter_bindings where id = $1", [replacement.id]);
+      const reader = catalogReadTransaction({
+        query: (async (sql: string, params?: unknown[]) => {
+          const result = await query(sql, params);
+          if (sql.includes("from parameter_catalog.current_project_parameter_bindings binding")) {
+            await query("update parameter_catalog.project_parameter_bindings set source_occurrence_id = $2 where id = $1",
+              [binding.id, replacement.sourceOccurrenceId]);
+          }
+          return result;
+        }) as typeof client.query
+      });
+      await expect(readProjectProtectedParameters(reader, { invocation, projectId })).rejects.toMatchObject({
+        code: "CONFLICT",
+        details: { reason: "missing-binding" },
+      });
+      await expect(readProtectedReference(client, { snapshot, binding, definitionRevisionId: REVISION_1 }))
+        .resolves.toEqual({ ok: false, error: { kind: "typed-block", reason: "missing-binding" } });
+    } finally {
+      await query("rollback");
+      client.release();
+    }
+  });
+
   it("lists exact pins across releases in a fixed query count, including a now-retired Definition", async () => {
     const projectId = `${PROJECT}-list`;
     await pool.query("insert into public.projects (id, organization_id, name, code) values ($1, $2, 'List', 'S6-LIST')",

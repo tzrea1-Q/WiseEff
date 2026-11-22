@@ -300,6 +300,19 @@ describe("ApiProjectTopologyWorkspace", () => {
     expect(repository.createBindingDraft).not.toHaveBeenCalled();
   });
 
+  it("opens protected JSON parameters when the initial DTS read fails", async () => {
+    const repository = createRepository({
+      getTopology: vi.fn().mockRejectedValue(new TypeError("Failed to fetch"))
+    });
+    const readProjectBindings = vi.fn().mockResolvedValue({ items: [protectedJsonBinding()] });
+    render(<ApiProjectTopologyWorkspace projectId="aurora"
+      topologyRepository={repository} listConfigSets={async () => [{ id: "config", name: "default" }]}
+      canonicalRepository={protectedRepository(readProjectBindings)} />);
+
+    expect(await screen.findByRole("table", { name: "JSON 参数列表" })).toBeInTheDocument();
+    expect(readProjectBindings).toHaveBeenCalledExactlyOnceWith("aurora");
+  });
+
   it("requests only the resolved revision on DTS navigation and loads project JSON on demand", async () => {
     const repository = createRepository();
     const readProjectBindings = vi.fn().mockResolvedValue({ items: [protectedJsonBinding()] });

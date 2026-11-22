@@ -640,7 +640,9 @@ export function ApiProjectTopologyWorkspace({
 
   const dtsBindingCount = loadState.kind === "ready" ? loadState.bindings.filter((b) => b.effectiveValue.kind !== "json").length : 0;
   const needsProjectJson = Boolean(requestedBindingId) || protectedJson?.projectId === projectId ||
-    loadState.kind === "empty" || (loadState.kind === "ready" && (activeFormatTab === "json" || dtsBindingCount === 0));
+    loadState.kind === "empty" ||
+    (loadState.kind === "error" && Boolean(loadProjectParameters || canonicalRepository?.listProtectedProjectBindings)) ||
+    (loadState.kind === "ready" && (activeFormatTab === "json" || dtsBindingCount === 0));
 
   useEffect(() => {
     if (!needsProjectJson) return;

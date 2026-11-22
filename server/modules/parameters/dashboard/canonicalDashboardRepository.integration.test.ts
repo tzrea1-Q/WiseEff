@@ -30,6 +30,11 @@ import {
 } from "./hotspotRepository";
 import { aggregatePersonalTrend, aggregateRiskDistribution, aggregateTrend, aggregateWorkbenchSignals, countKpis } from "./repository";
 import { registerParameterDashboardRoutes } from "./routes";
+import { readBindingDashboardKpis } from "../../parameter-bindings/dashboardRead";
+import {
+  aggregateBindingDashboardHotspots as aggregateLegacyHotspots,
+  readBindingDashboardKpis as readLegacyKpis
+} from "./legacyDashboard.testHelpers";
 
 const ORGANIZATION_ID = "org-dashboard-canonical-repository";
 const PROJECT_ID = "project-dashboard-canonical-repository";
@@ -521,6 +526,22 @@ describe("canonical dashboard repository", () => {
 
     for (const authorizedProjectIds of [null, [first.projectId, foreign.projectId]]) {
       const visibleIds = authorizedProjectIds ? [first.projectId] : [first.projectId, second.projectId];
+      for (const [windowStart, windowEnd] of [
+        ["2020-01-01T00:00:00Z", "2020-02-01T00:00:00Z"],
+        ["2000-01-01T00:00:00Z", "2999-01-01T00:00:00Z"]
+      ]) {
+        const input = { organizationId: first.organizationId, projectId: null, authorizedProjectIds, windowStart, windowEnd };
+        expect(await readBindingDashboardKpis(db, input)).toStrictEqual(await readLegacyKpis(db, input));
+        for (const dimension of ["project", "module", "parameter"] as const) {
+          const hotspotInput = { ...input, dimension };
+          const actual = await aggregateHotspotGroups(db, hotspotInput);
+          const legacy = await aggregateLegacyHotspots(db, hotspotInput);
+          // SQL orders by title. Rows with the same title have no specified relative order.
+          expect(actual.map(({ title }) => title)).toStrictEqual(legacy.map(({ title }) => title));
+          const byId = (left: { groupId: string }, right: { groupId: string }) => left.groupId.localeCompare(right.groupId);
+          expect(actual.sort(byId)).toStrictEqual(legacy.sort(byId));
+        }
+      }
       for (const dimension of ["project", "module", "parameter"] as const) {
         const scope = { organizationId: first.organizationId, projectId: null, authorizedProjectIds, dimension };
         const groups = await aggregateHotspotGroups(db, {
