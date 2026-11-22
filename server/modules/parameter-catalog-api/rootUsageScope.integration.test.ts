@@ -74,11 +74,12 @@ describe("R2-SCOPE actual role bindings → root HTTP → PostgreSQL usage", () 
       client.query = function (this: PoolClient, ...args: unknown[]) {
         const input = args[0];
         const sql = typeof input === "string" ? input : input && typeof input === "object" && "text" in input ? String(input.text) : "";
+        const isUsageSummary = /count\(distinct binding\.project_id\)::text as project_count/.test(sql);
         const recognitionOperation = classifyOrganizationRecognitionQuery(sql);
         if (measuring && recognitionOperation) recognitionSql.push({ operation: recognitionOperation, sql, parameters: args[1] });
         if (measuring && !recognitionOperation && /parameter_catalog\.(organization_subject_registrations|subject_placements|parameter_review_evidence|parameter_review_items|current_project_parameter_bindings|project_parameter_bindings|project_parameter_values)\b/.test(sql)) {
           businessSql.push(sql);
-          if (/from parameter_catalog\.current_project_parameter_bindings binding/.test(sql)) {
+          if (isUsageSummary) {
             const values = args[1] as unknown;
             usageParameters.push({ definitions: Array.isArray(values) ? values[1] : undefined, projects: Array.isArray(values) ? values[3] : undefined });
           }
@@ -89,7 +90,7 @@ describe("R2-SCOPE actual role bindings → root HTTP → PostgreSQL usage", () 
           pause.reached();
           return pause.resume.then(() => Reflect.apply(query, this, args));
         }
-        if (pauseListUsage && /from parameter_catalog\.current_project_parameter_bindings binding/.test(sql)) {
+        if (pauseListUsage && isUsageSummary) {
           const pause = pauseListUsage;
           pauseListUsage = undefined;
           pause.reached();
