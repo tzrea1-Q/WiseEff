@@ -1,0 +1,467 @@
+{"ts":"2026-10-14T09:14:00.682Z","level":"debug","component":"spool-router","msg":"control cursor=0 items_seen=9"}
+{"ts":"2026-10-14T09:14:00.880Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=35.3"}
+{"ts":"2026-10-14T09:14:00.891Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=0"}
+{"ts":"2026-10-14T09:14:01.483Z","level":"info","component":"spool-router","msg":"control cursor=3 items_seen=0"}
+{"ts":"2026-10-14T09:14:01.767Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=46.1"}
+{"ts":"2026-10-14T09:14:01.802Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=0"}
+{"ts":"2026-10-14T09:14:01.948Z","level":"info","component":"spool-router","msg":"control cursor=6 items_seen=9"}
+{"ts":"2026-10-14T09:14:01.986Z","level":"debug","component":"spool-router","msg":"health supervisor ready=1 latency_ms=13.8"}
+{"ts":"2026-10-14T09:14:02.669Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=0"}
+{"ts":"2026-10-14T09:14:02.809Z","level":"info","component":"spool-router","msg":"control cursor=9 items_seen=2"}
+{"ts":"2026-10-14T09:14:03.404Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=46.4"}
+{"ts":"2026-10-14T09:14:03.503Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=0"}
+{"ts":"2026-10-14T09:14:03.696Z","level":"info","component":"spool-router","msg":"control cursor=12 items_seen=6"}
+{"ts":"2026-10-14T09:14:03.706Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=38.5"}
+{"ts":"2026-10-14T09:14:03.745Z","level":"debug","component":"spool-router","msg":"archive dir=other-bucket pending=1"}
+{"ts":"2026-10-14T09:14:03.853Z","level":"info","component":"spool-router","msg":"control cursor=15 items_seen=5"}
+{"ts":"2026-10-14T09:14:03.968Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=10.1"}
+{"ts":"2026-10-14T09:14:04.006Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=1"}
+{"ts":"2026-10-14T09:14:04.717Z","level":"info","component":"spool-router","msg":"control cursor=18 items_seen=13"}
+{"ts":"2026-10-14T09:14:04.896Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=34.7"}
+{"ts":"2026-10-14T09:14:05.058Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=0"}
+{"ts":"2026-10-14T09:14:05.249Z","level":"debug","component":"spool-router","msg":"control cursor=21 items_seen=13"}
+{"ts":"2026-10-14T09:14:05.258Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=33.0"}
+{"ts":"2026-10-14T09:14:05.269Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=1"}
+{"ts":"2026-10-14T09:14:05.309Z","level":"info","component":"spool-router","msg":"control cursor=24 items_seen=7"}
+{"ts":"2026-10-14T09:14:05.320Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=12.7"}
+{"ts":"2026-10-14T09:14:05.329Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=2"}
+{"ts":"2026-10-14T09:14:05.998Z","level":"info","component":"spool-router","msg":"control cursor=27 items_seen=17"}
+{"ts":"2026-10-14T09:14:06.089Z","level":"debug","component":"spool-router","msg":"health supervisor ready=1 latency_ms=33.7"}
+{"ts":"2026-10-14T09:14:06.731Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=0"}
+{"ts":"2026-10-14T09:14:06.878Z","level":"info","component":"spool-router","msg":"control cursor=30 items_seen=9"}
+{"ts":"2026-10-14T09:14:07.240Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=30.8"}
+{"ts":"2026-10-14T09:14:07.353Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=2"}
+{"ts":"2026-10-14T09:14:07.364Z","level":"info","component":"spool-router","msg":"control cursor=33 items_seen=4"}
+{"ts":"2026-10-14T09:14:07.445Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=26.7"}
+{"ts":"2026-10-14T09:14:07.457Z","level":"debug","component":"spool-router","msg":"archive dir=other-bucket pending=1"}
+{"ts":"2026-10-14T09:14:07.467Z","level":"info","component":"spool-router","msg":"control cursor=36 items_seen=3"}
+{"ts":"2026-10-14T09:14:07.477Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=11.4"}
+{"ts":"2026-10-14T09:14:07.629Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=0"}
+{"ts":"2026-10-14T09:14:07.718Z","level":"info","component":"spool-router","msg":"control cursor=39 items_seen=9"}
+{"ts":"2026-10-14T09:14:08.026Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=43.3"}
+{"ts":"2026-10-14T09:14:08.167Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=2"}
+{"ts":"2026-10-14T09:14:08.371Z","level":"debug","component":"spool-router","msg":"control cursor=42 items_seen=17"}
+{"ts":"2026-10-14T09:14:08.381Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=46.8"}
+{"ts":"2026-10-14T09:14:08.577Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=1"}
+{"ts":"2026-10-14T09:14:08.669Z","level":"info","component":"spool-router","msg":"control cursor=45 items_seen=12"}
+{"ts":"2026-10-14T09:14:08.679Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=17.9"}
+{"ts":"2026-10-14T09:14:08.796Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=1"}
+{"ts":"2026-10-14T09:14:08.808Z","level":"info","component":"spool-router","msg":"control cursor=48 items_seen=16"}
+{"ts":"2026-10-14T09:14:08.819Z","level":"debug","component":"spool-router","msg":"health supervisor ready=1 latency_ms=31.4"}
+{"ts":"2026-10-14T09:14:08.858Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=2"}
+{"ts":"2026-10-14T09:14:09.592Z","level":"info","component":"spool-router","msg":"control cursor=51 items_seen=16"}
+{"ts":"2026-10-14T09:14:10.296Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=39.1"}
+{"ts":"2026-10-14T09:14:10.476Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=0"}
+{"ts":"2026-10-14T09:14:11.103Z","level":"info","component":"spool-router","msg":"control cursor=54 items_seen=6"}
+{"ts":"2026-10-14T09:14:11.749Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=45.1"}
+{"ts":"2026-10-14T09:14:11.785Z","level":"debug","component":"spool-router","msg":"archive dir=other-bucket pending=1"}
+{"ts":"2026-10-14T09:14:12.469Z","level":"info","component":"spool-router","msg":"control cursor=57 items_seen=6"}
+{"ts":"2026-10-14T09:14:12.509Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=16.6"}
+{"ts":"2026-10-14T09:14:12.653Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=0"}
+{"ts":"2026-10-14T09:14:12.698Z","level":"info","component":"spool-router","msg":"control cursor=60 items_seen=0"}
+{"ts":"2026-10-14T09:14:12.815Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=14.7"}
+{"ts":"2026-10-14T09:14:12.906Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=1"}
+{"ts":"2026-10-14T09:14:13.223Z","level":"debug","component":"spool-router","msg":"control cursor=63 items_seen=5"}
+{"ts":"2026-10-14T09:14:13.310Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=22.7"}
+{"ts":"2026-10-14T09:14:13.672Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=2"}
+{"ts":"2026-10-14T09:14:13.729Z","level":"warn","component":"spool-router","op":"prune_metrics","status":"skip","reason":"optional_index_missing"}
+{"ts":"2026-10-14T09:14:13.756Z","level":"info","component":"spool-router","msg":"control cursor=66 items_seen=3"}
+{"ts":"2026-10-14T09:14:13.922Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=12.3"}
+{"ts":"2026-10-14T09:14:14.098Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=1"}
+{"ts":"2026-10-14T09:14:14.108Z","level":"info","component":"spool-router","msg":"control cursor=69 items_seen=4"}
+{"ts":"2026-10-14T09:14:14.426Z","level":"debug","component":"spool-router","msg":"health supervisor ready=1 latency_ms=40.0"}
+{"ts":"2026-10-14T09:14:15.150Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=2"}
+{"ts":"2026-10-14T09:14:15.291Z","level":"info","component":"spool-router","msg":"control cursor=72 items_seen=5"}
+{"ts":"2026-10-14T09:14:15.303Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=11.8"}
+{"ts":"2026-10-14T09:14:15.454Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=0"}
+{"ts":"2026-10-14T09:14:15.463Z","level":"info","component":"spool-router","msg":"control cursor=75 items_seen=8"}
+{"ts":"2026-10-14T09:14:15.498Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=39.9"}
+{"ts":"2026-10-14T09:14:15.608Z","level":"debug","component":"spool-router","msg":"archive dir=other-bucket pending=2"}
+{"ts":"2026-10-14T09:14:15.970Z","level":"info","component":"spool-router","msg":"control cursor=78 items_seen=1"}
+{"ts":"2026-10-14T09:14:16.005Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=31.7"}
+{"ts":"2026-10-14T09:14:16.113Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=0"}
+{"ts":"2026-10-14T09:14:16.262Z","level":"info","component":"spool-router","msg":"control cursor=81 items_seen=10"}
+{"ts":"2026-10-14T09:14:16.305Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=38.5"}
+{"ts":"2026-10-14T09:14:16.634Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=0"}
+{"ts":"2026-10-14T09:14:16.681Z","level":"debug","component":"spool-router","msg":"control cursor=84 items_seen=17"}
+{"ts":"2026-10-14T09:14:16.768Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=41.7"}
+{"ts":"2026-10-14T09:14:16.886Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=0"}
+{"ts":"2026-10-14T09:14:16.988Z","level":"info","component":"spool-router","msg":"control cursor=87 items_seen=14"}
+{"ts":"2026-10-14T09:14:17.134Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=28.3"}
+{"ts":"2026-10-14T09:14:17.146Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=2"}
+{"ts":"2026-10-14T09:14:17.776Z","level":"info","component":"spool-router","msg":"control cursor=90 items_seen=16"}
+{"ts":"2026-10-14T09:14:17.956Z","level":"debug","component":"spool-router","msg":"health supervisor ready=1 latency_ms=9.6"}
+{"ts":"2026-10-14T09:14:17.999Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=0"}
+{"ts":"2026-10-14T09:14:18.038Z","level":"info","component":"spool-router","msg":"control cursor=93 items_seen=10"}
+{"ts":"2026-10-14T09:14:18.378Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=14.8"}
+{"ts":"2026-10-14T09:14:18.415Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=2"}
+{"ts":"2026-10-14T09:14:19.004Z","level":"info","component":"spool-router","msg":"control cursor=96 items_seen=9"}
+{"ts":"2026-10-14T09:14:19.612Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=10.4"}
+{"ts":"2026-10-14T09:14:19.817Z","level":"debug","component":"spool-router","msg":"archive dir=other-bucket pending=0"}
+{"ts":"2026-10-14T09:14:19.977Z","level":"info","component":"spool-router","msg":"control cursor=99 items_seen=19"}
+{"ts":"2026-10-14T09:14:20.138Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=18.2"}
+{"ts":"2026-10-14T09:14:20.287Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=2"}
+{"ts":"2026-10-14T09:14:20.333Z","level":"info","component":"spool-router","msg":"control cursor=102 items_seen=18"}
+{"ts":"2026-10-14T09:14:20.457Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=45.3"}
+{"ts":"2026-10-14T09:14:20.661Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=1"}
+{"ts":"2026-10-14T09:14:20.757Z","level":"debug","component":"spool-router","msg":"control cursor=105 items_seen=8"}
+{"ts":"2026-10-14T09:14:21.381Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=32.2"}
+{"ts":"2026-10-14T09:14:21.393Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=2"}
+{"ts":"2026-10-14T09:14:21.478Z","level":"info","component":"spool-router","msg":"control cursor=108 items_seen=3"}
+{"ts":"2026-10-14T09:14:22.050Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=19.5"}
+{"ts":"2026-10-14T09:14:22.426Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=1"}
+{"ts":"2026-10-14T09:14:22.584Z","level":"info","component":"spool-router","msg":"control cursor=111 items_seen=12"}
+{"ts":"2026-10-14T09:14:22.953Z","level":"debug","component":"spool-router","msg":"health supervisor ready=1 latency_ms=45.0"}
+{"ts":"2026-10-14T09:14:23.513Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=2"}
+{"ts":"2026-10-14T09:14:23.639Z","level":"info","component":"spool-router","msg":"control cursor=114 items_seen=14"}
+{"ts":"2026-10-14T09:14:23.651Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=29.1"}
+{"ts":"2026-10-14T09:14:24.376Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=1"}
+{"ts":"2026-10-14T09:14:24.471Z","level":"info","component":"spool-router","msg":"control cursor=117 items_seen=3"}
+{"ts":"2026-10-14T09:14:24.601Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=41.7"}
+{"ts":"2026-10-14T09:14:24.973Z","level":"debug","component":"spool-router","msg":"archive dir=other-bucket pending=1"}
+{"ts":"2026-10-14T09:14:25.079Z","level":"info","component":"spool-router","msg":"control cursor=120 items_seen=12"}
+{"ts":"2026-10-14T09:14:25.192Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=32.8"}
+{"ts":"2026-10-14T09:14:25.334Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=2"}
+{"ts":"2026-10-14T09:14:25.518Z","level":"info","component":"spool-router","msg":"control cursor=123 items_seen=8"}
+{"ts":"2026-10-14T09:14:25.563Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=35.5"}
+{"ts":"2026-10-14T09:14:25.695Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=1"}
+{"ts":"2026-10-14T09:14:25.870Z","level":"debug","component":"spool-router","msg":"control cursor=126 items_seen=10"}
+{"ts":"2026-10-14T09:14:25.971Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=33.7"}
+{"ts":"2026-10-14T09:14:26.510Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=0"}
+{"ts":"2026-10-14T09:14:26.545Z","level":"info","component":"spool-router","msg":"control cursor=129 items_seen=14"}
+{"ts":"2026-10-14T09:14:26.745Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=41.7"}
+{"ts":"2026-10-14T09:14:27.092Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=0"}
+{"ts":"2026-10-14T09:14:27.441Z","level":"info","component":"spool-router","msg":"control cursor=132 items_seen=11"}
+{"ts":"2026-10-14T09:14:27.453Z","level":"debug","component":"spool-router","msg":"health supervisor ready=1 latency_ms=10.7"}
+{"ts":"2026-10-14T09:14:27.847Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=1"}
+{"ts":"2026-10-14T09:14:28.004Z","level":"info","component":"spool-router","msg":"control cursor=135 items_seen=7"}
+{"ts":"2026-10-14T09:14:28.100Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=11.1"}
+{"ts":"2026-10-14T09:14:28.214Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=0"}
+{"ts":"2026-10-14T09:14:28.248Z","level":"info","component":"spool-router","msg":"control cursor=138 items_seen=19"}
+{"ts":"2026-10-14T09:14:28.293Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=14.5"}
+{"ts":"2026-10-14T09:14:28.374Z","level":"debug","component":"spool-router","msg":"archive dir=other-bucket pending=2"}
+{"ts":"2026-10-14T09:14:28.385Z","level":"info","component":"spool-router","msg":"control cursor=141 items_seen=15"}
+{"ts":"2026-10-14T09:14:29.092Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=22.4"}
+{"ts":"2026-10-14T09:14:29.215Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=0"}
+{"ts":"2026-10-14T09:14:29.841Z","level":"info","component":"spool-router","msg":"control cursor=144 items_seen=11"}
+{"ts":"2026-10-14T09:14:30.567Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=20.1"}
+{"ts":"2026-10-14T09:14:30.649Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=2"}
+{"ts":"2026-10-14T09:14:31.023Z","level":"debug","component":"spool-router","msg":"control cursor=147 items_seen=4"}
+{"ts":"2026-10-14T09:14:31.211Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=36.4"}
+{"ts":"2026-10-14T09:14:31.248Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=1"}
+{"ts":"2026-10-14T09:14:31.402Z","level":"info","component":"spool-router","msg":"control cursor=150 items_seen=14"}
+{"ts":"2026-10-14T09:14:31.446Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=43.0"}
+{"ts":"2026-10-14T09:14:31.455Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=0"}
+{"ts":"2026-10-14T09:14:31.492Z","level":"info","component":"spool-router","msg":"control cursor=153 items_seen=4"}
+{"ts":"2026-10-14T09:14:32.162Z","level":"debug","component":"spool-router","msg":"health supervisor ready=1 latency_ms=41.4"}
+{"ts":"2026-10-14T09:14:32.842Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=0"}
+{"ts":"2026-10-14T09:14:32.855Z","level":"info","component":"spool-router","msg":"control cursor=156 items_seen=7"}
+{"ts":"2026-10-14T09:14:32.938Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=33.6"}
+{"ts":"2026-10-14T09:14:33.140Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=0"}
+{"ts":"2026-10-14T09:14:33.185Z","level":"info","component":"spool-router","msg":"control cursor=159 items_seen=7"}
+{"ts":"2026-10-14T09:14:33.389Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=33.8"}
+{"ts":"2026-10-14T09:14:33.719Z","level":"debug","component":"spool-router","msg":"archive dir=other-bucket pending=2"}
+{"ts":"2026-10-14T09:14:33.815Z","level":"info","component":"spool-router","msg":"control cursor=162 items_seen=5"}
+{"ts":"2026-10-14T09:14:33.971Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=33.4"}
+{"ts":"2026-10-14T09:14:34.137Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=1"}
+{"ts":"2026-10-14T09:14:34.180Z","level":"info","component":"spool-router","msg":"control cursor=165 items_seen=8"}
+{"ts":"2026-10-14T09:14:34.332Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=47.0"}
+{"ts":"2026-10-14T09:14:34.498Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=1"}
+{"ts":"2026-10-14T09:14:35.204Z","level":"debug","component":"spool-router","msg":"control cursor=168 items_seen=13"}
+{"ts":"2026-10-14T09:14:35.305Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=20.6"}
+{"ts":"2026-10-14T09:14:35.675Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=0"}
+{"ts":"2026-10-14T09:14:35.771Z","level":"info","component":"spool-router","msg":"control cursor=171 items_seen=17"}
+{"ts":"2026-10-14T09:14:35.782Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=12.9"}
+{"ts":"2026-10-14T09:14:35.875Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=0"}
+{"ts":"2026-10-14T09:14:36.003Z","level":"info","component":"spool-router","msg":"control cursor=174 items_seen=12"}
+{"ts":"2026-10-14T09:14:36.382Z","level":"debug","component":"spool-router","msg":"health supervisor ready=1 latency_ms=44.1"}
+{"ts":"2026-10-14T09:14:36.690Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=2"}
+{"ts":"2026-10-14T09:14:36.734Z","level":"info","component":"spool-router","msg":"control cursor=177 items_seen=19"}
+{"ts":"2026-10-14T09:14:36.781Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=10.4"}
+{"ts":"2026-10-14T09:14:37.167Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=0"}
+{"ts":"2026-10-14T09:14:37.315Z","level":"info","component":"spool-router","msg":"control cursor=180 items_seen=8"}
+{"ts":"2026-10-14T09:14:37.354Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=9.1"}
+{"ts":"2026-10-14T09:14:37.366Z","level":"debug","component":"spool-router","msg":"archive dir=other-bucket pending=1"}
+{"ts":"2026-10-14T09:14:37.559Z","level":"info","component":"spool-router","msg":"control cursor=183 items_seen=5"}
+{"ts":"2026-10-14T09:14:37.915Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=42.5"}
+{"ts":"2026-10-14T09:14:38.054Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=2"}
+{"ts":"2026-10-14T09:14:38.255Z","level":"info","component":"spool-router","msg":"control cursor=186 items_seen=15"}
+{"ts":"2026-10-14T09:14:38.407Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=20.5"}
+{"ts":"2026-10-14T09:14:38.417Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=1"}
+{"ts":"2026-10-14T09:14:38.429Z","level":"debug","component":"spool-router","msg":"control cursor=189 items_seen=12"}
+{"ts":"2026-10-14T09:14:38.545Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=10.8"}
+{"ts":"2026-10-14T09:14:39.267Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=2"}
+{"ts":"2026-10-14T09:14:39.384Z","level":"info","component":"spool-router","msg":"control cursor=192 items_seen=9"}
+{"ts":"2026-10-14T09:14:39.420Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=30.9"}
+{"ts":"2026-10-14T09:14:39.545Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=2"}
+{"ts":"2026-10-14T09:14:39.853Z","level":"info","component":"spool-router","msg":"control cursor=195 items_seen=19"}
+{"ts":"2026-10-14T09:14:40.163Z","level":"debug","component":"spool-router","msg":"health supervisor ready=1 latency_ms=17.1"}
+{"ts":"2026-10-14T09:14:40.252Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=2"}
+{"ts":"2026-10-14T09:14:40.347Z","level":"info","component":"spool-router","msg":"control cursor=198 items_seen=16"}
+{"ts":"2026-10-14T09:14:40.731Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=24.1"}
+{"ts":"2026-10-14T09:14:41.097Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=2"}
+{"ts":"2026-10-14T09:14:41.109Z","level":"info","component":"spool-router","msg":"control cursor=201 items_seen=5"}
+{"ts":"2026-10-14T09:14:41.247Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=34.7"}
+{"ts":"2026-10-14T09:14:41.284Z","level":"debug","component":"spool-router","msg":"archive dir=other-bucket pending=1"}
+{"ts":"2026-10-14T09:14:41.572Z","level":"info","component":"spool-router","msg":"control cursor=204 items_seen=16"}
+{"ts":"2026-10-14T09:14:41.679Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=43.0"}
+{"ts":"2026-10-14T09:14:41.764Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=1"}
+{"ts":"2026-10-14T09:14:41.774Z","level":"info","component":"spool-router","msg":"control cursor=207 items_seen=10"}
+{"ts":"2026-10-14T09:14:41.784Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=40.9"}
+{"ts":"2026-10-14T09:14:41.903Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=0"}
+{"ts":"2026-10-14T09:14:42.060Z","level":"debug","component":"spool-router","msg":"control cursor=210 items_seen=0"}
+{"ts":"2026-10-14T09:14:42.212Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=21.1"}
+{"ts":"2026-10-14T09:14:42.315Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=1"}
+{"ts":"2026-10-14T09:14:43.048Z","level":"info","component":"spool-router","msg":"control cursor=213 items_seen=9"}
+{"ts":"2026-10-14T09:14:43.127Z","level":"info","component":"spool-agent","op":"statvfs","mount":"/var/spool/bench","avail_kib":4194304,"avail_inodes":20576}
+{"ts":"2026-10-14T09:14:43.148Z","level":"info","component":"spool-agent","op":"quota_read","mount":"/var/spool/bench","project":31,"used_kib":1048576,"hard_kib":1048576}
+{"ts":"2026-10-14T09:14:43.217Z","level":"error","component":"spool-router","op":"write","mount":"/var/spool/bench","project":31,"queue":"blue","errno":"EDQUOT","accepted":0}
+{"ts":"2026-10-14T09:14:43.380Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=42.7"}
+{"ts":"2026-10-14T09:14:43.554Z","level":"info","component":"spool-router","op":"write","mount":"/var/spool/bench","project":32,"queue":"green","accepted":48}
+{"ts":"2026-10-14T09:14:43.583Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=1"}
+{"ts":"2026-10-14T09:14:43.707Z","level":"info","component":"spool-router","msg":"control cursor=216 items_seen=5"}
+{"ts":"2026-10-14T09:14:43.866Z","level":"debug","component":"spool-router","msg":"health supervisor ready=1 latency_ms=23.3"}
+{"ts":"2026-10-14T09:14:43.901Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=0"}
+{"ts":"2026-10-14T09:14:43.911Z","level":"info","component":"spool-router","msg":"control cursor=219 items_seen=16"}
+{"ts":"2026-10-14T09:14:43.923Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=16.4"}
+{"ts":"2026-10-14T09:14:43.967Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=2"}
+{"ts":"2026-10-14T09:14:44.013Z","level":"info","component":"spool-router","msg":"control cursor=222 items_seen=1"}
+{"ts":"2026-10-14T09:14:44.056Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=40.6"}
+{"ts":"2026-10-14T09:14:44.411Z","level":"debug","component":"spool-router","msg":"archive dir=other-bucket pending=0"}
+{"ts":"2026-10-14T09:14:44.423Z","level":"info","component":"spool-router","msg":"control cursor=225 items_seen=8"}
+{"ts":"2026-10-14T09:14:44.564Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=46.2"}
+{"ts":"2026-10-14T09:14:45.131Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=1"}
+{"ts":"2026-10-14T09:14:45.260Z","level":"info","component":"spool-router","msg":"control cursor=228 items_seen=5"}
+{"ts":"2026-10-14T09:14:45.356Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=26.5"}
+{"ts":"2026-10-14T09:14:45.517Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=2"}
+{"ts":"2026-10-14T09:14:45.564Z","level":"debug","component":"spool-router","msg":"control cursor=231 items_seen=2"}
+{"ts":"2026-10-14T09:14:45.669Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=39.5"}
+{"ts":"2026-10-14T09:14:45.711Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=0"}
+{"ts":"2026-10-14T09:14:46.077Z","level":"info","component":"spool-router","msg":"control cursor=234 items_seen=18"}
+{"ts":"2026-10-14T09:14:46.087Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=10.5"}
+{"ts":"2026-10-14T09:14:46.099Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=0"}
+{"ts":"2026-10-14T09:14:46.492Z","level":"info","component":"spool-router","msg":"control cursor=237 items_seen=9"}
+{"ts":"2026-10-14T09:14:46.694Z","level":"debug","component":"spool-router","msg":"health supervisor ready=1 latency_ms=24.3"}
+{"ts":"2026-10-14T09:14:46.704Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=2"}
+{"ts":"2026-10-14T09:14:47.288Z","level":"info","component":"spool-router","msg":"control cursor=240 items_seen=4"}
+{"ts":"2026-10-14T09:14:47.629Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=31.6"}
+{"ts":"2026-10-14T09:14:47.642Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=2"}
+{"ts":"2026-10-14T09:14:47.843Z","level":"info","component":"spool-router","msg":"control cursor=243 items_seen=18"}
+{"ts":"2026-10-14T09:14:47.854Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=40.5"}
+{"ts":"2026-10-14T09:14:47.888Z","level":"debug","component":"spool-router","msg":"archive dir=other-bucket pending=1"}
+{"ts":"2026-10-14T09:14:48.589Z","level":"info","component":"spool-router","msg":"control cursor=246 items_seen=4"}
+{"ts":"2026-10-14T09:14:49.298Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=17.4"}
+{"ts":"2026-10-14T09:14:49.644Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=0"}
+{"ts":"2026-10-14T09:14:49.760Z","level":"info","component":"spool-router","msg":"control cursor=249 items_seen=0"}
+{"ts":"2026-10-14T09:14:49.915Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=10.1"}
+{"ts":"2026-10-14T09:14:50.002Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=1"}
+{"ts":"2026-10-14T09:14:50.136Z","level":"debug","component":"spool-router","msg":"control cursor=252 items_seen=12"}
+{"ts":"2026-10-14T09:14:50.253Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=42.5"}
+{"ts":"2026-10-14T09:14:50.263Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=0"}
+{"ts":"2026-10-14T09:14:50.403Z","level":"info","component":"spool-router","msg":"control cursor=255 items_seen=11"}
+{"ts":"2026-10-14T09:14:50.535Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=36.6"}
+{"ts":"2026-10-14T09:14:50.923Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=2"}
+{"ts":"2026-10-14T09:14:51.238Z","level":"info","component":"spool-router","msg":"control cursor=258 items_seen=19"}
+{"ts":"2026-10-14T09:14:51.249Z","level":"debug","component":"spool-router","msg":"health supervisor ready=1 latency_ms=19.4"}
+{"ts":"2026-10-14T09:14:51.967Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=2"}
+{"ts":"2026-10-14T09:14:52.293Z","level":"info","component":"spool-router","msg":"control cursor=261 items_seen=9"}
+{"ts":"2026-10-14T09:14:52.389Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=18.0"}
+{"ts":"2026-10-14T09:14:52.432Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=1"}
+{"ts":"2026-10-14T09:14:52.566Z","level":"info","component":"spool-router","msg":"control cursor=264 items_seen=18"}
+{"ts":"2026-10-14T09:14:52.885Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=32.1"}
+{"ts":"2026-10-14T09:14:53.029Z","level":"debug","component":"spool-router","msg":"archive dir=other-bucket pending=2"}
+{"ts":"2026-10-14T09:14:53.344Z","level":"info","component":"spool-router","msg":"control cursor=267 items_seen=11"}
+{"ts":"2026-10-14T09:14:53.499Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=23.8"}
+{"ts":"2026-10-14T09:14:53.622Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=0"}
+{"ts":"2026-10-14T09:14:53.634Z","level":"info","component":"spool-router","msg":"control cursor=270 items_seen=17"}
+{"ts":"2026-10-14T09:14:53.939Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=40.1"}
+{"ts":"2026-10-14T09:14:54.270Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=2"}
+{"ts":"2026-10-14T09:14:54.279Z","level":"debug","component":"spool-router","msg":"control cursor=273 items_seen=19"}
+{"ts":"2026-10-14T09:14:54.396Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=27.4"}
+{"ts":"2026-10-14T09:14:54.409Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=0"}
+{"ts":"2026-10-14T09:14:54.418Z","level":"info","component":"spool-router","msg":"control cursor=276 items_seen=11"}
+{"ts":"2026-10-14T09:14:54.431Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=38.1"}
+{"ts":"2026-10-14T09:14:55.062Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=1"}
+{"ts":"2026-10-14T09:14:55.142Z","level":"info","component":"spool-router","msg":"control cursor=279 items_seen=10"}
+{"ts":"2026-10-14T09:14:55.458Z","level":"debug","component":"spool-router","msg":"health supervisor ready=1 latency_ms=40.1"}
+{"ts":"2026-10-14T09:14:55.499Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=1"}
+{"ts":"2026-10-14T09:14:55.536Z","level":"info","component":"spool-router","msg":"control cursor=282 items_seen=5"}
+{"ts":"2026-10-14T09:14:55.579Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=36.7"}
+{"ts":"2026-10-14T09:14:56.299Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=1"}
+{"ts":"2026-10-14T09:14:56.310Z","level":"info","component":"spool-router","msg":"control cursor=285 items_seen=19"}
+{"ts":"2026-10-14T09:14:56.439Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=19.3"}
+{"ts":"2026-10-14T09:14:56.481Z","level":"debug","component":"spool-router","msg":"archive dir=other-bucket pending=1"}
+{"ts":"2026-10-14T09:14:57.196Z","level":"info","component":"spool-router","msg":"control cursor=288 items_seen=6"}
+{"ts":"2026-10-14T09:14:57.919Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=20.3"}
+{"ts":"2026-10-14T09:14:58.620Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=0"}
+{"ts":"2026-10-14T09:14:59.313Z","level":"info","component":"spool-router","msg":"control cursor=291 items_seen=3"}
+{"ts":"2026-10-14T09:14:59.470Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=17.5"}
+{"ts":"2026-10-14T09:15:00.046Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=0"}
+{"ts":"2026-10-14T09:15:00.368Z","level":"debug","component":"spool-router","msg":"control cursor=294 items_seen=0"}
+{"ts":"2026-10-14T09:15:00.662Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=34.7"}
+{"ts":"2026-10-14T09:15:01.274Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=1"}
+{"ts":"2026-10-14T09:15:01.407Z","level":"info","component":"spool-router","msg":"control cursor=297 items_seen=5"}
+{"ts":"2026-10-14T09:15:01.418Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=14.0"}
+{"ts":"2026-10-14T09:15:01.512Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=0"}
+{"ts":"2026-10-14T09:15:02.222Z","level":"info","component":"spool-router","msg":"control cursor=300 items_seen=19"}
+{"ts":"2026-10-14T09:15:02.316Z","level":"debug","component":"spool-router","msg":"health supervisor ready=1 latency_ms=14.5"}
+{"ts":"2026-10-14T09:15:02.327Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=2"}
+{"ts":"2026-10-14T09:15:02.405Z","level":"info","component":"spool-router","msg":"control cursor=303 items_seen=15"}
+{"ts":"2026-10-14T09:15:02.445Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=11.7"}
+{"ts":"2026-10-14T09:15:02.796Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=2"}
+{"ts":"2026-10-14T09:15:02.934Z","level":"info","component":"spool-router","msg":"control cursor=306 items_seen=16"}
+{"ts":"2026-10-14T09:15:03.665Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=26.5"}
+{"ts":"2026-10-14T09:15:04.354Z","level":"debug","component":"spool-router","msg":"archive dir=other-bucket pending=2"}
+{"ts":"2026-10-14T09:15:04.388Z","level":"info","component":"spool-router","msg":"control cursor=309 items_seen=19"}
+{"ts":"2026-10-14T09:15:04.513Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=13.0"}
+{"ts":"2026-10-14T09:15:04.558Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=1"}
+{"ts":"2026-10-14T09:15:04.570Z","level":"info","component":"spool-router","msg":"control cursor=312 items_seen=12"}
+{"ts":"2026-10-14T09:15:04.580Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=10.7"}
+{"ts":"2026-10-14T09:15:04.622Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=0"}
+{"ts":"2026-10-14T09:15:04.724Z","level":"debug","component":"spool-router","msg":"control cursor=315 items_seen=5"}
+{"ts":"2026-10-14T09:15:04.764Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=41.0"}
+{"ts":"2026-10-14T09:15:04.804Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=2"}
+{"ts":"2026-10-14T09:15:05.457Z","level":"info","component":"spool-router","msg":"control cursor=318 items_seen=16"}
+{"ts":"2026-10-14T09:15:05.570Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=27.9"}
+{"ts":"2026-10-14T09:15:05.582Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=1"}
+{"ts":"2026-10-14T09:15:05.624Z","level":"info","component":"spool-router","msg":"control cursor=321 items_seen=0"}
+{"ts":"2026-10-14T09:15:05.740Z","level":"debug","component":"spool-router","msg":"health supervisor ready=1 latency_ms=16.8"}
+{"ts":"2026-10-14T09:15:05.822Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=1"}
+{"ts":"2026-10-14T09:15:06.020Z","level":"info","component":"spool-router","msg":"control cursor=324 items_seen=17"}
+{"ts":"2026-10-14T09:15:06.031Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=34.0"}
+{"ts":"2026-10-14T09:15:06.705Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=2"}
+{"ts":"2026-10-14T09:15:06.883Z","level":"info","component":"spool-router","msg":"control cursor=327 items_seen=17"}
+{"ts":"2026-10-14T09:15:07.031Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=28.4"}
+{"ts":"2026-10-14T09:15:07.043Z","level":"debug","component":"spool-router","msg":"archive dir=other-bucket pending=1"}
+{"ts":"2026-10-14T09:15:07.197Z","level":"info","component":"spool-router","msg":"control cursor=330 items_seen=0"}
+{"ts":"2026-10-14T09:15:07.763Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=46.0"}
+{"ts":"2026-10-14T09:15:07.870Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=0"}
+{"ts":"2026-10-14T09:15:08.185Z","level":"info","component":"spool-router","msg":"control cursor=333 items_seen=0"}
+{"ts":"2026-10-14T09:15:08.220Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=22.5"}
+{"ts":"2026-10-14T09:15:08.942Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=1"}
+{"ts":"2026-10-14T09:15:09.075Z","level":"debug","component":"spool-router","msg":"control cursor=336 items_seen=17"}
+{"ts":"2026-10-14T09:15:09.241Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=18.5"}
+{"ts":"2026-10-14T09:15:09.393Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=2"}
+{"ts":"2026-10-14T09:15:10.135Z","level":"info","component":"spool-router","msg":"control cursor=339 items_seen=19"}
+{"ts":"2026-10-14T09:15:10.175Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=34.3"}
+{"ts":"2026-10-14T09:15:10.290Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=2"}
+{"ts":"2026-10-14T09:15:10.390Z","level":"info","component":"spool-router","msg":"control cursor=342 items_seen=5"}
+{"ts":"2026-10-14T09:15:10.434Z","level":"debug","component":"spool-router","msg":"health supervisor ready=1 latency_ms=27.4"}
+{"ts":"2026-10-14T09:15:10.481Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=0"}
+{"ts":"2026-10-14T09:15:10.632Z","level":"info","component":"spool-router","msg":"control cursor=345 items_seen=13"}
+{"ts":"2026-10-14T09:15:10.758Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=39.5"}
+{"ts":"2026-10-14T09:15:10.892Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=2"}
+{"ts":"2026-10-14T09:15:10.994Z","level":"info","component":"spool-router","msg":"control cursor=348 items_seen=2"}
+{"ts":"2026-10-14T09:15:11.282Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=31.1"}
+{"ts":"2026-10-14T09:15:11.294Z","level":"debug","component":"spool-router","msg":"archive dir=other-bucket pending=2"}
+{"ts":"2026-10-14T09:15:11.374Z","level":"info","component":"spool-router","msg":"control cursor=351 items_seen=14"}
+{"ts":"2026-10-14T09:15:11.536Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=9.9"}
+{"ts":"2026-10-14T09:15:11.672Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=1"}
+{"ts":"2026-10-14T09:15:11.682Z","level":"info","component":"spool-router","msg":"control cursor=354 items_seen=14"}
+{"ts":"2026-10-14T09:15:11.831Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=23.0"}
+{"ts":"2026-10-14T09:15:12.174Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=2"}
+{"ts":"2026-10-14T09:15:12.279Z","level":"debug","component":"spool-router","msg":"control cursor=357 items_seen=15"}
+{"ts":"2026-10-14T09:15:12.479Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=21.2"}
+{"ts":"2026-10-14T09:15:12.617Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=2"}
+{"ts":"2026-10-14T09:15:12.629Z","level":"info","component":"spool-router","msg":"control cursor=360 items_seen=15"}
+{"ts":"2026-10-14T09:15:13.238Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=32.3"}
+{"ts":"2026-10-14T09:15:13.563Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=0"}
+{"ts":"2026-10-14T09:15:13.573Z","level":"info","component":"spool-router","msg":"control cursor=363 items_seen=9"}
+{"ts":"2026-10-14T09:15:13.673Z","level":"debug","component":"spool-router","msg":"health supervisor ready=1 latency_ms=22.6"}
+{"ts":"2026-10-14T09:15:13.839Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=1"}
+{"ts":"2026-10-14T09:15:14.131Z","level":"info","component":"spool-router","msg":"control cursor=366 items_seen=14"}
+{"ts":"2026-10-14T09:15:14.167Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=13.8"}
+{"ts":"2026-10-14T09:15:14.320Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=2"}
+{"ts":"2026-10-14T09:15:14.423Z","level":"info","component":"spool-router","msg":"control cursor=369 items_seen=14"}
+{"ts":"2026-10-14T09:15:14.460Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=31.9"}
+{"ts":"2026-10-14T09:15:14.500Z","level":"debug","component":"spool-router","msg":"archive dir=other-bucket pending=2"}
+{"ts":"2026-10-14T09:15:14.547Z","level":"info","component":"spool-router","msg":"control cursor=372 items_seen=17"}
+{"ts":"2026-10-14T09:15:14.697Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=32.4"}
+{"ts":"2026-10-14T09:15:14.784Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=2"}
+{"ts":"2026-10-14T09:15:14.964Z","level":"info","component":"spool-router","msg":"control cursor=375 items_seen=8"}
+{"ts":"2026-10-14T09:15:15.669Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=41.5"}
+{"ts":"2026-10-14T09:15:15.679Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=1"}
+{"ts":"2026-10-14T09:15:15.690Z","level":"debug","component":"spool-router","msg":"control cursor=378 items_seen=18"}
+{"ts":"2026-10-14T09:15:16.311Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=36.6"}
+{"ts":"2026-10-14T09:15:16.951Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=2"}
+{"ts":"2026-10-14T09:15:17.296Z","level":"info","component":"spool-router","msg":"control cursor=381 items_seen=6"}
+{"ts":"2026-10-14T09:15:17.334Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=9.7"}
+{"ts":"2026-10-14T09:15:17.429Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=1"}
+{"ts":"2026-10-14T09:15:17.464Z","level":"info","component":"spool-router","msg":"control cursor=384 items_seen=17"}
+{"ts":"2026-10-14T09:15:17.772Z","level":"debug","component":"spool-router","msg":"health supervisor ready=1 latency_ms=11.4"}
+{"ts":"2026-10-14T09:15:17.784Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=1"}
+{"ts":"2026-10-14T09:15:17.795Z","level":"info","component":"spool-router","msg":"control cursor=387 items_seen=11"}
+{"ts":"2026-10-14T09:15:17.935Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=25.8"}
+{"ts":"2026-10-14T09:15:18.270Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=0"}
+{"ts":"2026-10-14T09:15:18.552Z","level":"info","component":"spool-router","msg":"control cursor=390 items_seen=2"}
+{"ts":"2026-10-14T09:15:19.296Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=41.0"}
+{"ts":"2026-10-14T09:15:19.308Z","level":"debug","component":"spool-router","msg":"archive dir=other-bucket pending=0"}
+{"ts":"2026-10-14T09:15:19.418Z","level":"info","component":"spool-router","msg":"control cursor=393 items_seen=3"}
+{"ts":"2026-10-14T09:15:20.105Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=23.7"}
+{"ts":"2026-10-14T09:15:20.207Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=2"}
+{"ts":"2026-10-14T09:15:20.328Z","level":"info","component":"spool-router","msg":"control cursor=396 items_seen=6"}
+{"ts":"2026-10-14T09:15:20.658Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=10.6"}
+{"ts":"2026-10-14T09:15:20.696Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=1"}
+{"ts":"2026-10-14T09:15:21.003Z","level":"debug","component":"spool-router","msg":"control cursor=399 items_seen=3"}
+{"ts":"2026-10-14T09:15:21.397Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=31.5"}
+{"ts":"2026-10-14T09:15:21.408Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=0"}
+{"ts":"2026-10-14T09:15:21.508Z","level":"info","component":"spool-router","msg":"control cursor=402 items_seen=14"}
+{"ts":"2026-10-14T09:15:22.223Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=21.5"}
+{"ts":"2026-10-14T09:15:22.959Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=2"}
+{"ts":"2026-10-14T09:15:23.080Z","level":"info","component":"spool-router","msg":"control cursor=405 items_seen=4"}
+{"ts":"2026-10-14T09:15:23.178Z","level":"debug","component":"spool-router","msg":"health supervisor ready=1 latency_ms=47.5"}
+{"ts":"2026-10-14T09:15:23.326Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=2"}
+{"ts":"2026-10-14T09:15:23.616Z","level":"info","component":"spool-router","msg":"control cursor=408 items_seen=19"}
+{"ts":"2026-10-14T09:15:23.709Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=37.0"}
+{"ts":"2026-10-14T09:15:23.888Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=0"}
+{"ts":"2026-10-14T09:15:24.446Z","level":"info","component":"spool-router","msg":"control cursor=411 items_seen=4"}
+{"ts":"2026-10-14T09:15:24.489Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=34.0"}
+{"ts":"2026-10-14T09:15:24.535Z","level":"debug","component":"spool-router","msg":"archive dir=other-bucket pending=1"}
+{"ts":"2026-10-14T09:15:24.569Z","level":"info","component":"spool-router","msg":"control cursor=414 items_seen=13"}
+{"ts":"2026-10-14T09:15:24.949Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=36.0"}
+{"ts":"2026-10-14T09:15:25.343Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=2"}
+{"ts":"2026-10-14T09:15:25.701Z","level":"info","component":"spool-router","msg":"control cursor=417 items_seen=16"}
+{"ts":"2026-10-14T09:15:25.890Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=25.7"}
+{"ts":"2026-10-14T09:15:26.454Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=2"}
+{"ts":"2026-10-14T09:15:26.792Z","level":"debug","component":"spool-router","msg":"control cursor=420 items_seen=9"}
+{"ts":"2026-10-14T09:15:26.990Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=26.8"}
+{"ts":"2026-10-14T09:15:27.002Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=2"}
+{"ts":"2026-10-14T09:15:27.686Z","level":"info","component":"spool-router","msg":"control cursor=423 items_seen=1"}
+{"ts":"2026-10-14T09:15:28.319Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=34.0"}
+{"ts":"2026-10-14T09:15:28.465Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=2"}
+{"ts":"2026-10-14T09:15:28.575Z","level":"info","component":"spool-router","msg":"control cursor=426 items_seen=0"}
+{"ts":"2026-10-14T09:15:28.587Z","level":"debug","component":"spool-router","msg":"health supervisor ready=1 latency_ms=43.7"}
+{"ts":"2026-10-14T09:15:28.784Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=2"}
+{"ts":"2026-10-14T09:15:28.793Z","level":"info","component":"spool-router","msg":"control cursor=429 items_seen=15"}
+{"ts":"2026-10-14T09:15:29.500Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=15.0"}
+{"ts":"2026-10-14T09:15:29.603Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=0"}
+{"ts":"2026-10-14T09:15:30.142Z","level":"info","component":"spool-router","msg":"control cursor=432 items_seen=17"}
+{"ts":"2026-10-14T09:15:30.226Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=39.5"}
+{"ts":"2026-10-14T09:15:30.236Z","level":"debug","component":"spool-router","msg":"archive dir=other-bucket pending=2"}
+{"ts":"2026-10-14T09:15:30.411Z","level":"info","component":"spool-router","msg":"control cursor=435 items_seen=4"}
+{"ts":"2026-10-14T09:15:30.551Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=10.2"}
+{"ts":"2026-10-14T09:15:30.659Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=2"}
+{"ts":"2026-10-14T09:15:30.741Z","level":"info","component":"spool-router","msg":"control cursor=438 items_seen=0"}
+{"ts":"2026-10-14T09:15:30.928Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=29.3"}
+{"ts":"2026-10-14T09:15:31.132Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=0"}
+{"ts":"2026-10-14T09:15:31.430Z","level":"debug","component":"spool-router","msg":"control cursor=441 items_seen=10"}
+{"ts":"2026-10-14T09:15:31.468Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=39.5"}
+{"ts":"2026-10-14T09:15:31.639Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=2"}
+{"ts":"2026-10-14T09:15:31.772Z","level":"info","component":"spool-router","msg":"control cursor=444 items_seen=16"}
+{"ts":"2026-10-14T09:15:32.510Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=30.7"}
+{"ts":"2026-10-14T09:15:32.682Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=1"}
+{"ts":"2026-10-14T09:15:32.854Z","level":"info","component":"spool-router","msg":"control cursor=447 items_seen=4"}
+{"ts":"2026-10-14T09:15:32.989Z","level":"debug","component":"spool-router","msg":"health supervisor ready=1 latency_ms=41.4"}
+{"ts":"2026-10-14T09:15:33.114Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=0"}
+{"ts":"2026-10-14T09:15:33.154Z","level":"info","component":"spool-router","msg":"control cursor=450 items_seen=16"}
+{"ts":"2026-10-14T09:15:33.190Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=21.3"}
+{"ts":"2026-10-14T09:15:33.313Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=2"}
+{"ts":"2026-10-14T09:15:33.478Z","level":"info","component":"spool-router","msg":"control cursor=453 items_seen=11"}
+{"ts":"2026-10-14T09:15:33.623Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=44.0"}
+{"ts":"2026-10-14T09:15:33.821Z","level":"debug","component":"spool-router","msg":"archive dir=other-bucket pending=2"}
+{"ts":"2026-10-14T09:15:33.999Z","level":"info","component":"spool-router","msg":"control cursor=456 items_seen=10"}
+{"ts":"2026-10-14T09:15:34.338Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=21.3"}
+{"ts":"2026-10-14T09:15:35.009Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=2"}
+{"ts":"2026-10-14T09:15:35.131Z","level":"info","component":"spool-router","msg":"control cursor=459 items_seen=16"}
+{"ts":"2026-10-14T09:15:35.286Z","level":"info","component":"spool-router","msg":"health supervisor ready=1 latency_ms=46.4"}
+{"ts":"2026-10-14T09:15:35.323Z","level":"info","component":"spool-router","msg":"archive dir=other-bucket pending=0"}

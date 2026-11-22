@@ -1,0 +1,17 @@
+domain: android-logcat
+summary: "A rotating logcat buffer retains ANR bookkeeping after the stack capture."
+realLog: false
+tier: realistic
+provenance: authored
+scenarioTags: [android, truncated, distractor]
+rootCauseCategory: insufficient-evidence
+analysisQuestion: "Can the retained tail identify the blocked ANR thread?"
+expectRefusal: true
+realismChecklist:
+  lineFormat: "adb logcat -v threadtime with local month-day, millisecond clock, PID, TID, level and tag."
+  noiseRatio: "366 of 369 lines are routine traffic (99.2%). Incident, symptom and distraction lines are excluded from the numerator."
+  distractors: "The later Wi-Fi scan warning at line 76 lacks any stack or process connection to the ANR."
+  rootCauseDiscoverability: "The ANR label confirms the symptom. The capture contains neither the blocked thread nor the transaction that caused it."
+  timeline: "One logcat clock. The first record is already ANR completion, and the referenced DropBox entry is absent."
+  sensitiveData: "All hosts, processes, samples and identifiers were authored for the fixture. No personal data, real serial numbers or credentials."
+  annotationReview: "Verified the capture only contains completion and an external trace pointer. No thread, Binder chain or cause can be recovered from it. Independent review (2026-11-18): fixed. The evidence points to an omitted DropBox entry. The unrelated Wi-Fi warning cannot identify the blocked thread."

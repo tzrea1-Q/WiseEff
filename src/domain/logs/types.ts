@@ -10,9 +10,10 @@ export type LogArchiveState = "active" | "archived";
 
 export type TimeWindow = "all" | "today" | "7d" | "30d";
 
-export type LogAnalysisSource = "agent" | "rules-fallback";
+export type LogAnalysisSource = "agent" | "single-shot-fallback" | "rules-fallback";
 
-export type LogDegradedReason = "provider-unavailable" | "token-budget-exhausted";
+export const LOG_DEGRADED_REASONS = ["provider-unavailable", "token-budget-exhausted", "invalid-model-output", "step-budget-exhausted"] as const;
+export type LogDegradedReason = (typeof LOG_DEGRADED_REASONS)[number];
 
 export type LogDomainStatus = "active" | "archived";
 export type LogSkillRecommendationReason = {
@@ -148,6 +149,7 @@ export type LogRecord = {
   createdByCredentialId?: string | null;
   createdByCredentialName?: string | null;
   knowledgeRevisions?: Array<{ entryId: string; revisionId?: string; pages?: number[] }>;
+  historicalRunIds?: string[];
   sourceSnapshot?: { id: string; versionLabel?: string; status: "queued" | "indexing" | "ready" | "failed" | "archived" };
   sourceSnapshotSelection?: "matched_version" | "default" | "none";
   requestedSourceVersion?: string;
@@ -165,6 +167,9 @@ export type LogRecord = {
   stage: LogStageId;
   confidence: number;
   conclusion: string;
+  alternativeHypotheses?: import("zod").z.infer<typeof import("@wiseeff/dto-schemas").logRecordDtoSchema>["alternativeHypotheses"];
+  checks?: import("zod").z.infer<typeof import("@wiseeff/dto-schemas").logRecordDtoSchema>["checks"];
+  verification?: import("zod").z.infer<typeof import("@wiseeff/dto-schemas").logRecordDtoSchema>["verification"];
   impact: string;
   evidence: LogEvidence[];
   suggestedActions: string[];
@@ -182,7 +187,7 @@ export type LogRecord = {
   archiveState?: LogArchiveState;
   logDomainId?: string;
   logDomainName?: string;
-  /** Analyzer provenance; "rules-fallback" marks a degraded analysis and must stay visible. */
+  /** Analyzer provenance, including degraded model and rules results. */
   analysisSource?: LogAnalysisSource;
   degradedReason?: LogDegradedReason;
 };

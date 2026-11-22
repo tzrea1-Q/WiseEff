@@ -1,0 +1,26 @@
+# RCAEval by Luan Pham (RMIT University), CC BY 4.0.
+# License terms at https://creativecommons.org/licenses/by/4.0/
+# Endpoint and identity fields are redacted in place. CSV line endings and trailing whitespace are normalized.
+# RE3-OB/emailservice_f1/1 labels emailservice with F1 (incorrect parameter values).
+# The run's inject_time.txt gives 1731911680. Evidence lines 179 and 183 map to
+# source lines 35196 and 35200 in the first post-injection startup traceback.
+domain: microservice-logs
+summary: Online Boutique's email worker fails to register its gRPC health handler during startup.
+realLog: false
+tier: realistic
+provenance: public-dataset
+scenarioTags: [public-labelled, generic-analysis]
+datasetSource:
+  name: RCAEval RE3-OB (Online Boutique)
+  version: zenodo.14590730
+  url: https://zenodo.org/records/14590730
+  license: CC-BY-4.0
+  file: RE3-OB.zip/RE3-OB/emailservice_f1/1/logs.csv
+  lines: [35018, 35367]
+rootCauseCategory: software-fault
+rootCausePoints:
+  - Email service startup passes the gRPC server where health registration expects a servicer.
+  - Health registration tries to access Check on the server object and aborts startup with AttributeError.
+keyEvidenceLines: [179, 183]
+expectedActions:
+  - Check the servicer and server argument order in the health registration call and rerun the email worker startup and health check.

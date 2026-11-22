@@ -18139,6 +18139,69 @@
         }
       }
     },
+    "/api/v1/logs/{logId}/reports/{reportId}/eval-case-draft": {
+      "post": {
+        "operationId": "logs.confirmEvalCaseDraftExport",
+        "summary": "Confirm the admin's evaluation draft export for the current skill report",
+        "tags": [
+          "logs"
+        ],
+        "parameters": [
+          {
+            "name": "logId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "reportId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "organizationId",
+            "in": "query",
+            "required": false,
+            "description": "Explicit operating Organization; cross-Organization access requires a platform super administrator. Omitting it preserves the endpoint's existing scope.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
     "/api/v1/log-skills/{skillId}/analysis-cases/import": {
       "post": {
         "operationId": "logs.importAnalysisCases",
@@ -52010,6 +52073,12 @@
                   "additionalProperties": false
                 }
               },
+              "historicalRunIds": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
               "sourceSnapshot": {
                 "type": "object",
                 "properties": {
@@ -52341,6 +52410,178 @@
               "conclusion": {
                 "type": "string"
               },
+              "alternativeHypotheses": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "statement": {
+                      "type": "string"
+                    },
+                    "reason": {
+                      "type": "string"
+                    },
+                    "anchors": {
+                      "type": "array",
+                      "items": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "file": {
+                                "type": "string"
+                              },
+                              "line": {
+                                "type": "number"
+                              }
+                            },
+                            "required": [
+                              "file",
+                              "line"
+                            ],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "snapshotId": {
+                                "type": "string"
+                              },
+                              "path": {
+                                "type": "string"
+                              },
+                              "line": {
+                                "type": "number"
+                              }
+                            },
+                            "required": [
+                              "snapshotId",
+                              "path",
+                              "line"
+                            ],
+                            "additionalProperties": false
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "statement",
+                    "reason",
+                    "anchors"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "checks": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "required": {
+                      "type": "boolean"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "done",
+                        "skipped",
+                        "pending"
+                      ]
+                    },
+                    "reason": {
+                      "type": "string"
+                    },
+                    "anchors": {
+                      "type": "array",
+                      "items": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "file": {
+                                "type": "string"
+                              },
+                              "line": {
+                                "type": "number"
+                              }
+                            },
+                            "required": [
+                              "file",
+                              "line"
+                            ],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "snapshotId": {
+                                "type": "string"
+                              },
+                              "path": {
+                                "type": "string"
+                              },
+                              "line": {
+                                "type": "number"
+                              }
+                            },
+                            "required": [
+                              "snapshotId",
+                              "path",
+                              "line"
+                            ],
+                            "additionalProperties": false
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "description",
+                    "required",
+                    "status",
+                    "anchors"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "verification": {
+                "type": "object",
+                "properties": {
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "passed",
+                      "revised",
+                      "failed",
+                      "skipped"
+                    ]
+                  },
+                  "checkedClaims": {
+                    "type": "number"
+                  },
+                  "unsupportedClaims": {
+                    "type": "number"
+                  },
+                  "model": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "status",
+                  "checkedClaims",
+                  "unsupportedClaims",
+                  "model"
+                ],
+                "additionalProperties": false
+              },
               "impact": {
                 "type": "string"
               },
@@ -52655,6 +52896,7 @@
                 "type": "string",
                 "enum": [
                   "agent",
+                  "single-shot-fallback",
                   "rules-fallback"
                 ]
               },
@@ -52662,7 +52904,9 @@
                 "type": "string",
                 "enum": [
                   "provider-unavailable",
-                  "token-budget-exhausted"
+                  "token-budget-exhausted",
+                  "invalid-model-output",
+                  "step-budget-exhausted"
                 ]
               }
             },
@@ -53008,6 +53252,12 @@
                   "additionalProperties": false
                 }
               },
+              "historicalRunIds": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
               "sourceSnapshot": {
                 "type": "object",
                 "properties": {
@@ -53339,6 +53589,178 @@
               "conclusion": {
                 "type": "string"
               },
+              "alternativeHypotheses": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "statement": {
+                      "type": "string"
+                    },
+                    "reason": {
+                      "type": "string"
+                    },
+                    "anchors": {
+                      "type": "array",
+                      "items": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "file": {
+                                "type": "string"
+                              },
+                              "line": {
+                                "type": "number"
+                              }
+                            },
+                            "required": [
+                              "file",
+                              "line"
+                            ],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "snapshotId": {
+                                "type": "string"
+                              },
+                              "path": {
+                                "type": "string"
+                              },
+                              "line": {
+                                "type": "number"
+                              }
+                            },
+                            "required": [
+                              "snapshotId",
+                              "path",
+                              "line"
+                            ],
+                            "additionalProperties": false
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "statement",
+                    "reason",
+                    "anchors"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "checks": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "required": {
+                      "type": "boolean"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "done",
+                        "skipped",
+                        "pending"
+                      ]
+                    },
+                    "reason": {
+                      "type": "string"
+                    },
+                    "anchors": {
+                      "type": "array",
+                      "items": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "file": {
+                                "type": "string"
+                              },
+                              "line": {
+                                "type": "number"
+                              }
+                            },
+                            "required": [
+                              "file",
+                              "line"
+                            ],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "snapshotId": {
+                                "type": "string"
+                              },
+                              "path": {
+                                "type": "string"
+                              },
+                              "line": {
+                                "type": "number"
+                              }
+                            },
+                            "required": [
+                              "snapshotId",
+                              "path",
+                              "line"
+                            ],
+                            "additionalProperties": false
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "description",
+                    "required",
+                    "status",
+                    "anchors"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "verification": {
+                "type": "object",
+                "properties": {
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "passed",
+                      "revised",
+                      "failed",
+                      "skipped"
+                    ]
+                  },
+                  "checkedClaims": {
+                    "type": "number"
+                  },
+                  "unsupportedClaims": {
+                    "type": "number"
+                  },
+                  "model": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "status",
+                  "checkedClaims",
+                  "unsupportedClaims",
+                  "model"
+                ],
+                "additionalProperties": false
+              },
               "impact": {
                 "type": "string"
               },
@@ -53653,6 +54075,7 @@
                 "type": "string",
                 "enum": [
                   "agent",
+                  "single-shot-fallback",
                   "rules-fallback"
                 ]
               },
@@ -53660,7 +54083,9 @@
                 "type": "string",
                 "enum": [
                   "provider-unavailable",
-                  "token-budget-exhausted"
+                  "token-budget-exhausted",
+                  "invalid-model-output",
+                  "step-budget-exhausted"
                 ]
               }
             },
@@ -53866,6 +54291,12 @@
                       "entryId"
                     ],
                     "additionalProperties": false
+                  }
+                },
+                "historicalRunIds": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
                   }
                 },
                 "sourceSnapshot": {
@@ -54199,6 +54630,178 @@
                 "conclusion": {
                   "type": "string"
                 },
+                "alternativeHypotheses": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "statement": {
+                        "type": "string"
+                      },
+                      "reason": {
+                        "type": "string"
+                      },
+                      "anchors": {
+                        "type": "array",
+                        "items": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "file": {
+                                  "type": "string"
+                                },
+                                "line": {
+                                  "type": "number"
+                                }
+                              },
+                              "required": [
+                                "file",
+                                "line"
+                              ],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "snapshotId": {
+                                  "type": "string"
+                                },
+                                "path": {
+                                  "type": "string"
+                                },
+                                "line": {
+                                  "type": "number"
+                                }
+                              },
+                              "required": [
+                                "snapshotId",
+                                "path",
+                                "line"
+                              ],
+                              "additionalProperties": false
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    "required": [
+                      "statement",
+                      "reason",
+                      "anchors"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "checks": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "description": {
+                        "type": "string"
+                      },
+                      "required": {
+                        "type": "boolean"
+                      },
+                      "status": {
+                        "type": "string",
+                        "enum": [
+                          "done",
+                          "skipped",
+                          "pending"
+                        ]
+                      },
+                      "reason": {
+                        "type": "string"
+                      },
+                      "anchors": {
+                        "type": "array",
+                        "items": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "file": {
+                                  "type": "string"
+                                },
+                                "line": {
+                                  "type": "number"
+                                }
+                              },
+                              "required": [
+                                "file",
+                                "line"
+                              ],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "snapshotId": {
+                                  "type": "string"
+                                },
+                                "path": {
+                                  "type": "string"
+                                },
+                                "line": {
+                                  "type": "number"
+                                }
+                              },
+                              "required": [
+                                "snapshotId",
+                                "path",
+                                "line"
+                              ],
+                              "additionalProperties": false
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "description",
+                      "required",
+                      "status",
+                      "anchors"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "verification": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "passed",
+                        "revised",
+                        "failed",
+                        "skipped"
+                      ]
+                    },
+                    "checkedClaims": {
+                      "type": "number"
+                    },
+                    "unsupportedClaims": {
+                      "type": "number"
+                    },
+                    "model": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "status",
+                    "checkedClaims",
+                    "unsupportedClaims",
+                    "model"
+                  ],
+                  "additionalProperties": false
+                },
                 "impact": {
                   "type": "string"
                 },
@@ -54513,6 +55116,7 @@
                   "type": "string",
                   "enum": [
                     "agent",
+                    "single-shot-fallback",
                     "rules-fallback"
                   ]
                 },
@@ -54520,7 +55124,9 @@
                   "type": "string",
                   "enum": [
                     "provider-unavailable",
-                    "token-budget-exhausted"
+                    "token-budget-exhausted",
+                    "invalid-model-output",
+                    "step-budget-exhausted"
                   ]
                 }
               },
@@ -54638,6 +55244,82 @@
                     "string",
                     "null"
                   ]
+                },
+                "protocol": {
+                  "type": "string",
+                  "enum": [
+                    "tools",
+                    "json"
+                  ]
+                },
+                "hypotheses": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "status": {
+                        "type": "string",
+                        "enum": [
+                          "open",
+                          "supported",
+                          "refuted",
+                          "inconclusive"
+                        ]
+                      },
+                      "anchors": {
+                        "type": "array",
+                        "items": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "file": {
+                                  "type": "string"
+                                },
+                                "line": {
+                                  "type": "number"
+                                }
+                              },
+                              "required": [
+                                "file",
+                                "line"
+                              ],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "snapshotId": {
+                                  "type": "string"
+                                },
+                                "path": {
+                                  "type": "string"
+                                },
+                                "line": {
+                                  "type": "number"
+                                }
+                              },
+                              "required": [
+                                "snapshotId",
+                                "path",
+                                "line"
+                              ],
+                              "additionalProperties": false
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "status",
+                      "anchors"
+                    ],
+                    "additionalProperties": false
+                  }
                 },
                 "inputTokens": {
                   "type": "number"
@@ -54758,7 +55440,9 @@
                       "type": "string",
                       "enum": [
                         "provider-unavailable",
-                        "token-budget-exhausted"
+                        "token-budget-exhausted",
+                        "invalid-model-output",
+                        "step-budget-exhausted"
                       ]
                     },
                     "analysisQuestion": {
@@ -54927,6 +55611,178 @@
                                 "Info"
                               ]
                             },
+                            "alternativeHypotheses": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "statement": {
+                                    "type": "string"
+                                  },
+                                  "reason": {
+                                    "type": "string"
+                                  },
+                                  "anchors": {
+                                    "type": "array",
+                                    "items": {
+                                      "anyOf": [
+                                        {
+                                          "type": "object",
+                                          "properties": {
+                                            "file": {
+                                              "type": "string"
+                                            },
+                                            "line": {
+                                              "type": "number"
+                                            }
+                                          },
+                                          "required": [
+                                            "file",
+                                            "line"
+                                          ],
+                                          "additionalProperties": false
+                                        },
+                                        {
+                                          "type": "object",
+                                          "properties": {
+                                            "snapshotId": {
+                                              "type": "string"
+                                            },
+                                            "path": {
+                                              "type": "string"
+                                            },
+                                            "line": {
+                                              "type": "number"
+                                            }
+                                          },
+                                          "required": [
+                                            "snapshotId",
+                                            "path",
+                                            "line"
+                                          ],
+                                          "additionalProperties": false
+                                        }
+                                      ]
+                                    }
+                                  }
+                                },
+                                "required": [
+                                  "statement",
+                                  "reason",
+                                  "anchors"
+                                ],
+                                "additionalProperties": false
+                              }
+                            },
+                            "checks": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "id": {
+                                    "type": "string"
+                                  },
+                                  "description": {
+                                    "type": "string"
+                                  },
+                                  "required": {
+                                    "type": "boolean"
+                                  },
+                                  "status": {
+                                    "type": "string",
+                                    "enum": [
+                                      "done",
+                                      "skipped",
+                                      "pending"
+                                    ]
+                                  },
+                                  "reason": {
+                                    "type": "string"
+                                  },
+                                  "anchors": {
+                                    "type": "array",
+                                    "items": {
+                                      "anyOf": [
+                                        {
+                                          "type": "object",
+                                          "properties": {
+                                            "file": {
+                                              "type": "string"
+                                            },
+                                            "line": {
+                                              "type": "number"
+                                            }
+                                          },
+                                          "required": [
+                                            "file",
+                                            "line"
+                                          ],
+                                          "additionalProperties": false
+                                        },
+                                        {
+                                          "type": "object",
+                                          "properties": {
+                                            "snapshotId": {
+                                              "type": "string"
+                                            },
+                                            "path": {
+                                              "type": "string"
+                                            },
+                                            "line": {
+                                              "type": "number"
+                                            }
+                                          },
+                                          "required": [
+                                            "snapshotId",
+                                            "path",
+                                            "line"
+                                          ],
+                                          "additionalProperties": false
+                                        }
+                                      ]
+                                    }
+                                  }
+                                },
+                                "required": [
+                                  "id",
+                                  "description",
+                                  "required",
+                                  "status",
+                                  "anchors"
+                                ],
+                                "additionalProperties": false
+                              }
+                            },
+                            "verification": {
+                              "type": "object",
+                              "properties": {
+                                "status": {
+                                  "type": "string",
+                                  "enum": [
+                                    "passed",
+                                    "revised",
+                                    "failed",
+                                    "skipped"
+                                  ]
+                                },
+                                "checkedClaims": {
+                                  "type": "number"
+                                },
+                                "unsupportedClaims": {
+                                  "type": "number"
+                                },
+                                "model": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "status",
+                                "checkedClaims",
+                                "unsupportedClaims",
+                                "model"
+                              ],
+                              "additionalProperties": false
+                            },
                             "evidence": {
                               "type": "array",
                               "items": {
@@ -55209,6 +56065,7 @@
                               "type": "string",
                               "enum": [
                                 "agent",
+                                "single-shot-fallback",
                                 "rules-fallback"
                               ]
                             },
@@ -55216,7 +56073,9 @@
                               "type": "string",
                               "enum": [
                                 "provider-unavailable",
-                                "token-budget-exhausted"
+                                "token-budget-exhausted",
+                                "invalid-model-output",
+                                "step-budget-exhausted"
                               ]
                             },
                             "promptVersion": {
@@ -55282,6 +56141,178 @@
                                 "Info"
                               ]
                             },
+                            "alternativeHypotheses": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "statement": {
+                                    "type": "string"
+                                  },
+                                  "reason": {
+                                    "type": "string"
+                                  },
+                                  "anchors": {
+                                    "type": "array",
+                                    "items": {
+                                      "anyOf": [
+                                        {
+                                          "type": "object",
+                                          "properties": {
+                                            "file": {
+                                              "type": "string"
+                                            },
+                                            "line": {
+                                              "type": "number"
+                                            }
+                                          },
+                                          "required": [
+                                            "file",
+                                            "line"
+                                          ],
+                                          "additionalProperties": false
+                                        },
+                                        {
+                                          "type": "object",
+                                          "properties": {
+                                            "snapshotId": {
+                                              "type": "string"
+                                            },
+                                            "path": {
+                                              "type": "string"
+                                            },
+                                            "line": {
+                                              "type": "number"
+                                            }
+                                          },
+                                          "required": [
+                                            "snapshotId",
+                                            "path",
+                                            "line"
+                                          ],
+                                          "additionalProperties": false
+                                        }
+                                      ]
+                                    }
+                                  }
+                                },
+                                "required": [
+                                  "statement",
+                                  "reason",
+                                  "anchors"
+                                ],
+                                "additionalProperties": false
+                              }
+                            },
+                            "checks": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "id": {
+                                    "type": "string"
+                                  },
+                                  "description": {
+                                    "type": "string"
+                                  },
+                                  "required": {
+                                    "type": "boolean"
+                                  },
+                                  "status": {
+                                    "type": "string",
+                                    "enum": [
+                                      "done",
+                                      "skipped",
+                                      "pending"
+                                    ]
+                                  },
+                                  "reason": {
+                                    "type": "string"
+                                  },
+                                  "anchors": {
+                                    "type": "array",
+                                    "items": {
+                                      "anyOf": [
+                                        {
+                                          "type": "object",
+                                          "properties": {
+                                            "file": {
+                                              "type": "string"
+                                            },
+                                            "line": {
+                                              "type": "number"
+                                            }
+                                          },
+                                          "required": [
+                                            "file",
+                                            "line"
+                                          ],
+                                          "additionalProperties": false
+                                        },
+                                        {
+                                          "type": "object",
+                                          "properties": {
+                                            "snapshotId": {
+                                              "type": "string"
+                                            },
+                                            "path": {
+                                              "type": "string"
+                                            },
+                                            "line": {
+                                              "type": "number"
+                                            }
+                                          },
+                                          "required": [
+                                            "snapshotId",
+                                            "path",
+                                            "line"
+                                          ],
+                                          "additionalProperties": false
+                                        }
+                                      ]
+                                    }
+                                  }
+                                },
+                                "required": [
+                                  "id",
+                                  "description",
+                                  "required",
+                                  "status",
+                                  "anchors"
+                                ],
+                                "additionalProperties": false
+                              }
+                            },
+                            "verification": {
+                              "type": "object",
+                              "properties": {
+                                "status": {
+                                  "type": "string",
+                                  "enum": [
+                                    "passed",
+                                    "revised",
+                                    "failed",
+                                    "skipped"
+                                  ]
+                                },
+                                "checkedClaims": {
+                                  "type": "number"
+                                },
+                                "unsupportedClaims": {
+                                  "type": "number"
+                                },
+                                "model": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "status",
+                                "checkedClaims",
+                                "unsupportedClaims",
+                                "model"
+                              ],
+                              "additionalProperties": false
+                            },
                             "evidence": {
                               "type": "array",
                               "items": {
@@ -55564,6 +56595,7 @@
                               "type": "string",
                               "enum": [
                                 "agent",
+                                "single-shot-fallback",
                                 "rules-fallback"
                               ]
                             },
@@ -55571,7 +56603,9 @@
                               "type": "string",
                               "enum": [
                                 "provider-unavailable",
-                                "token-budget-exhausted"
+                                "token-budget-exhausted",
+                                "invalid-model-output",
+                                "step-budget-exhausted"
                               ]
                             },
                             "promptVersion": {
@@ -55693,6 +56727,178 @@
                                 "Info"
                               ]
                             },
+                            "alternativeHypotheses": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "statement": {
+                                    "type": "string"
+                                  },
+                                  "reason": {
+                                    "type": "string"
+                                  },
+                                  "anchors": {
+                                    "type": "array",
+                                    "items": {
+                                      "anyOf": [
+                                        {
+                                          "type": "object",
+                                          "properties": {
+                                            "file": {
+                                              "type": "string"
+                                            },
+                                            "line": {
+                                              "type": "number"
+                                            }
+                                          },
+                                          "required": [
+                                            "file",
+                                            "line"
+                                          ],
+                                          "additionalProperties": false
+                                        },
+                                        {
+                                          "type": "object",
+                                          "properties": {
+                                            "snapshotId": {
+                                              "type": "string"
+                                            },
+                                            "path": {
+                                              "type": "string"
+                                            },
+                                            "line": {
+                                              "type": "number"
+                                            }
+                                          },
+                                          "required": [
+                                            "snapshotId",
+                                            "path",
+                                            "line"
+                                          ],
+                                          "additionalProperties": false
+                                        }
+                                      ]
+                                    }
+                                  }
+                                },
+                                "required": [
+                                  "statement",
+                                  "reason",
+                                  "anchors"
+                                ],
+                                "additionalProperties": false
+                              }
+                            },
+                            "checks": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "id": {
+                                    "type": "string"
+                                  },
+                                  "description": {
+                                    "type": "string"
+                                  },
+                                  "required": {
+                                    "type": "boolean"
+                                  },
+                                  "status": {
+                                    "type": "string",
+                                    "enum": [
+                                      "done",
+                                      "skipped",
+                                      "pending"
+                                    ]
+                                  },
+                                  "reason": {
+                                    "type": "string"
+                                  },
+                                  "anchors": {
+                                    "type": "array",
+                                    "items": {
+                                      "anyOf": [
+                                        {
+                                          "type": "object",
+                                          "properties": {
+                                            "file": {
+                                              "type": "string"
+                                            },
+                                            "line": {
+                                              "type": "number"
+                                            }
+                                          },
+                                          "required": [
+                                            "file",
+                                            "line"
+                                          ],
+                                          "additionalProperties": false
+                                        },
+                                        {
+                                          "type": "object",
+                                          "properties": {
+                                            "snapshotId": {
+                                              "type": "string"
+                                            },
+                                            "path": {
+                                              "type": "string"
+                                            },
+                                            "line": {
+                                              "type": "number"
+                                            }
+                                          },
+                                          "required": [
+                                            "snapshotId",
+                                            "path",
+                                            "line"
+                                          ],
+                                          "additionalProperties": false
+                                        }
+                                      ]
+                                    }
+                                  }
+                                },
+                                "required": [
+                                  "id",
+                                  "description",
+                                  "required",
+                                  "status",
+                                  "anchors"
+                                ],
+                                "additionalProperties": false
+                              }
+                            },
+                            "verification": {
+                              "type": "object",
+                              "properties": {
+                                "status": {
+                                  "type": "string",
+                                  "enum": [
+                                    "passed",
+                                    "revised",
+                                    "failed",
+                                    "skipped"
+                                  ]
+                                },
+                                "checkedClaims": {
+                                  "type": "number"
+                                },
+                                "unsupportedClaims": {
+                                  "type": "number"
+                                },
+                                "model": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "status",
+                                "checkedClaims",
+                                "unsupportedClaims",
+                                "model"
+                              ],
+                              "additionalProperties": false
+                            },
                             "evidence": {
                               "type": "array",
                               "items": {
@@ -55975,6 +57181,7 @@
                               "type": "string",
                               "enum": [
                                 "agent",
+                                "single-shot-fallback",
                                 "rules-fallback"
                               ]
                             },
@@ -55982,7 +57189,9 @@
                               "type": "string",
                               "enum": [
                                 "provider-unavailable",
-                                "token-budget-exhausted"
+                                "token-budget-exhausted",
+                                "invalid-model-output",
+                                "step-budget-exhausted"
                               ]
                             },
                             "promptVersion": {
@@ -56048,6 +57257,178 @@
                                 "Info"
                               ]
                             },
+                            "alternativeHypotheses": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "statement": {
+                                    "type": "string"
+                                  },
+                                  "reason": {
+                                    "type": "string"
+                                  },
+                                  "anchors": {
+                                    "type": "array",
+                                    "items": {
+                                      "anyOf": [
+                                        {
+                                          "type": "object",
+                                          "properties": {
+                                            "file": {
+                                              "type": "string"
+                                            },
+                                            "line": {
+                                              "type": "number"
+                                            }
+                                          },
+                                          "required": [
+                                            "file",
+                                            "line"
+                                          ],
+                                          "additionalProperties": false
+                                        },
+                                        {
+                                          "type": "object",
+                                          "properties": {
+                                            "snapshotId": {
+                                              "type": "string"
+                                            },
+                                            "path": {
+                                              "type": "string"
+                                            },
+                                            "line": {
+                                              "type": "number"
+                                            }
+                                          },
+                                          "required": [
+                                            "snapshotId",
+                                            "path",
+                                            "line"
+                                          ],
+                                          "additionalProperties": false
+                                        }
+                                      ]
+                                    }
+                                  }
+                                },
+                                "required": [
+                                  "statement",
+                                  "reason",
+                                  "anchors"
+                                ],
+                                "additionalProperties": false
+                              }
+                            },
+                            "checks": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "id": {
+                                    "type": "string"
+                                  },
+                                  "description": {
+                                    "type": "string"
+                                  },
+                                  "required": {
+                                    "type": "boolean"
+                                  },
+                                  "status": {
+                                    "type": "string",
+                                    "enum": [
+                                      "done",
+                                      "skipped",
+                                      "pending"
+                                    ]
+                                  },
+                                  "reason": {
+                                    "type": "string"
+                                  },
+                                  "anchors": {
+                                    "type": "array",
+                                    "items": {
+                                      "anyOf": [
+                                        {
+                                          "type": "object",
+                                          "properties": {
+                                            "file": {
+                                              "type": "string"
+                                            },
+                                            "line": {
+                                              "type": "number"
+                                            }
+                                          },
+                                          "required": [
+                                            "file",
+                                            "line"
+                                          ],
+                                          "additionalProperties": false
+                                        },
+                                        {
+                                          "type": "object",
+                                          "properties": {
+                                            "snapshotId": {
+                                              "type": "string"
+                                            },
+                                            "path": {
+                                              "type": "string"
+                                            },
+                                            "line": {
+                                              "type": "number"
+                                            }
+                                          },
+                                          "required": [
+                                            "snapshotId",
+                                            "path",
+                                            "line"
+                                          ],
+                                          "additionalProperties": false
+                                        }
+                                      ]
+                                    }
+                                  }
+                                },
+                                "required": [
+                                  "id",
+                                  "description",
+                                  "required",
+                                  "status",
+                                  "anchors"
+                                ],
+                                "additionalProperties": false
+                              }
+                            },
+                            "verification": {
+                              "type": "object",
+                              "properties": {
+                                "status": {
+                                  "type": "string",
+                                  "enum": [
+                                    "passed",
+                                    "revised",
+                                    "failed",
+                                    "skipped"
+                                  ]
+                                },
+                                "checkedClaims": {
+                                  "type": "number"
+                                },
+                                "unsupportedClaims": {
+                                  "type": "number"
+                                },
+                                "model": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "status",
+                                "checkedClaims",
+                                "unsupportedClaims",
+                                "model"
+                              ],
+                              "additionalProperties": false
+                            },
                             "evidence": {
                               "type": "array",
                               "items": {
@@ -56330,6 +57711,7 @@
                               "type": "string",
                               "enum": [
                                 "agent",
+                                "single-shot-fallback",
                                 "rules-fallback"
                               ]
                             },
@@ -56337,7 +57719,9 @@
                               "type": "string",
                               "enum": [
                                 "provider-unavailable",
-                                "token-budget-exhausted"
+                                "token-budget-exhausted",
+                                "invalid-model-output",
+                                "step-budget-exhausted"
                               ]
                             },
                             "promptVersion": {
@@ -56488,7 +57872,9 @@
                 "type": "string",
                 "enum": [
                   "provider-unavailable",
-                  "token-budget-exhausted"
+                  "token-budget-exhausted",
+                  "invalid-model-output",
+                  "step-budget-exhausted"
                 ]
               },
               "analysisQuestion": {
@@ -56627,7 +58013,9 @@
                     "type": "string",
                     "enum": [
                       "provider-unavailable",
-                      "token-budget-exhausted"
+                      "token-budget-exhausted",
+                      "invalid-model-output",
+                      "step-budget-exhausted"
                     ]
                   },
                   "analysisQuestion": {
@@ -56817,7 +58205,9 @@
                 "type": "string",
                 "enum": [
                   "provider-unavailable",
-                  "token-budget-exhausted"
+                  "token-budget-exhausted",
+                  "invalid-model-output",
+                  "step-budget-exhausted"
                 ]
               },
               "analysisQuestion": {
@@ -56942,6 +58332,178 @@
                                 "Info"
                               ]
                             },
+                            "alternativeHypotheses": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "statement": {
+                                    "type": "string"
+                                  },
+                                  "reason": {
+                                    "type": "string"
+                                  },
+                                  "anchors": {
+                                    "type": "array",
+                                    "items": {
+                                      "anyOf": [
+                                        {
+                                          "type": "object",
+                                          "properties": {
+                                            "file": {
+                                              "type": "string"
+                                            },
+                                            "line": {
+                                              "type": "number"
+                                            }
+                                          },
+                                          "required": [
+                                            "file",
+                                            "line"
+                                          ],
+                                          "additionalProperties": false
+                                        },
+                                        {
+                                          "type": "object",
+                                          "properties": {
+                                            "snapshotId": {
+                                              "type": "string"
+                                            },
+                                            "path": {
+                                              "type": "string"
+                                            },
+                                            "line": {
+                                              "type": "number"
+                                            }
+                                          },
+                                          "required": [
+                                            "snapshotId",
+                                            "path",
+                                            "line"
+                                          ],
+                                          "additionalProperties": false
+                                        }
+                                      ]
+                                    }
+                                  }
+                                },
+                                "required": [
+                                  "statement",
+                                  "reason",
+                                  "anchors"
+                                ],
+                                "additionalProperties": false
+                              }
+                            },
+                            "checks": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "id": {
+                                    "type": "string"
+                                  },
+                                  "description": {
+                                    "type": "string"
+                                  },
+                                  "required": {
+                                    "type": "boolean"
+                                  },
+                                  "status": {
+                                    "type": "string",
+                                    "enum": [
+                                      "done",
+                                      "skipped",
+                                      "pending"
+                                    ]
+                                  },
+                                  "reason": {
+                                    "type": "string"
+                                  },
+                                  "anchors": {
+                                    "type": "array",
+                                    "items": {
+                                      "anyOf": [
+                                        {
+                                          "type": "object",
+                                          "properties": {
+                                            "file": {
+                                              "type": "string"
+                                            },
+                                            "line": {
+                                              "type": "number"
+                                            }
+                                          },
+                                          "required": [
+                                            "file",
+                                            "line"
+                                          ],
+                                          "additionalProperties": false
+                                        },
+                                        {
+                                          "type": "object",
+                                          "properties": {
+                                            "snapshotId": {
+                                              "type": "string"
+                                            },
+                                            "path": {
+                                              "type": "string"
+                                            },
+                                            "line": {
+                                              "type": "number"
+                                            }
+                                          },
+                                          "required": [
+                                            "snapshotId",
+                                            "path",
+                                            "line"
+                                          ],
+                                          "additionalProperties": false
+                                        }
+                                      ]
+                                    }
+                                  }
+                                },
+                                "required": [
+                                  "id",
+                                  "description",
+                                  "required",
+                                  "status",
+                                  "anchors"
+                                ],
+                                "additionalProperties": false
+                              }
+                            },
+                            "verification": {
+                              "type": "object",
+                              "properties": {
+                                "status": {
+                                  "type": "string",
+                                  "enum": [
+                                    "passed",
+                                    "revised",
+                                    "failed",
+                                    "skipped"
+                                  ]
+                                },
+                                "checkedClaims": {
+                                  "type": "number"
+                                },
+                                "unsupportedClaims": {
+                                  "type": "number"
+                                },
+                                "model": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "status",
+                                "checkedClaims",
+                                "unsupportedClaims",
+                                "model"
+                              ],
+                              "additionalProperties": false
+                            },
                             "evidence": {
                               "type": "array",
                               "items": {
@@ -57224,6 +58786,7 @@
                               "type": "string",
                               "enum": [
                                 "agent",
+                                "single-shot-fallback",
                                 "rules-fallback"
                               ]
                             },
@@ -57231,7 +58794,9 @@
                               "type": "string",
                               "enum": [
                                 "provider-unavailable",
-                                "token-budget-exhausted"
+                                "token-budget-exhausted",
+                                "invalid-model-output",
+                                "step-budget-exhausted"
                               ]
                             },
                             "promptVersion": {
@@ -57297,6 +58862,178 @@
                                 "Info"
                               ]
                             },
+                            "alternativeHypotheses": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "statement": {
+                                    "type": "string"
+                                  },
+                                  "reason": {
+                                    "type": "string"
+                                  },
+                                  "anchors": {
+                                    "type": "array",
+                                    "items": {
+                                      "anyOf": [
+                                        {
+                                          "type": "object",
+                                          "properties": {
+                                            "file": {
+                                              "type": "string"
+                                            },
+                                            "line": {
+                                              "type": "number"
+                                            }
+                                          },
+                                          "required": [
+                                            "file",
+                                            "line"
+                                          ],
+                                          "additionalProperties": false
+                                        },
+                                        {
+                                          "type": "object",
+                                          "properties": {
+                                            "snapshotId": {
+                                              "type": "string"
+                                            },
+                                            "path": {
+                                              "type": "string"
+                                            },
+                                            "line": {
+                                              "type": "number"
+                                            }
+                                          },
+                                          "required": [
+                                            "snapshotId",
+                                            "path",
+                                            "line"
+                                          ],
+                                          "additionalProperties": false
+                                        }
+                                      ]
+                                    }
+                                  }
+                                },
+                                "required": [
+                                  "statement",
+                                  "reason",
+                                  "anchors"
+                                ],
+                                "additionalProperties": false
+                              }
+                            },
+                            "checks": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "id": {
+                                    "type": "string"
+                                  },
+                                  "description": {
+                                    "type": "string"
+                                  },
+                                  "required": {
+                                    "type": "boolean"
+                                  },
+                                  "status": {
+                                    "type": "string",
+                                    "enum": [
+                                      "done",
+                                      "skipped",
+                                      "pending"
+                                    ]
+                                  },
+                                  "reason": {
+                                    "type": "string"
+                                  },
+                                  "anchors": {
+                                    "type": "array",
+                                    "items": {
+                                      "anyOf": [
+                                        {
+                                          "type": "object",
+                                          "properties": {
+                                            "file": {
+                                              "type": "string"
+                                            },
+                                            "line": {
+                                              "type": "number"
+                                            }
+                                          },
+                                          "required": [
+                                            "file",
+                                            "line"
+                                          ],
+                                          "additionalProperties": false
+                                        },
+                                        {
+                                          "type": "object",
+                                          "properties": {
+                                            "snapshotId": {
+                                              "type": "string"
+                                            },
+                                            "path": {
+                                              "type": "string"
+                                            },
+                                            "line": {
+                                              "type": "number"
+                                            }
+                                          },
+                                          "required": [
+                                            "snapshotId",
+                                            "path",
+                                            "line"
+                                          ],
+                                          "additionalProperties": false
+                                        }
+                                      ]
+                                    }
+                                  }
+                                },
+                                "required": [
+                                  "id",
+                                  "description",
+                                  "required",
+                                  "status",
+                                  "anchors"
+                                ],
+                                "additionalProperties": false
+                              }
+                            },
+                            "verification": {
+                              "type": "object",
+                              "properties": {
+                                "status": {
+                                  "type": "string",
+                                  "enum": [
+                                    "passed",
+                                    "revised",
+                                    "failed",
+                                    "skipped"
+                                  ]
+                                },
+                                "checkedClaims": {
+                                  "type": "number"
+                                },
+                                "unsupportedClaims": {
+                                  "type": "number"
+                                },
+                                "model": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "status",
+                                "checkedClaims",
+                                "unsupportedClaims",
+                                "model"
+                              ],
+                              "additionalProperties": false
+                            },
                             "evidence": {
                               "type": "array",
                               "items": {
@@ -57579,6 +59316,7 @@
                               "type": "string",
                               "enum": [
                                 "agent",
+                                "single-shot-fallback",
                                 "rules-fallback"
                               ]
                             },
@@ -57586,7 +59324,9 @@
                               "type": "string",
                               "enum": [
                                 "provider-unavailable",
-                                "token-budget-exhausted"
+                                "token-budget-exhausted",
+                                "invalid-model-output",
+                                "step-budget-exhausted"
                               ]
                             },
                             "promptVersion": {
@@ -57753,7 +59493,9 @@
                 "type": "string",
                 "enum": [
                   "provider-unavailable",
-                  "token-budget-exhausted"
+                  "token-budget-exhausted",
+                  "invalid-model-output",
+                  "step-budget-exhausted"
                 ]
               },
               "analysisQuestion": {
@@ -57861,13 +59603,16 @@
                 "type": "string",
                 "enum": [
                   "provider-unavailable",
-                  "token-budget-exhausted"
+                  "token-budget-exhausted",
+                  "invalid-model-output",
+                  "step-budget-exhausted"
                 ]
               },
               "source": {
                 "type": "string",
                 "enum": [
                   "agent",
+                  "single-shot-fallback",
                   "rules-fallback"
                 ]
               }
@@ -57992,7 +59737,9 @@
                       "type": "string",
                       "enum": [
                         "provider-unavailable",
-                        "token-budget-exhausted"
+                        "token-budget-exhausted",
+                        "invalid-model-output",
+                        "step-budget-exhausted"
                       ]
                     },
                     "analysisQuestion": {
@@ -58150,6 +59897,178 @@
                       "Info"
                     ]
                   },
+                  "alternativeHypotheses": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "statement": {
+                          "type": "string"
+                        },
+                        "reason": {
+                          "type": "string"
+                        },
+                        "anchors": {
+                          "type": "array",
+                          "items": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "file": {
+                                    "type": "string"
+                                  },
+                                  "line": {
+                                    "type": "number"
+                                  }
+                                },
+                                "required": [
+                                  "file",
+                                  "line"
+                                ],
+                                "additionalProperties": false
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "snapshotId": {
+                                    "type": "string"
+                                  },
+                                  "path": {
+                                    "type": "string"
+                                  },
+                                  "line": {
+                                    "type": "number"
+                                  }
+                                },
+                                "required": [
+                                  "snapshotId",
+                                  "path",
+                                  "line"
+                                ],
+                                "additionalProperties": false
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      "required": [
+                        "statement",
+                        "reason",
+                        "anchors"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "checks": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "description": {
+                          "type": "string"
+                        },
+                        "required": {
+                          "type": "boolean"
+                        },
+                        "status": {
+                          "type": "string",
+                          "enum": [
+                            "done",
+                            "skipped",
+                            "pending"
+                          ]
+                        },
+                        "reason": {
+                          "type": "string"
+                        },
+                        "anchors": {
+                          "type": "array",
+                          "items": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "file": {
+                                    "type": "string"
+                                  },
+                                  "line": {
+                                    "type": "number"
+                                  }
+                                },
+                                "required": [
+                                  "file",
+                                  "line"
+                                ],
+                                "additionalProperties": false
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "snapshotId": {
+                                    "type": "string"
+                                  },
+                                  "path": {
+                                    "type": "string"
+                                  },
+                                  "line": {
+                                    "type": "number"
+                                  }
+                                },
+                                "required": [
+                                  "snapshotId",
+                                  "path",
+                                  "line"
+                                ],
+                                "additionalProperties": false
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "description",
+                        "required",
+                        "status",
+                        "anchors"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "verification": {
+                    "type": "object",
+                    "properties": {
+                      "status": {
+                        "type": "string",
+                        "enum": [
+                          "passed",
+                          "revised",
+                          "failed",
+                          "skipped"
+                        ]
+                      },
+                      "checkedClaims": {
+                        "type": "number"
+                      },
+                      "unsupportedClaims": {
+                        "type": "number"
+                      },
+                      "model": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "status",
+                      "checkedClaims",
+                      "unsupportedClaims",
+                      "model"
+                    ],
+                    "additionalProperties": false
+                  },
                   "evidence": {
                     "type": "array",
                     "items": {
@@ -58432,6 +60351,7 @@
                     "type": "string",
                     "enum": [
                       "agent",
+                      "single-shot-fallback",
                       "rules-fallback"
                     ]
                   },
@@ -58439,7 +60359,9 @@
                     "type": "string",
                     "enum": [
                       "provider-unavailable",
-                      "token-budget-exhausted"
+                      "token-budget-exhausted",
+                      "invalid-model-output",
+                      "step-budget-exhausted"
                     ]
                   },
                   "promptVersion": {
@@ -58534,6 +60456,178 @@
                       "Info"
                     ]
                   },
+                  "alternativeHypotheses": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "statement": {
+                          "type": "string"
+                        },
+                        "reason": {
+                          "type": "string"
+                        },
+                        "anchors": {
+                          "type": "array",
+                          "items": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "file": {
+                                    "type": "string"
+                                  },
+                                  "line": {
+                                    "type": "number"
+                                  }
+                                },
+                                "required": [
+                                  "file",
+                                  "line"
+                                ],
+                                "additionalProperties": false
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "snapshotId": {
+                                    "type": "string"
+                                  },
+                                  "path": {
+                                    "type": "string"
+                                  },
+                                  "line": {
+                                    "type": "number"
+                                  }
+                                },
+                                "required": [
+                                  "snapshotId",
+                                  "path",
+                                  "line"
+                                ],
+                                "additionalProperties": false
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      "required": [
+                        "statement",
+                        "reason",
+                        "anchors"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "checks": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "description": {
+                          "type": "string"
+                        },
+                        "required": {
+                          "type": "boolean"
+                        },
+                        "status": {
+                          "type": "string",
+                          "enum": [
+                            "done",
+                            "skipped",
+                            "pending"
+                          ]
+                        },
+                        "reason": {
+                          "type": "string"
+                        },
+                        "anchors": {
+                          "type": "array",
+                          "items": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "file": {
+                                    "type": "string"
+                                  },
+                                  "line": {
+                                    "type": "number"
+                                  }
+                                },
+                                "required": [
+                                  "file",
+                                  "line"
+                                ],
+                                "additionalProperties": false
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "snapshotId": {
+                                    "type": "string"
+                                  },
+                                  "path": {
+                                    "type": "string"
+                                  },
+                                  "line": {
+                                    "type": "number"
+                                  }
+                                },
+                                "required": [
+                                  "snapshotId",
+                                  "path",
+                                  "line"
+                                ],
+                                "additionalProperties": false
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "description",
+                        "required",
+                        "status",
+                        "anchors"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "verification": {
+                    "type": "object",
+                    "properties": {
+                      "status": {
+                        "type": "string",
+                        "enum": [
+                          "passed",
+                          "revised",
+                          "failed",
+                          "skipped"
+                        ]
+                      },
+                      "checkedClaims": {
+                        "type": "number"
+                      },
+                      "unsupportedClaims": {
+                        "type": "number"
+                      },
+                      "model": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "status",
+                      "checkedClaims",
+                      "unsupportedClaims",
+                      "model"
+                    ],
+                    "additionalProperties": false
+                  },
                   "evidence": {
                     "type": "array",
                     "items": {
@@ -58816,6 +60910,7 @@
                     "type": "string",
                     "enum": [
                       "agent",
+                      "single-shot-fallback",
                       "rules-fallback"
                     ]
                   },
@@ -58823,7 +60918,9 @@
                     "type": "string",
                     "enum": [
                       "provider-unavailable",
-                      "token-budget-exhausted"
+                      "token-budget-exhausted",
+                      "invalid-model-output",
+                      "step-budget-exhausted"
                     ]
                   },
                   "promptVersion": {
@@ -58946,6 +61043,82 @@
                     "string",
                     "null"
                   ]
+                },
+                "protocol": {
+                  "type": "string",
+                  "enum": [
+                    "tools",
+                    "json"
+                  ]
+                },
+                "hypotheses": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "status": {
+                        "type": "string",
+                        "enum": [
+                          "open",
+                          "supported",
+                          "refuted",
+                          "inconclusive"
+                        ]
+                      },
+                      "anchors": {
+                        "type": "array",
+                        "items": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "file": {
+                                  "type": "string"
+                                },
+                                "line": {
+                                  "type": "number"
+                                }
+                              },
+                              "required": [
+                                "file",
+                                "line"
+                              ],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "snapshotId": {
+                                  "type": "string"
+                                },
+                                "path": {
+                                  "type": "string"
+                                },
+                                "line": {
+                                  "type": "number"
+                                }
+                              },
+                              "required": [
+                                "snapshotId",
+                                "path",
+                                "line"
+                              ],
+                              "additionalProperties": false
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "status",
+                      "anchors"
+                    ],
+                    "additionalProperties": false
+                  }
                 },
                 "inputTokens": {
                   "type": "number"
@@ -59647,6 +61820,12 @@
                     "additionalProperties": false
                   }
                 },
+                "historicalRunIds": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
                 "sourceSnapshot": {
                   "type": "object",
                   "properties": {
@@ -59959,6 +62138,12 @@
                     "entryId"
                   ],
                   "additionalProperties": false
+                }
+              },
+              "historicalRunIds": {
+                "type": "array",
+                "items": {
+                  "type": "string"
                 }
               },
               "sourceSnapshot": {
@@ -60292,6 +62477,178 @@
               "conclusion": {
                 "type": "string"
               },
+              "alternativeHypotheses": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "statement": {
+                      "type": "string"
+                    },
+                    "reason": {
+                      "type": "string"
+                    },
+                    "anchors": {
+                      "type": "array",
+                      "items": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "file": {
+                                "type": "string"
+                              },
+                              "line": {
+                                "type": "number"
+                              }
+                            },
+                            "required": [
+                              "file",
+                              "line"
+                            ],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "snapshotId": {
+                                "type": "string"
+                              },
+                              "path": {
+                                "type": "string"
+                              },
+                              "line": {
+                                "type": "number"
+                              }
+                            },
+                            "required": [
+                              "snapshotId",
+                              "path",
+                              "line"
+                            ],
+                            "additionalProperties": false
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "statement",
+                    "reason",
+                    "anchors"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "checks": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "required": {
+                      "type": "boolean"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "done",
+                        "skipped",
+                        "pending"
+                      ]
+                    },
+                    "reason": {
+                      "type": "string"
+                    },
+                    "anchors": {
+                      "type": "array",
+                      "items": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "file": {
+                                "type": "string"
+                              },
+                              "line": {
+                                "type": "number"
+                              }
+                            },
+                            "required": [
+                              "file",
+                              "line"
+                            ],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "snapshotId": {
+                                "type": "string"
+                              },
+                              "path": {
+                                "type": "string"
+                              },
+                              "line": {
+                                "type": "number"
+                              }
+                            },
+                            "required": [
+                              "snapshotId",
+                              "path",
+                              "line"
+                            ],
+                            "additionalProperties": false
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "description",
+                    "required",
+                    "status",
+                    "anchors"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "verification": {
+                "type": "object",
+                "properties": {
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "passed",
+                      "revised",
+                      "failed",
+                      "skipped"
+                    ]
+                  },
+                  "checkedClaims": {
+                    "type": "number"
+                  },
+                  "unsupportedClaims": {
+                    "type": "number"
+                  },
+                  "model": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "status",
+                  "checkedClaims",
+                  "unsupportedClaims",
+                  "model"
+                ],
+                "additionalProperties": false
+              },
               "impact": {
                 "type": "string"
               },
@@ -60606,6 +62963,7 @@
                 "type": "string",
                 "enum": [
                   "agent",
+                  "single-shot-fallback",
                   "rules-fallback"
                 ]
               },
@@ -60613,7 +62971,9 @@
                 "type": "string",
                 "enum": [
                   "provider-unavailable",
-                  "token-budget-exhausted"
+                  "token-budget-exhausted",
+                  "invalid-model-output",
+                  "step-budget-exhausted"
                 ]
               }
             },
@@ -60731,6 +63091,12 @@
                       "entryId"
                     ],
                     "additionalProperties": false
+                  }
+                },
+                "historicalRunIds": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
                   }
                 },
                 "sourceSnapshot": {
@@ -60882,6 +63248,7 @@
                       "type": "string",
                       "enum": [
                         "agent",
+                        "single-shot-fallback",
                         "rules-fallback"
                       ]
                     },
@@ -62451,6 +64818,29 @@
                       "procedure": {
                         "type": "string"
                       },
+                      "procedureChecks": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "id": {
+                              "type": "string"
+                            },
+                            "description": {
+                              "type": "string"
+                            },
+                            "required": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "id",
+                            "description",
+                            "required"
+                          ],
+                          "additionalProperties": false
+                        }
+                      },
                       "formatProfile": {
                         "type": "object",
                         "properties": {
@@ -62505,6 +64895,14 @@
                       },
                       "modelOverride": {
                         "type": "string"
+                      },
+                      "protocolOverride": {
+                        "type": "string",
+                        "enum": [
+                          "auto",
+                          "tools",
+                          "json"
+                        ]
                       },
                       "stepBudget": {
                         "type": "number"
@@ -63972,6 +66370,29 @@
                       "procedure": {
                         "type": "string"
                       },
+                      "procedureChecks": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "id": {
+                              "type": "string"
+                            },
+                            "description": {
+                              "type": "string"
+                            },
+                            "required": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "id",
+                            "description",
+                            "required"
+                          ],
+                          "additionalProperties": false
+                        }
+                      },
                       "formatProfile": {
                         "type": "object",
                         "properties": {
@@ -64026,6 +66447,14 @@
                       },
                       "modelOverride": {
                         "type": "string"
+                      },
+                      "protocolOverride": {
+                        "type": "string",
+                        "enum": [
+                          "auto",
+                          "tools",
+                          "json"
+                        ]
                       },
                       "stepBudget": {
                         "type": "number"
@@ -65176,6 +67605,29 @@
                     "procedure": {
                       "type": "string"
                     },
+                    "procedureChecks": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "description": {
+                            "type": "string"
+                          },
+                          "required": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "description",
+                          "required"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
                     "formatProfile": {
                       "type": "object",
                       "properties": {
@@ -65230,6 +67682,14 @@
                     },
                     "modelOverride": {
                       "type": "string"
+                    },
+                    "protocolOverride": {
+                      "type": "string",
+                      "enum": [
+                        "auto",
+                        "tools",
+                        "json"
+                      ]
                     },
                     "stepBudget": {
                       "type": "number"
@@ -67165,6 +69625,29 @@
               "procedure": {
                 "type": "string"
               },
+              "procedureChecks": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "required": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "description",
+                    "required"
+                  ],
+                  "additionalProperties": false
+                }
+              },
               "formatProfile": {
                 "type": "object",
                 "properties": {
@@ -67219,6 +69702,14 @@
               },
               "modelOverride": {
                 "type": "string"
+              },
+              "protocolOverride": {
+                "type": "string",
+                "enum": [
+                  "auto",
+                  "tools",
+                  "json"
+                ]
               },
               "stepBudget": {
                 "type": "number"
@@ -69129,6 +71620,29 @@
               "procedure": {
                 "type": "string"
               },
+              "procedureChecks": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "required": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "description",
+                    "required"
+                  ],
+                  "additionalProperties": false
+                }
+              },
               "formatProfile": {
                 "type": "object",
                 "properties": {
@@ -69183,6 +71697,14 @@
               },
               "modelOverride": {
                 "type": "string"
+              },
+              "protocolOverride": {
+                "type": "string",
+                "enum": [
+                  "auto",
+                  "tools",
+                  "json"
+                ]
               },
               "stepBudget": {
                 "type": "number"
@@ -70623,6 +73145,29 @@
                   "procedure": {
                     "type": "string"
                   },
+                  "procedureChecks": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "description": {
+                          "type": "string"
+                        },
+                        "required": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "description",
+                        "required"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
                   "formatProfile": {
                     "type": "object",
                     "properties": {
@@ -70677,6 +73222,14 @@
                   },
                   "modelOverride": {
                     "type": "string"
+                  },
+                  "protocolOverride": {
+                    "type": "string",
+                    "enum": [
+                      "auto",
+                      "tools",
+                      "json"
+                    ]
                   },
                   "stepBudget": {
                     "type": "number"
@@ -72166,6 +74719,29 @@
                     "procedure": {
                       "type": "string"
                     },
+                    "procedureChecks": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "description": {
+                            "type": "string"
+                          },
+                          "required": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "description",
+                          "required"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
                     "formatProfile": {
                       "type": "object",
                       "properties": {
@@ -72220,6 +74796,14 @@
                     },
                     "modelOverride": {
                       "type": "string"
+                    },
+                    "protocolOverride": {
+                      "type": "string",
+                      "enum": [
+                        "auto",
+                        "tools",
+                        "json"
+                      ]
                     },
                     "stepBudget": {
                       "type": "number"

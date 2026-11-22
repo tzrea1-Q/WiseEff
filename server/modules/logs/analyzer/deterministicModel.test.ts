@@ -78,6 +78,15 @@ it("does not ground a single-shot skill hit using another file's identical line 
   expect(report.evidence).toMatchObject([{ filePath: "generic.log", lineNumbers: [3] }]);
 });
 
+it("reports a grounded charging alternative in the deterministic screenshot fixture", async () => {
+  const input = inputFor([{ path: "charging.log", content: "INFO adapter contract stable\nERROR thermal foldback\n" }]);
+  const analyzer = createAgentLoopLogAnalyzer({ model: createDeterministicLogAnalysisLoopModel(true), hypothesisLedger: true,
+    protocol: "tools", modelLabel: "deterministic", maxSteps: 6, tokenBudget: 8000 });
+  await expect(analyzer.analyze(input)).resolves.toMatchObject({ analysisSource: "agent",
+    alternativeHypotheses: [{ statement: "充电适配器重新协商导致限流", reason: "热保护介入时，充电协议保持稳定。",
+      anchors: [{ file: "charging.log", line: 1 }] }] });
+});
+
 describe("deterministic loop source citations", () => {
   const sourceLocation = { snapshotId: "thermal-source", path: "src/thermal.c", line: 4 };
   const sourceMatch = { ...sourceLocation, versionLabel: "v7", excerpt: "thermal warning", startLine: 1, confidence: 0.9 };
@@ -86,8 +95,12 @@ describe("deterministic loop source citations", () => {
     const locateLogStatement = vi.fn(async () => ({ items: match ? [sourceMatch] : [], truncated: false }));
     const input = { ...inputFor([{ path: "charging.log", content: chargingLog }]),
       sourceSnapshot: { id: "thermal-source", status: "ready" as const } };
+    const tools: Array<string | null> = [];
     const report = await createAgentLoopLogAnalyzer({ model: createDeterministicLogAnalysisLoopModel(), modelLabel: "deterministic",
-      tokenBudget: 100_000, maxSteps: 6, bindToolBackends: () => ({ locateLogStatement }) }).analyze(input);
+      tokenBudget: 100_000, maxSteps: 6, bindToolBackends: () => ({ locateLogStatement }) }).analyze({ ...input,
+      onTrace: (step) => { if (step.kind === "tool-call") tools.push(step.tool); }
+    });
+    expect(tools).toEqual(["get_prefilter_findings", "read_line_range", "locate_log_statement"]);
     expect(locateLogStatement).toHaveBeenCalledExactlyOnceWith(chargingLog.split("\n")[report.evidence[0].lineNumbers[0] - 1], 1);
     expect(report).toMatchObject({ analysisSource: "agent", confidence: 0.82 });
     expect(report.evidence[0].lineNumbers).toContain(3);
@@ -110,7 +123,7 @@ describe("deterministic loop source citations", () => {
       tokenBudget: 100_000, maxSteps: 2, bindToolBackends: () => ({ locateLogStatement }) }).analyze({
       ...inputFor([{ path: "charging.log", content: chargingLog }]), sourceSnapshot: { id: "thermal-source", status: "ready" }
     });
-    expect(report).toMatchObject({ analysisSource: "agent", degradedReason: "token-budget-exhausted" });
+    expect(report).toMatchObject({ analysisSource: "agent", degradedReason: "step-budget-exhausted" });
     expect(report.evidence[0].sourceLocation).toBeUndefined();
     expect(locateLogStatement).not.toHaveBeenCalled();
   });

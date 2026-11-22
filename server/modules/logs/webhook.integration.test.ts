@@ -5,7 +5,17 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AuthContext, BackendPermission } from "../auth/types";
 import { createEphemeralTestDatabase, isTestDatabaseAvailable, type EphemeralTestDatabase } from "../../testing/testDatabase";
+import { createMemoryObjectStore } from "../../testing/objectStore";
 import { createPostgresDatabase, type Database, type RootDatabase } from "../../shared/database/client";
+import { createRouter } from "../../shared/http/router";
+import { createHttpServer } from "../../shared/http/server";
+import { requestJson } from "../../test/testClient";
+import { logRecordResponseSchema, logTraceResponseSchema } from "../contracts/dtoSchemas/logs";
+import { createAgentLoopLogAnalyzer } from "./analyzer/agentLoop";
+import { createLogAnalyzerFromEnv } from "./analyzer/analyzerFromEnv";
+import { createScriptedLogAnalysisModel } from "./analyzer/scriptedModel";
+import { registerLogRoutes } from "./routes";
+import { processLogAnalysisJobById } from "./worker";
 import { claimLogWebhook, enqueueLogWebhook } from "./webhookOutbox";
 import { decryptLogWebhookSecret, encryptLogWebhookSecret, ensureLogWebhookSecretsEncrypted } from "./webhookSecrets";
 import { resolveLogWebhookSecretKey } from "../../config/logWebhookSecretKey";
@@ -26,7 +36,7 @@ const ORG_ID = "org-log-webhooks";
 const ADMIN_ID = "user-log-webhook-admin";
 const SECRET = "integration-webhook-secret-0123456789";
 
-const adminPermissions: BackendPermission[] = ["logs:view", "logs:admin-domains"];
+const adminPermissions: BackendPermission[] = ["logs:view", "logs:upload", "logs:analyze", "logs:admin-domains"];
 
 function makeAuth(): AuthContext {
   return {
@@ -378,6 +388,113 @@ describe.skipIf(!databaseAvailable)("log domain result webhooks (integration)", 
     expect(deliveries.items).toEqual([
       expect.objectContaining({ kind: "result", attempt: 1, status: "delivered", httpStatus: 200, logRecordId: logId })
     ]);
+  });
+
+  const recoveredReport = {
+    conclusion: "热保护触发限流", impact: "充电速度下降", severity: "Warning", confidence: 0.9,
+    suggestedActions: ["检查散热"], evidence: [{ lineNumbers: [2], inference: "热保护触发", suggestedAction: "检查温度" }]
+  };
+  it.each([
+    { degradedReason: "invalid-model-output", maxSteps: 6, content: "Malformed output", analysisSource: "rules-fallback" },
+    { degradedReason: "step-budget-exhausted", maxSteps: 1, content: { action: "tool", tool: "get_prefilter_findings", args: {} },
+      analysisSource: "rules-fallback" },
+    { degradedReason: "invalid-model-output", maxSteps: 6, content: "Malformed output", analysisSource: "single-shot-fallback" }
+  ])("exposes $analysisSource ($degradedReason) from upload through the record API and result webhook", async ({ degradedReason, maxSteps, content, analysisSource }) => {
+    await configureWebhook();
+    const objectStore = createMemoryObjectStore();
+    const router = createRouter();
+    registerLogRoutes(router, { db, objectStore, getCurrentAuthContext: () => auth });
+    const upload = await requestJson<{ log: { id: string; skillRevision: { id: string; number: number } }; job: { id: string } }>(createHttpServer(router), "/api/v1/log-files", {
+      method: "POST",
+      body: JSON.stringify({ fileName: "charging.log", contentType: "text/plain", skillId: domainId,
+        contentBase64: Buffer.from("INFO charging started\nERROR thermal foldback\n").toString("base64") })
+    });
+    expect(upload.status).toBe(201);
+    const { log, job } = upload.body;
+    const recoveryEnabled = analysisSource === "single-shot-fallback";
+    const model = createScriptedLogAnalysisModel(recoveryEnabled
+      ? [{ content }, { content }, { content }, { content: recoveredReport }]
+      : [{ content }]);
+    const analyzer = createLogAnalyzerFromEnv({
+      LOG_ANALYSIS_DETERMINISTIC: true, LOG_ANALYSIS_KERNEL: "loop", LOG_ANALYSIS_PROTOCOL: "tools",
+      LOG_ANALYSIS_API_TIMEOUT_MS: 1000, LOG_ANALYSIS_TOKEN_BUDGET: 60_000, LOG_ANALYSIS_MAX_STEPS: maxSteps,
+      LOG_ANALYSIS_SINGLE_SHOT_FALLBACK: recoveryEnabled
+    }, { model });
+
+    expect(await processLogAnalysisJobById({ db, objectStore, jobId: job.id, analyzer })).toEqual({ status: "processed" });
+    const record = await requestJson(createHttpServer(router), `/api/v1/logs/${log.id}`);
+    expect(record.status).toBe(200);
+    const provenance = { analysisSource, degradedReason };
+    expect(logRecordResponseSchema.parse(record.body).item).toMatchObject({ status: "complete", ...provenance });
+    if (recoveryEnabled) {
+      expect(record.body).toMatchObject({ item: { confidence: 0.5, conclusion: recoveredReport.conclusion, skillRevision: log.skillRevision,
+        evidence: [{ lineNumbers: [2] }] } });
+    }
+
+    expect(await makeDeliverer().processNext()).toMatchObject({ status: "delivered", attempts: 1 });
+    expect(received).toHaveLength(1);
+    const payload = JSON.parse(received[0].body);
+    expect(payload).toMatchObject({ event: "log-analysis.completed", recordId: log.id, degraded: true, ...provenance });
+    if (recoveryEnabled) {
+      expect(payload).toMatchObject({ conclusionSummary: recoveredReport.conclusion, skillRevisionId: log.skillRevision.id,
+        skillRevisionNumber: log.skillRevision.number });
+      expect(Number(payload.confidence)).toBe(0.5);
+    }
+  });
+
+  it("delivers grounded alternatives, checks, and verification through the record API and signed webhook", async () => {
+    await configureWebhook();
+    const objectStore = createMemoryObjectStore();
+    const router = createRouter();
+    registerLogRoutes(router, { db, objectStore, getCurrentAuthContext: () => auth });
+    const skillPath = `/api/v1/log-skills/${domainId}`;
+    const skill = await requestJson<{ item: { currentRevision: { id: string } } }>(createHttpServer(router), skillPath);
+    const draft = await requestJson<{ item: { id: string } }>(createHttpServer(router), `${skillPath}/draft`, {
+      method: "PUT", body: JSON.stringify({ baseDraftRevisionId: null, basePublishedRevisionId: skill.body.item.currentRevision.id,
+        spec: { schemaVersion: "skill/v1", procedure: "## 检查项\n- [ ] `adapter` 核对充电协议（必查）" } })
+    });
+    expect(draft.status).toBe(200);
+    const published = await requestJson(createHttpServer(router), `${skillPath}/publish`, {
+      method: "POST", body: JSON.stringify({ draftRevisionId: draft.body.item.id })
+    });
+    expect(published.status).toBe(200);
+    const upload = await requestJson<{ log: { id: string }; job: { id: string } }>(createHttpServer(router), "/api/v1/log-files", {
+      method: "POST",
+      body: JSON.stringify({ fileName: "charging.log", contentType: "text/plain", skillId: domainId,
+        contentBase64: Buffer.from("INFO adapter contract stable\nERROR thermal foldback\n").toString("base64") })
+    });
+    expect(upload.status).toBe(201);
+    const alternative = { statement: "适配器重新协商", reason: "充电协议保持稳定", anchors: [{ file: "charging.log", line: 1 }] };
+    const check = { id: "adapter", status: "done", anchors: alternative.anchors };
+    const checks = [{ ...check, description: "核对充电协议", required: true }];
+    const model = createScriptedLogAnalysisModel([
+      { content: { action: "tool", tool: "read_line_range", args: { startLine: 1, endLine: 2 } } },
+      { content: { action: "final", conclusion: "热保护触发限流", impact: "充电速度下降", severity: "Warning",
+        confidence: 0.9, suggestedActions: ["检查散热"], evidence: [{ lineNumbers: [2], inference: "热保护触发", suggestedAction: "检查温度" }],
+        notes: { checks: [check], hypotheses: [{ id: "adapter", statement: alternative.statement, status: "refuted", anchors: alternative.anchors }] },
+        alternativeHypotheses: [alternative] } }
+    ]);
+    const verifier = createScriptedLogAnalysisModel([{ content: { claims: [{ id: 0, status: "supported" }, { id: 1, status: "supported" }] } }]);
+    const verification = { status: "passed", checkedClaims: 2, unsupportedClaims: 0, model: "scripted-verifier" };
+    const analyzer = createAgentLoopLogAnalyzer({ model, hypothesisLedger: true, procedureChecklist: true, protocol: "tools",
+      verifier: { model: verifier, modelLabel: verification.model },
+      modelLabel: "scripted", tokenBudget: 60_000, maxSteps: 3 });
+    expect(await processLogAnalysisJobById({ db, objectStore, jobId: upload.body.job.id, analyzer })).toEqual({ status: "processed" });
+
+    const record = await requestJson(createHttpServer(router), `/api/v1/logs/${upload.body.log.id}`);
+    expect(record.status).toBe(200);
+    expect(logRecordResponseSchema.parse(record.body).item).toMatchObject({ alternativeHypotheses: [alternative], checks, verification });
+    const trace = await requestJson(createHttpServer(router), `/api/v1/logs/${upload.body.log.id}/trace`);
+    expect(trace.status).toBe(200);
+    expect(logTraceResponseSchema.parse(trace.body).steps.filter((step) => step.protocol).at(-1)?.hypotheses).toEqual([
+      { id: "1", status: "refuted", anchors: alternative.anchors }
+    ]);
+    expect(JSON.stringify(trace.body)).not.toContain(alternative.statement);
+    expect(await makeDeliverer().processNext()).toMatchObject({ status: "delivered", attempts: 1 });
+    expect(received).toHaveLength(1);
+    expect(verifyWebhookSignature({ secret: SECRET, timestampSeconds: Number(received[0].timestamp),
+      rawBody: received[0].body, signatureHeader: received[0].signature!, nowSeconds: Number(received[0].timestamp) })).toBe(true);
+    expect(JSON.parse(received[0].body)).toMatchObject({ event: "log-analysis.completed", alternativeHypotheses: [alternative], checks, verification });
   });
 
   it("records retrying then failed rows when the receiver keeps erroring", async () => {

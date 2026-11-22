@@ -14,8 +14,8 @@ function fields(a: Record<string, unknown>, b: Record<string, unknown>) {
 
 export function diffSkillSpecs(a: SkillSpec, b: SkillSpec) {
   const overview = fields({ description: a.description }, { description: b.description });
-  const integration = fields({ modelOverride: a.modelOverride, stepBudget: a.stepBudget, tokenBudget: a.tokenBudget },
-    { modelOverride: b.modelOverride, stepBudget: b.stepBudget, tokenBudget: b.tokenBudget });
+  const integration = fields({ modelOverride: a.modelOverride, protocolOverride: a.protocolOverride, stepBudget: a.stepBudget, tokenBudget: a.tokenBudget },
+    { modelOverride: b.modelOverride, protocolOverride: b.protocolOverride, stepBudget: b.stepBudget, tokenBudget: b.tokenBudget });
   const procedure = fields({ procedure: a.procedure }, { procedure: b.procedure });
   const applicability = fields({ files: a.files }, { files: b.files });
   const knowledge = fields({ knowledgeEntryIds: a.knowledgeEntryIds ?? [] }, { knowledgeEntryIds: b.knowledgeEntryIds ?? [] });

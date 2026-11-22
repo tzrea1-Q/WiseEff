@@ -1,0 +1,24 @@
+# LogChunks by Carolin Brandt, Annibale Panichella and Moritz Beller, CC BY 4.0.
+# License terms at https://creativecommons.org/licenses/by/4.0/
+# The slice removes terminal control sequences and trailing whitespace and normalizes line endings to LF.
+# The XML label for build 221812641 in LogChunks/build-failure-reason/C++/BVLC@caffe.xml
+# marks source lines 1350–1361. Evidence lines 226 and 230 map to source lines 1353 and 1357.
+domain: build-ci
+summary: Caffe's CMake configure step finds an installed Boost below the required version.
+realLog: false
+tier: realistic
+provenance: public-dataset
+scenarioTags: [public-labelled, configuration]
+datasetSource:
+  name: LogChunks
+  version: "1.0.0"
+  url: https://zenodo.org/records/3632351
+  license: CC-BY-4.0
+  file: LogChunks.zip/LogChunks/logs/C++/BVLC@caffe/failed/221812641.log
+  lines: [1128, 1447]
+rootCauseCategory: configuration-error
+rootCausePoints:
+  - CMake finds Boost 1.54.0 but the Caffe build requires at least 1.55.
+keyEvidenceLines: [226, 230]
+expectedActions:
+  - Provide Boost 1.55 or newer in the CI image and confirm CMake resolves the intended installation.

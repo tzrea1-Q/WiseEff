@@ -1,0 +1,96 @@
+2026-11-17T16:21:00.080Z lab-host kernel: power_supply usb: online=1 usb_type=PD
+2026-11-17T16:21:01.080Z lab-host kernel: typec port0: partner source caps unchanged
+2026-11-17T16:21:02.080Z lab-host kernel: tcpm port0: PPS status 9000 mV 3000 mA
+2026-11-17T16:21:03.080Z lab-host kernel: power_supply battery: status=Charging
+2026-11-17T16:21:04.080Z lab-host kernel: regmap pmic: cache sync complete
+2026-11-17T16:21:05.080Z lab-host kernel: tcpm port0: WARN optional cable identity request timed out; PPS contract unchanged
+2026-11-17T16:21:06.080Z lab-host kernel: power_supply usb: input_voltage_now=9020000
+2026-11-17T16:21:07.080Z lab-host kernel: qcom-smb5: charge current votable old=2800000 new=1400000 client=THERMAL
+2026-11-17T16:21:08.080Z lab-host kernel: power_supply battery: current_now=1391000
+2026-11-17T16:21:09.080Z lab-host kernel: tcpm port0: PPS status 9000 mV 3000 mA
+2026-11-17T16:21:10.080Z lab-host kernel: power_supply battery: status=Charging current_now=1397000
+2026-11-17T16:21:11.080Z lab-host kernel: power_supply battery: status=Charging current_now=1398000
+2026-11-17T16:21:12.080Z lab-host kernel: power_supply battery: status=Charging current_now=1399000
+2026-11-17T16:21:13.080Z lab-host kernel: power_supply battery: status=Charging current_now=1400000
+2026-11-17T16:21:14.080Z lab-host kernel: power_supply battery: status=Charging current_now=1394000
+2026-11-17T16:21:15.080Z lab-host kernel: power_supply battery: status=Charging current_now=1395000
+2026-11-17T16:21:16.080Z lab-host kernel: power_supply battery: status=Charging current_now=1396000
+2026-11-17T16:21:17.080Z lab-host kernel: power_supply battery: status=Charging current_now=1397000
+2026-11-17T16:21:18.080Z lab-host kernel: power_supply battery: status=Charging current_now=1398000
+2026-11-17T16:21:19.080Z lab-host kernel: power_supply battery: status=Charging current_now=1399000
+2026-11-17T16:21:20.080Z lab-host kernel: power_supply battery: status=Charging current_now=1400000
+2026-11-17T16:21:21.080Z lab-host kernel: power_supply battery: status=Charging current_now=1394000
+2026-11-17T16:21:22.080Z lab-host kernel: power_supply battery: status=Charging current_now=1395000
+2026-11-17T16:21:23.080Z lab-host kernel: power_supply battery: status=Charging current_now=1396000
+2026-11-17T16:21:24.080Z lab-host kernel: power_supply battery: status=Charging current_now=1397000
+2026-11-17T16:21:25.080Z lab-host kernel: power_supply battery: status=Charging current_now=1398000
+2026-11-17T16:21:26.080Z lab-host kernel: power_supply battery: status=Charging current_now=1399000
+2026-11-17T16:21:27.080Z lab-host kernel: power_supply battery: status=Charging current_now=1400000
+2026-11-17T16:21:28.080Z lab-host kernel: power_supply battery: status=Charging current_now=1394000
+2026-11-17T16:21:29.080Z lab-host kernel: power_supply battery: status=Charging current_now=1395000
+2026-11-17T16:21:30.080Z lab-host kernel: power_supply battery: status=Charging current_now=1396000
+2026-11-17T16:21:31.080Z lab-host kernel: power_supply battery: status=Charging current_now=1397000
+2026-11-17T16:21:00.000Z lab-host thermald[618]: sample zone=battery_pack temp=43800 cooling_state=0
+2026-11-17T16:21:01.000Z lab-host thermald[618]: sample zone=battery_pack temp=43980 cooling_state=0
+2026-11-17T16:21:02.000Z lab-host thermald[618]: sample zone=battery_pack temp=44160 cooling_state=0
+2026-11-17T16:21:03.000Z lab-host thermald[618]: sample zone=battery_pack temp=44340 cooling_state=0
+2026-11-17T16:21:04.000Z lab-host thermald[618]: sample zone=battery_pack temp=44520 cooling_state=0
+2026-11-17T16:21:05.000Z lab-host thermald[618]: sample zone=battery_pack temp=44700 cooling_state=0
+2026-11-17T16:21:06.000Z lab-host thermald[618]: sample zone=battery_pack temp=44880 cooling_state=0
+2026-11-17T16:21:07.000Z lab-host thermald[618]: zone=battery_pack trip=45000 temp=45100 cooling_device=charge_limit state=1
+2026-11-17T16:21:08.000Z lab-host thermald[618]: sample zone=battery_pack temp=45120 cooling_state=1
+2026-11-17T16:21:09.000Z lab-host thermald[618]: sample zone=battery_pack temp=45108 cooling_state=1
+2026-11-17T16:21:10.000Z lab-host thermald[618]: sample zone=battery_pack temp=45096 cooling_state=1
+2026-11-17T16:21:11.000Z lab-host thermald[618]: sample zone=battery_pack temp=45084 cooling_state=1
+2026-11-17T16:21:12.000Z lab-host thermald[618]: sample zone=battery_pack temp=45072 cooling_state=1
+2026-11-17T16:21:13.000Z lab-host thermald[618]: sample zone=battery_pack temp=45060 cooling_state=1
+2026-11-17T16:21:14.000Z lab-host thermald[618]: sample zone=battery_pack temp=45048 cooling_state=1
+2026-11-17T16:21:15.000Z lab-host thermald[618]: sample zone=battery_pack temp=45036 cooling_state=1
+2026-11-17T16:21:16.000Z lab-host thermald[618]: sample zone=battery_pack temp=45024 cooling_state=1
+2026-11-17T16:21:17.000Z lab-host thermald[618]: sample zone=battery_pack temp=45012 cooling_state=1
+2026-11-17T16:21:18.000Z lab-host thermald[618]: sample zone=battery_pack temp=45000 cooling_state=1
+2026-11-17T16:21:19.000Z lab-host thermald[618]: sample zone=battery_pack temp=44988 cooling_state=1
+2026-11-17T16:21:20.000Z lab-host thermald[618]: sample zone=battery_pack temp=44976 cooling_state=1
+2026-11-17T16:21:21.000Z lab-host thermald[618]: sample zone=battery_pack temp=44964 cooling_state=1
+2026-11-17T16:21:22.000Z lab-host thermald[618]: sample zone=battery_pack temp=44952 cooling_state=1
+2026-11-17T16:21:23.000Z lab-host thermald[618]: sample zone=battery_pack temp=44940 cooling_state=1
+2026-11-17T16:21:24.000Z lab-host thermald[618]: sample zone=battery_pack temp=44928 cooling_state=1
+2026-11-17T16:21:25.000Z lab-host thermald[618]: sample zone=battery_pack temp=44916 cooling_state=1
+2026-11-17T16:21:26.000Z lab-host thermald[618]: sample zone=battery_pack temp=44904 cooling_state=1
+2026-11-17T16:21:27.000Z lab-host thermald[618]: sample zone=battery_pack temp=44892 cooling_state=1
+2026-11-17T16:21:28.000Z lab-host thermald[618]: sample zone=battery_pack temp=44880 cooling_state=1
+2026-11-17T16:21:29.000Z lab-host thermald[618]: sample zone=battery_pack temp=44868 cooling_state=1
+2026-11-17T16:21:30.000Z lab-host thermald[618]: sample zone=battery_pack temp=44856 cooling_state=1
+2026-11-17T16:21:31.000Z lab-host thermald[618]: sample zone=battery_pack temp=44844 cooling_state=1
+2026-11-17T16:21:00.040Z lab-host charge-manager[712]: poll profile=pps vbus_mv=8996 ibat_ma=2789 state=cc
+2026-11-17T16:21:01.040Z lab-host charge-manager[712]: poll profile=pps vbus_mv=9000 ibat_ma=2790 state=cc
+2026-11-17T16:21:02.040Z lab-host charge-manager[712]: poll profile=pps vbus_mv=9004 ibat_ma=2791 state=cc
+2026-11-17T16:21:03.040Z lab-host charge-manager[712]: poll profile=pps vbus_mv=9008 ibat_ma=2792 state=cc
+2026-11-17T16:21:04.040Z lab-host charge-manager[712]: poll profile=pps vbus_mv=9012 ibat_ma=2793 state=cc
+2026-11-17T16:21:05.040Z lab-host charge-manager[712]: poll profile=pps vbus_mv=8996 ibat_ma=2794 state=cc
+2026-11-17T16:21:06.040Z lab-host charge-manager[712]: poll profile=pps vbus_mv=9000 ibat_ma=2795 state=cc
+2026-11-17T16:21:07.040Z lab-host charge-manager[712]: apply profile=pps requested_ma=2800 limit_ma=1400 policy=battery_pack
+2026-11-17T16:21:08.040Z lab-host charge-manager[712]: poll profile=pps vbus_mv=9008 ibat_ma=1390 state=cc
+2026-11-17T16:21:09.040Z lab-host charge-manager[712]: poll profile=pps vbus_mv=9012 ibat_ma=1391 state=cc
+2026-11-17T16:21:10.040Z lab-host charge-manager[712]: poll profile=pps vbus_mv=8996 ibat_ma=1392 state=cc
+2026-11-17T16:21:11.040Z lab-host charge-manager[712]: poll profile=pps vbus_mv=9000 ibat_ma=1393 state=cc
+2026-11-17T16:21:12.040Z lab-host charge-manager[712]: poll profile=pps vbus_mv=9004 ibat_ma=1394 state=cc
+2026-11-17T16:21:13.040Z lab-host charge-manager[712]: poll profile=pps vbus_mv=9008 ibat_ma=1395 state=cc
+2026-11-17T16:21:14.040Z lab-host charge-manager[712]: poll profile=pps vbus_mv=9012 ibat_ma=1396 state=cc
+2026-11-17T16:21:15.040Z lab-host charge-manager[712]: poll profile=pps vbus_mv=8996 ibat_ma=1397 state=cc
+2026-11-17T16:21:16.040Z lab-host charge-manager[712]: poll profile=pps vbus_mv=9000 ibat_ma=1390 state=cc
+2026-11-17T16:21:17.040Z lab-host charge-manager[712]: poll profile=pps vbus_mv=9004 ibat_ma=1391 state=cc
+2026-11-17T16:21:18.040Z lab-host charge-manager[712]: poll profile=pps vbus_mv=9008 ibat_ma=1392 state=cc
+2026-11-17T16:21:19.040Z lab-host charge-manager[712]: poll profile=pps vbus_mv=9012 ibat_ma=1393 state=cc
+2026-11-17T16:21:20.040Z lab-host charge-manager[712]: poll profile=pps vbus_mv=8996 ibat_ma=1394 state=cc
+2026-11-17T16:21:21.040Z lab-host charge-manager[712]: poll profile=pps vbus_mv=9000 ibat_ma=1395 state=cc
+2026-11-17T16:21:22.040Z lab-host charge-manager[712]: poll profile=pps vbus_mv=9004 ibat_ma=1396 state=cc
+2026-11-17T16:21:23.040Z lab-host charge-manager[712]: poll profile=pps vbus_mv=9008 ibat_ma=1397 state=cc
+2026-11-17T16:21:24.040Z lab-host charge-manager[712]: poll profile=pps vbus_mv=9012 ibat_ma=1390 state=cc
+2026-11-17T16:21:25.040Z lab-host charge-manager[712]: poll profile=pps vbus_mv=8996 ibat_ma=1391 state=cc
+2026-11-17T16:21:26.040Z lab-host charge-manager[712]: poll profile=pps vbus_mv=9000 ibat_ma=1392 state=cc
+2026-11-17T16:21:27.040Z lab-host charge-manager[712]: poll profile=pps vbus_mv=9004 ibat_ma=1393 state=cc
+2026-11-17T16:21:28.040Z lab-host charge-manager[712]: poll profile=pps vbus_mv=9008 ibat_ma=1394 state=cc
+2026-11-17T16:21:29.040Z lab-host charge-manager[712]: poll profile=pps vbus_mv=9012 ibat_ma=1395 state=cc
+2026-11-17T16:21:30.040Z lab-host charge-manager[712]: poll profile=pps vbus_mv=8996 ibat_ma=1396 state=cc
+2026-11-17T16:21:31.040Z lab-host charge-manager[712]: poll profile=pps vbus_mv=9000 ibat_ma=1397 state=cc

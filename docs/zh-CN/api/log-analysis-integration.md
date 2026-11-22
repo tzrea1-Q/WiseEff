@@ -91,7 +91,9 @@ curl --fail-with-body "$WISEEFF_API/api/v1/log-files" \
 
 模型覆盖及可选步数/token 预算保存在草稿，发布后影响新运行；省略预算使用平台默认值。超过 `LOG_ANALYSIS_MAX_STEPS` / `LOG_ANALYSIS_TOKEN_BUDGET` 的值以字段错误拒绝。Webhook 配置和 key 仍为即时生效的身份设置，不依赖发布。
 
-步骤预算须为至少 1 的整数；版本 token 预算须为至少 `min(4096, LOG_ANALYSIS_TOKEN_BUDGET)` 的整数。保存和发布均校验上下限，并返回对应字段错误。显式版本 token 预算约束模型服务报告的累计用量，每次模型调用前检查，包含提前收敛调用；不做 token 估算，也不承诺单次调用的严格限额。单次完成可能使累计用量超过预算，但耗尽后不再发起调用。没有得到已接地最终报告时，耗尽运行沿用 `rules-fallback` 结果及 `degradedReason: "token-budget-exhausted"`。省略 `tokenBudget` 时，保留既有平台全局预算计量及提前收敛行为。
+循环内核的可选字段 `spec.protocolOverride` 同样随修订发布，并随技能包导入导出。`auto` 自动探测原生工具调用，`tools` 要求使用原生工具调用，`json` 使用文本协议。平台设为 JSON 时始终使用 JSON。
+
+步骤预算须为至少 1 的整数，版本 token 预算须为至少 `min(4096, LOG_ANALYSIS_TOKEN_BUDGET)` 的整数。保存和发布均校验上下限，并返回对应字段错误。显式版本 token 预算按模型服务报告的累计用量计量，每次模型调用前检查，包含提前收敛调用。单次完成可能使累计用量超过预算，但耗尽后不再发起调用。省略 `tokenBudget` 时，保留既有平台全局预算计量及提前收敛行为。
 
 `POST /api/v1/log-files`，内容 base64 编码。JSON 上传的解码文件最多 32 MiB；更大的日志包使用 multipart，遵循配置的上传限制（默认 100 MiB）。传输请求体过大时在解析前返回 `413`。用 `skillKey`、`skillId` 或兼容别名 `logDomainId` 指定已发布技能（用户可通过 `GET /api/v1/log-skills` 列举）。任何显式选择字段及凭据绑定技能都优先于推荐。不传技能选择字段且凭据未绑定技能时，服务端根据已存储日志包，仅对本组织有效、已发布的技能评分。最高分唯一且至少为 8 时使用该技能；并列、低分或推荐预算耗尽时走通用分析。要固定使用通用分析，请使用用户会话或未绑定凭据，不传技能选择字段，并发送 `skillSelection: "generic"`。绑定凭据不能请求通用分析：发送 `skillSelection: "generic"` 返回 `403`，即使同时传入匹配的技能选择字段；与凭据绑定技能冲突的选择也返回 `403`。multipart 上传和从已有文件创建记录的 `POST /api/v1/logs` 遵循相同规则。
 
@@ -138,7 +140,28 @@ curl --fail-with-body "$WISEEFF_API/api/v1/log-files" \
 
 ### 获取报告
 
-`GET /api/v1/logs/{logId}` 返回结论、影响、严重级别、置信度、证据(含行号锚点)、建议动作,以及溯源字段 `analysisSource` / `degradedReason`——`rules-fallback` 是降级分析,绝不冒充完整 Agent 分析。
+`GET /api/v1/logs/{logId}` 返回结论、影响、严重级别、置信度、证据（含行号锚点）、建议动作，以及溯源字段 `analysisSource` 和 `degradedReason`。记录 API 与结果 Webhook 使用相同的原因值。
+
+| `analysisSource` | 含义 |
+| --- | --- |
+| `agent` | 报告由配置的模型内核生成。提前收敛时仍会记录降级原因。 |
+| `single-shot-fallback` | 循环内核因 `invalid-model-output` 结束后，使用同一已固定技能修订和模型做一次 JSON 重试，并得到有证据依据的报告。置信度封顶 0.5，保留原降级原因。 |
+| `rules-fallback` | 报告由规则引擎生成。 |
+
+使用用户会话时，记录与运行响应可能包含 `historicalRunIds`，记录本次检索实际返回的历史运行 ID。历史结论须经过确认，并来自同一组织和技能，仅供类比。证据锚点仍来自当前分析。历史检索只在用户提交记录的分析 Worker 内使用，默认关闭。
+
+启用假设账本后，已完成的报告可返回 `alternativeHypotheses`，列出已排除的可能原因。每项包含陈述 `statement`、理由 `reason` 和 `anchors`，锚点指向此前已见的日志行（`{ file, line }`）或源码行（`{ snapshotId, path, line }`）。
+
+启用诊断检查清单后，使用含清单的技能修订且已接地的循环报告可返回 `checks`。每项包含 `id`、`description`、`required`、`status`、可选 `reason` 和 `anchors`。`status` 为 `done`（已完成）、`skipped`（已跳过）或 `pending`（未处理），锚点格式与 `alternativeHypotheses` 相同。
+
+开启结论验证后，已接地的循环分析报告会返回 `verification: { status, checkedClaims, unsupportedClaims, model }`。`passed` 表示引用支持结论和推断。`revised` 表示内核接受了通过复验的修订。存在矛盾或修订后仍无法确认有证据支持时，返回 `failed` 并提示人工复核。内核将置信度封顶为 0.5，删除不被支持的证据，并以不确定性说明替换不被支持的结论。`skipped` 表示无法验证或预算不足，报告保留原有的证据和置信度。项数按原报告结论及各条推断统计，矛盾项计入 `unsupportedClaims`。跳过时两项计数均为零。
+
+| `degradedReason` | 含义 |
+| --- | --- |
+| `provider-unavailable` | 最后一次任务尝试仍无法调用模型服务，由规则引擎生成报告。 |
+| `invalid-model-output` | 循环内核连续收到三次无效输出，含缺少有效证据的终答，或直接配置的单次内核收到无效或无证据依据的答复。启用循环重试且重试成功时，来源为 `single-shot-fallback`，其余情况为 `rules-fallback`。 |
+| `step-budget-exhausted` | 循环内核用完调查步数。提前收敛得到有证据依据的报告时，`analysisSource` 为 `agent`，置信度上限为 0.5。收敛失败时由 `rules-fallback` 生成报告，并保留同一原因。 |
+| `token-budget-exhausted` | 循环内核耗尽 token 预算。历史报告保留生成时记录的值。 |
 
 新记录的报告元数据还包含 `skillSelection: { mode: "recommended" | "explicit" | "generic", reasons: [{ kind, file, detail }] }`。推荐选择保存获胜技能的评分理由；手动指定与通用选择没有匹配理由。旧记录可能省略该字段。所选发布版本另由 `skillRevision` 记录。
 
@@ -212,6 +235,10 @@ curl --fail-with-body --get "$WISEEFF_API/api/v1/logs/$LOG_ID/lines" \
   "severity": "Warning",
   "confidence": 0.82,
   "conclusionSummary": "充电表现符合过热保护降额特征。",
+  "alternativeHypotheses": [
+    { "statement": "适配器重新协商导致限流", "reason": "热保护介入时，充电协议保持稳定。", "anchors": [{ "file": "charging-foldback.log", "line": 3 }] }
+  ],
+  "verification": { "status": "passed", "checkedClaims": 2, "unsupportedClaims": 0, "model": "gpt-4o-mini" },
   "occurredAt": "2026-08-13T02:00:00.000Z",
   "productPath": "/logs?id=report-run-...&organizationId=org-..."
 }
@@ -219,7 +246,13 @@ curl --fail-with-body --get "$WISEEFF_API/api/v1/logs/$LOG_ID/lines" \
 
 `event` 取值:`log-analysis.completed`、`log-analysis.failed`、`log-analysis.test`(管理员测试按钮)。
 
-结果事件在保留旧字段的基础上增加 `skill: { id, key, revisionId, revisionNumber }` 和 `degraded: boolean`。旧未钉住运行的版本字段可为 null。规则回退或存在降级原因时 `degraded` 为 true；有原因时保留 `degradedReason`。key 在终态事件入队时快照保存，重试保持相同载荷。同步测试事件维持原格式。
+报告含有接地的排除原因且运行未关联参数快照时，完成结果会携带 `alternativeHypotheses`。每项为简要说明和锚点引用。
+
+报告含有诊断检查状态且运行未关联参数快照时，完成结果会携带 `checks`。
+
+完成结果中的 `verification` 与记录一致，仅包含状态、项数和验证模型名称。
+
+结果事件在保留旧字段的基础上增加 `skill: { id, key, revisionId, revisionNumber }` 和 `degraded: boolean`。旧未钉住运行的版本字段可为 null。来源为 `single-shot-fallback` 或 `rules-fallback`，或存在降级原因时，`degraded` 为 true。`degradedReason` 存在时与记录 API 使用相同的值。key 在终态事件入队时快照保存，重试保持相同载荷。同步测试事件维持原格式。
 
 ### 投递语义
 

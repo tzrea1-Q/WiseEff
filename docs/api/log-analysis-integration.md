@@ -91,7 +91,9 @@ For a single archive replace both `-F` lines with `-F 'file=@logs.tar.gz;type=ap
 
 The multipart example expects the named local files. The workspace keeps model override and optional step/token budgets in the draft; publish them to affect new runs. Missing budgets use the platform defaults. Values above `LOG_ANALYSIS_MAX_STEPS` / `LOG_ANALYSIS_TOKEN_BUDGET` are rejected with field errors. Webhook configuration and the key remain live identity settings, independent of publication.
 
-Step budgets must be integers of at least 1. Per-revision token budgets must be integers of at least `min(4096, LOG_ANALYSIS_TOKEN_BUDGET)`. Save and publish validate these bounds with field-specific errors. An explicit per-revision token budget bounds cumulative usage reported by the provider, checked before each model call, including early convergence; it is not a token estimate or a strict per-call ceiling. One completion may take cumulative usage above the budget, but no further call is made after exhaustion. Exhausted runs without a grounded final report use the existing `rules-fallback` result with `degradedReason: "token-budget-exhausted"`. Omitting `tokenBudget` preserves the existing platform-global budget accounting and early-convergence behavior.
+The loop's optional `spec.protocolOverride` also follows the published revision and travels with skill packages. Choose `auto` to detect native tool calling, `tools` to require it, or `json` for the text protocol. A platform configured for JSON always uses JSON.
+
+Step budgets must be integers of at least 1. Per-revision token budgets must be integers of at least `min(4096, LOG_ANALYSIS_TOKEN_BUDGET)`. Save and publish validate these bounds with field-specific errors. An explicit per-revision token budget bounds cumulative usage reported by the provider, checked before each model call, including early convergence. Accounting uses reported usage without estimation. One completion may take cumulative usage above the budget, but no further call is made after exhaustion. Omitting `tokenBudget` preserves the existing platform-global budget accounting and early-convergence behavior.
 
 `POST /api/v1/log-files` with base64 content. JSON uploads accept at most 32 MiB of decoded file bytes; larger bundles use multipart under the configured upload cap (100 MiB by default). Oversized transport bodies return `413` before parsing. Select a published skill using `skillKey`, `skillId` or the compatibility alias `logDomainId` (users can list skills with `GET /api/v1/log-skills`). Any explicit selector, including a credential's bound skill, takes precedence over recommendation. Without a selector or credential binding, the server scores the stored bundle against only your organization's active published skills. A unique best score of at least 8 selects that skill; ties, lower scores and exhausted recommendation budgets use general analysis. To require general analysis, send `skillSelection: "generic"` without a skill selector, using a user session or an unbound credential. Bound credentials cannot request generic analysis: `skillSelection: "generic"` returns `403`, even with a matching skill selector. A selector conflicting with the credential's bound skill also returns `403`. These rules also apply to multipart uploads and `POST /api/v1/logs` for stored files.
 
@@ -138,7 +140,28 @@ Poll `GET /api/v1/logs/{logId}` using the credential that uploaded the record un
 
 ### Read the report
 
-`GET /api/v1/logs/{logId}` returns the conclusion, impact, severity, confidence, evidence (with line anchors), suggested actions, and the provenance fields `analysisSource` / `degradedReason` — a `rules-fallback` report is a degraded analysis and never impersonates a full agent analysis.
+`GET /api/v1/logs/{logId}` returns the conclusion, impact, severity, confidence, evidence (with line anchors), suggested actions, and the provenance fields `analysisSource` and `degradedReason`. The record API and result webhook use the same reason values.
+
+| `analysisSource` | Meaning |
+| --- | --- |
+| `agent` | The configured model kernel generated the report. A degradation reason can indicate early convergence. |
+| `single-shot-fallback` | The loop ended with `invalid-model-output`. One JSON retry using the same pinned revision and model produced grounded evidence. Confidence is capped at 0.5, and the original reason is retained. |
+| `rules-fallback` | The rules engine generated the report. |
+
+In user sessions, record and run responses may also carry `historicalRunIds`. These are the run IDs actually returned as untrusted hints from confirmed same-organization, same-skill conclusions. Every evidence anchor still comes from the current analysis. History lookup runs inside the worker for user-submitted records and is disabled by default.
+
+When the hypothesis ledger is enabled, a completed report may include `alternativeHypotheses`, an array of excluded causes with `statement`, `reason`, and `anchors`. Each anchor identifies a previously seen log line (`{ file, line }`) or source line (`{ snapshotId, path, line }`).
+
+When the diagnostic checklist is enabled, a grounded loop report for a skill revision with a checklist may include `checks`. Entries contain `id`, `description`, `required`, `status`, optional `reason`, and `anchors`. `status` is `done`, `skipped`, or `pending`. The anchors have the same shapes as for `alternativeHypotheses`.
+
+When conclusion verification is enabled, a grounded loop report includes `verification: { status, checkedClaims, unsupportedClaims, model }`. `passed` means the cited lines support the conclusion and inferences. `revised` means the kernel accepted a checked revision. `failed` flags a contradiction or unsupported claims that could not be resolved by revision. The kernel caps confidence at 0.5, removes unsupported evidence, and replaces an unsupported conclusion with a statement of uncertainty. Review flagged reports manually. `skipped` means the check was unavailable or ran out of budget, and the report retains its original confidence and evidence. Counts cover the original conclusion and inferences, with contradictions included in `unsupportedClaims`. A skipped check reports zero counts.
+
+| `degradedReason` | Meaning |
+| --- | --- |
+| `provider-unavailable` | The model service was unavailable through the final job attempt, so the rules engine generated the report. |
+| `invalid-model-output` | The loop received three consecutive invalid outputs, including final answers without grounded evidence, or the configured single-shot kernel received an invalid or ungrounded answer. If the optional loop retry succeeds, the source is `single-shot-fallback`. Otherwise the source is `rules-fallback`. |
+| `step-budget-exhausted` | The loop used all investigation steps. A grounded early-convergence report has `analysisSource: "agent"` and confidence capped at 0.5. If convergence cannot produce a grounded report, `rules-fallback` carries the same reason. |
+| `token-budget-exhausted` | The loop reached its token budget. Earlier reports retain the value recorded at the time. |
 
 New records also expose `skillSelection: { mode: "recommended" | "explicit" | "generic", reasons: [{ kind, file, detail }] }` in report metadata. Recommended selection records the winning score's reasons. Explicit and generic choices have no matching reasons; older records can omit the field. The selected publication is separately recorded in `skillRevision`.
 
@@ -210,6 +233,10 @@ Before the first push, an administrator configures a skill's webhook in its work
   "severity": "Warning",
   "confidence": 0.82,
   "conclusionSummary": "<localized analysis conclusion>",
+  "alternativeHypotheses": [
+    { "statement": "适配器重新协商导致限流", "reason": "热保护介入时，充电协议保持稳定。", "anchors": [{ "file": "charging-foldback.log", "line": 3 }] }
+  ],
+  "verification": { "status": "passed", "checkedClaims": 2, "unsupportedClaims": 0, "model": "gpt-4o-mini" },
   "occurredAt": "2026-08-13T02:00:00.000Z",
   "productPath": "/logs?id=report-run-...&organizationId=org-..."
 }
@@ -217,7 +244,13 @@ Before the first push, an administrator configures a skill's webhook in its work
 
 `event` is `log-analysis.completed`, `log-analysis.failed`, or `log-analysis.test` (admin test button).
 
-Result events add `skill: { id, key, revisionId, revisionNumber }` and `degraded: boolean` while retaining all previous fields. Revision fields are nullable for legacy unpinned runs. `degraded` is true for rule fallback or an available degradation reason; `degradedReason` carries the reason when available. The key is captured when the terminal event is enqueued; retries preserve that snapshot. The synchronous test event retains its existing shape.
+The completed result includes `alternativeHypotheses` when the report has grounded exclusions and the run has no related-parameter snapshot. The entries contain short summaries and anchor references.
+
+The completed result includes `checks` when present on the report and the run has no related-parameter snapshot.
+
+The completed result includes `verification` when present on the record. It carries only the status, counts, and verifier model name.
+
+Result events add `skill: { id, key, revisionId, revisionNumber }` and `degraded: boolean` while retaining all previous fields. Revision fields are nullable for legacy unpinned runs. `degraded` is true for `single-shot-fallback`, `rules-fallback`, or an available degradation reason. When present, `degradedReason` uses the same values as the record API. The key is captured when the terminal event is enqueued, and retries preserve that snapshot. The synchronous test event retains its existing shape.
 
 ### Delivery semantics
 

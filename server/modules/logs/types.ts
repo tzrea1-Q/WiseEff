@@ -1,4 +1,6 @@
 import type { LogAnalysisDegradedReason, LogAnalysisSource } from "./analyzer";
+import type { LogAlternativeHypothesis, LogReportCheck } from "./hypotheses";
+import type { LogVerification } from "./verification";
 import type { HistoricalAttribution } from "../../../src/domain/identity/historicalAttribution";
 import type { LogRecordStatus, LogRunStatus, LogStage } from "./status";
 export type LogArchiveState = "active" | "archived";
@@ -32,6 +34,7 @@ export type LogRecordDto = {
     reasons: import("./skillRecommendation").LogSkillRecommendationReason[];
   };
   knowledgeRevisions?: Array<{ entryId: string; revisionId?: string; pages?: number[] }>;
+  historicalRunIds?: string[];
   sourceSnapshot?: import("./analyzer").AnalyzeLogInput["sourceSnapshot"];
   sourceSnapshotSelection?: "matched_version" | "default" | "none";
   requestedSourceVersion?: string;
@@ -51,6 +54,9 @@ export type LogRecordDto = {
   stage: LogStage;
   confidence: number;
   conclusion: string;
+  alternativeHypotheses?: LogAlternativeHypothesis[];
+  checks?: LogReportCheck[];
+  verification?: LogVerification;
   impact: string;
   evidence: LogEvidenceDto[];
   suggestedActions: string[];

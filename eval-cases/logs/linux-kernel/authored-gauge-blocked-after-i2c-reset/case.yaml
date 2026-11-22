@@ -1,0 +1,23 @@
+domain: linux-kernel
+summary: "The fuel gauge drops samples during a controller recovery interval."
+realLog: false
+tier: realistic
+provenance: authored
+scenarioTags: [cascade, distractor]
+rootCauseCategory: communication-failure
+analysisQuestion: "Why were battery readings stale for several polls?"
+rootCausePoints:
+  - "Gauge reads failed after the I2C controller entered reset and bus recovery."
+  - "The same register was readable again after the controller reported recovery complete."
+keyEvidenceLines: [164, 165, 213, 215]
+expectedActions:
+  - "Capture SDA and SCL during the next controller recovery and correlate with gauge read errors."
+  - "Check other clients on I2C bus 1 over the same interval before replacing the gauge."
+realismChecklist:
+  lineFormat: "dmesg monotonic boot seconds with six fractional digits and driver-prefixed messages."
+  noiseRatio: "442 of 462 lines are routine traffic (95.7%). Incident, symptom and distraction lines are excluded from the numerator."
+  distractors: "The independent USB address-assignment error at line 56 occurs well before the I2C incident."
+  rootCauseDiscoverability: "The reset, first gauge timeout on the same bus and successful read of the same register after recovery bracket the outage."
+  timeline: "Single monotonic boot clock. Gauge read failures follow reset and stop after recovery."
+  sensitiveData: "All hosts, processes, samples and identifiers were authored for the fixture. No personal data, real serial numbers or credentials."
+  annotationReview: "Checked the first failed gauge read and successful read against the reset interval. The annotations leave the initiating electrical fault open. Independent review (2026-11-18): fixed. Dropped an inconclusive pre-reset register snapshot from the evidence. Replaced the informational USB reset with an unrelated USB error to supply a genuine warning or error distractor."

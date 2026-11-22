@@ -3,7 +3,7 @@ import JSZip from "jszip";
 import { stringify as stringifyYaml } from "yaml";
 import { z } from "zod";
 import { AnalysisCaseArchiveError, analysisCaseArchiveLimits, archiveYamlLimits, parseArchiveYaml, parseAnalysisCaseFiles, readBoundedZipArchive, type ArchivedAnalysisCase } from "./analysisCaseArchive";
-import { logSkillSpecSchema, type LogSkillSpec } from "./skillSpec";
+import { logSkillAuthoringSpecSchema, type LogSkillSpec } from "./skillSpec";
 import { skillKeySchema } from "./schemas";
 import { knowledgeTagsSchema } from "../knowledge/schemas";
 import { parsingSpecSchema } from "./parsing/spec";
@@ -44,7 +44,8 @@ const metadataSchema = z.object({
   name: z.string().trim().min(1).max(120), schemaVersion: z.literal("skill/v1"),
   skillKey: skillKeySchema.optional(), description: z.unknown().optional(),
   stepBudget: z.unknown().optional(), tokenBudget: z.unknown().optional(),
-  formatProfile: z.unknown().optional(), modelOverride: z.unknown().optional(), source: z.unknown().optional()
+  formatProfile: z.unknown().optional(), modelOverride: z.unknown().optional(), protocolOverride: z.unknown().optional(),
+  source: z.unknown().optional()
 }).strict();
 const knowledgeMetadataSchema = z.object({
   title: z.string().trim().min(1).max(200), tags: knowledgeTagsSchema,
@@ -124,7 +125,7 @@ export async function importSkillPackageArchive(bytes: Buffer): Promise<SkillPac
   const signalRules = read("signals.yaml", signalRuleSetSchema, true);
   const parseTests = read("tests.yaml", parseTestsSchema);
   const { name = "", skillKey, procedure, ...metadata } = skill ?? {};
-  const result = logSkillSpecSchema.safeParse({ schemaVersion: "skill/v1", ...metadata, procedure, parsing, signalRules, parseTests });
+  const result = logSkillAuthoringSpecSchema.safeParse({ schemaVersion: "skill/v1", ...metadata, procedure, parsing, signalRules, parseTests });
   if (!result.success) for (const issue of result.error.issues) {
     const [root, ...path] = issue.path;
     const file = root === "signalRules" ? "signals.yaml" : root === "parsing" ? "parsing.yaml" : root === "parseTests" ? "tests.yaml" : "SKILL.md";
@@ -145,7 +146,8 @@ export function packageMarkdown(metadata: unknown, body: string) { return `---\n
 
 /** Sorted paths and a fixed ZIP date make repeat exports byte-for-byte stable. */
 export async function exportSkillPackageArchive(name: string, skillKey: string, spec: LogSkillSpec, knowledge: PackagedKnowledge[], cases: Map<string, Buffer>) {
-  const { procedure = "", parsing, signalRules, parseTests = [], knowledgeEntryIds: _ids, defaultSourceSnapshotId: _snapshot, ...metadata } = spec;
+  const { procedure = "", procedureChecks: _derived, parsing, signalRules, parseTests = [], knowledgeEntryIds: _ids,
+    defaultSourceSnapshotId: _snapshot, ...metadata } = spec;
   const files = new Map<string, Buffer>([
     ["SKILL.md", Buffer.from(packageMarkdown({ name, skillKey, ...metadata }, procedure))],
     ["parsing.yaml", Buffer.from(stringifyYaml(parsing ?? null, { aliasDuplicateObjects: false }))],

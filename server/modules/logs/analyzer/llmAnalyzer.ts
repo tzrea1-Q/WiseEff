@@ -12,10 +12,11 @@ import {
 import { runLogPrefilter, type PrefilterFindings } from "../prefilter";
 import { appendSkillProcedure } from "./procedurePrompt";
 import { emitLogTrace, withLogTrace } from "../traceTypes";
+import { estimateLogPromptTokens, estimateLogTokens, logCompletionLimit, MIN_LOG_ANALYSIS_OUTPUT_TOKENS } from "./modelBudget";
 
 /** Versioned prompt: recorded on every report so eval baselines can gate prompt changes. */
-export const LOG_ANALYSIS_PROMPT_VERSION = "2026-10-19.procedure.signals.source.1";
-export const LOG_ANALYSIS_PARAMETER_PROMPT_VERSION = "2026-10-19.procedure.signals.source.related-parameter.1";
+export const LOG_ANALYSIS_PROMPT_VERSION = "2026-10-19.procedure.signals.source.2";
+export const LOG_ANALYSIS_PARAMETER_PROMPT_VERSION = "2026-10-19.procedure.signals.source.related-parameter.2";
 
 function promptVersionFor(input: AnalyzeLogInput) {
   return input.relatedParameterSnapshot ? LOG_ANALYSIS_PARAMETER_PROMPT_VERSION : LOG_ANALYSIS_PROMPT_VERSION;
@@ -41,14 +42,24 @@ export class LogAnalysisProviderError extends Error {
   }
 }
 
-export type LogAnalysisChatMessage = { role: "system" | "user" | "assistant"; content: string };
+export type LogAnalysisNativeCall = { id: string; name: string; arguments: string };
+export type LogAnalysisNativeTool = { name: string; description: string; schema: z.ZodTypeAny };
+export type LogAnalysisChatMessage =
+  | { role: "system" | "user"; content: string }
+  | { role: "assistant"; content: string; toolCalls?: LogAnalysisNativeCall[] }
+  | { role: "tool"; content: string; toolCallId: string };
+
+export type LogAnalysisChatResponse = {
+  content: string;
+  usage?: { inputTokens?: number; outputTokens?: number };
+};
 
 /** Minimal chat-model seam: production binds ChatOpenAI, eval binds deterministic scripted fakes. */
 export type LogAnalysisChatModel = {
-  invoke(messages: LogAnalysisChatMessage[], options?: { signal?: AbortSignal }): Promise<{
-    content: string;
-    usage?: { inputTokens?: number; outputTokens?: number };
-  }>;
+  invoke(messages: LogAnalysisChatMessage[], options?: { signal?: AbortSignal; maxOutputTokens?: number }): Promise<LogAnalysisChatResponse>;
+  invokeTools?(messages: LogAnalysisChatMessage[], options: { signal?: AbortSignal; maxOutputTokens?: number; tools: LogAnalysisNativeTool[] }):
+    Promise<LogAnalysisChatResponse & { toolCalls?: LogAnalysisNativeCall[] }>;
+  estimateNativeToolTokens?(tools: LogAnalysisNativeTool[]): number;
 };
 
 /** Evidence discipline: telemetry carries model/latency/tokens/outcome only — never prompts or provider payloads. */
@@ -67,6 +78,9 @@ export type CreateLlmLogAnalyzerOptions = {
   model: LogAnalysisChatModel;
   modelLabel: string;
   tokenBudget: number;
+  /** Per-call context window (prompt + completion). */
+  contextTokens?: number;
+  repairJsonOutput?: boolean;
   fallback?: LogAnalysisAdapter;
   telemetry?: LogAnalysisLlmTelemetry;
   now?: () => number;
@@ -251,21 +265,64 @@ function buildUserPrompt(input: AnalyzeLogInput, findings: PrefilterFindings, ex
   return sections.join("\n\n");
 }
 
+/**
+ * Reasoning models (for example MiniMax-M3, DeepSeek-R1, Qwen3) can put their
+ * reasoning in the reply as a leading `<think>…</think>` block. It is neither
+ * the answer nor history worth resending; an unclosed block means truncation.
+ */
+export function stripLeadingReasoning(text: string) {
+  const stripped = text.replace(/^\s*(?:<think>[\s\S]*?<\/think>\s*)+/, "");
+  return /^\s*<think>/.test(stripped) ? "" : stripped;
+}
+
 export function extractJsonPayload(content: string): string {
   const trimmed = content.trim();
   const fenced = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/);
   return fenced ? fenced[1] : trimmed;
 }
 
-function parseStrictLlmOutput(content: string): LlmLogAnalysisOutput | undefined {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(extractJsonPayload(content));
-  } catch {
-    return undefined;
+function repairFirstJsonObject(payload: string): string | undefined {
+  let depth = 0;
+  let start = 0;
+  let repaired = "";
+  // Match complete strings as single tokens so their braces, escapes and commas stay intact.
+  for (const { 0: token, index } of payload.matchAll(/"(?:[^"\\\r\n]|\\.)*"|["{}]|,(?=[ \t\r\n]*[}\]])/g)) {
+    if (token === "{") {
+      if (depth === 0) start = index;
+      depth += 1;
+    }
+    if (depth === 0) continue;
+    if (token === '"') return undefined; // Unterminated string.
+    if (token === ",") {
+      let previous = index - 1;
+      while (/[ \t\r\n]/.test(payload[previous])) previous -= 1;
+      // Removing a comma after an opener, colon, or another comma could hide a missing value.
+      if (!"{[,:".includes(payload[previous])) {
+        repaired += payload.slice(start, index);
+        start = index + 1;
+      }
+    }
+    if (token === "}") {
+      depth -= 1;
+      if (depth === 0) return repaired + payload.slice(start, index + 1);
+    }
   }
-  const result = llmOutputSchema.safeParse(parsed);
-  return result.success ? result.data : undefined;
+}
+
+export function parseLogAnalysisModelJson(content: string, repairJsonOutput?: boolean): unknown {
+  const payload = extractJsonPayload(content);
+  try {
+    return JSON.parse(payload) as unknown;
+  } catch {
+    if (!repairJsonOutput || payload.startsWith("[")) return undefined;
+    const repaired = repairFirstJsonObject(payload);
+    if (repaired === undefined) return undefined;
+    try {
+      return JSON.parse(repaired) as unknown;
+    } catch {
+      return undefined;
+    }
+  }
 }
 
 /**
@@ -307,7 +364,9 @@ export function sourceLocationKey(location: NonNullable<AnalyzeLogEvidence["sour
   return JSON.stringify([location.snapshotId, location.path, location.line]);
 }
 
-export function createLlmLogAnalyzer(options: CreateLlmLogAnalyzerOptions): LogAnalysisAdapter {
+export function createLlmLogAnalyzer(options: CreateLlmLogAnalyzerOptions): LogAnalysisAdapter & {
+  tryAnalyze(input: AnalyzeLogInput, remainingTokens?: number): Promise<AnalyzeLogOutput | "token-budget-exhausted" | undefined>;
+} {
   const fallback = options.fallback ?? createRuleBasedLogAnalyzer();
   const now = options.now ?? (() => Date.now());
 
@@ -327,11 +386,16 @@ export function createLlmLogAnalyzer(options: CreateLlmLogAnalyzerOptions): LogA
     };
   }
 
-  return {
-    async analyze(input) {
-      input = withLogTrace(input);
+  const analyzer = {
+    async tryAnalyze(input: AnalyzeLogInput, remainingBudget = options.tokenBudget): Promise<AnalyzeLogOutput | "token-budget-exhausted" | undefined> {
+      const remainingTokens = Math.min(remainingBudget, options.contextTokens ?? Number.POSITIVE_INFINITY);
       const findings = input.files?.find((file) => file.prefilter)?.prefilter ?? runLogPrefilter(input.files?.find((file) => file.parsed)?.parsed?.entries ?? input.parsed.entries, input.signalRules);
-      const excerptCharBudget = Math.max(1_000, Math.floor(options.tokenBudget * CHARS_PER_TOKEN * 0.6));
+      const systemMessage = { role: "system" as const, content: appendSkillProcedure(buildSystemPrompt(Boolean(input.relatedParameterSnapshot)), input.procedure) };
+      const basePromptTokens = estimateLogPromptTokens([systemMessage,
+        { role: "user", content: buildUserPrompt(input, findings, []) }]);
+      const excerptCharBudget = Math.min(Math.floor(remainingTokens * CHARS_PER_TOKEN * 0.6),
+        (remainingTokens - basePromptTokens - MIN_LOG_ANALYSIS_OUTPUT_TOKENS) * CHARS_PER_TOKEN);
+      if (excerptCharBudget <= 0) return "token-budget-exhausted";
       const analyzed = input.files?.filter((file) => file.parsed);
       const excerpt: ExcerptLine[] = [];
       if (analyzed) {
@@ -347,18 +411,21 @@ export function createLlmLogAnalyzer(options: CreateLlmLogAnalyzerOptions): LogA
       }
 
       const messages: LogAnalysisChatMessage[] = [
-        { role: "system", content: appendSkillProcedure(buildSystemPrompt(Boolean(input.relatedParameterSnapshot)), input.procedure) },
+        systemMessage,
         { role: "user", content: buildUserPrompt(input, findings, excerpt) }
       ];
+      const estimatedInputTokens = estimateLogPromptTokens(messages);
+      const maxOutputTokens = Math.min(logCompletionLimit(options.tokenBudget), remainingTokens - estimatedInputTokens);
+      if (maxOutputTokens < MIN_LOG_ANALYSIS_OUTPUT_TOKENS) return "token-budget-exhausted";
 
       const startedAtMs = now();
       let response: Awaited<ReturnType<LogAnalysisChatModel["invoke"]>>;
       try {
         input.signal?.throwIfAborted();
-        response = await options.model.invoke(messages, { signal: input.signal });
+        response = await options.model.invoke(messages, { signal: input.signal, maxOutputTokens });
       } catch (error) {
         input.signal?.throwIfAborted();
-        await emitLogTrace(input, { kind: "model-turn", outcome: "error", reason: "provider-error" });
+        await emitLogTrace(input, { kind: "model-turn", protocol: "json", outcome: "error", reason: "provider-error" });
         options.telemetry?.recordLlmCall?.({
           model: options.modelLabel,
           outcome: "provider_error",
@@ -375,12 +442,16 @@ export function createLlmLogAnalyzer(options: CreateLlmLogAnalyzerOptions): LogA
       }
 
       const latencyMs = Math.max(0, now() - startedAtMs);
-      const parsedOutput = parseStrictLlmOutput(response.content);
+      const parsed = llmOutputSchema.safeParse(parseLogAnalysisModelJson(response.content, options.repairJsonOutput));
+      const parsedOutput = parsed.success ? parsed.data : undefined;
       const parsedLineNumbers = new Set(input.parsed.entries.map((entry) => entry.lineNumber));
       const groundedEvidence = parsedOutput ? groundLlmEvidence(parsedOutput.evidence, parsedLineNumbers, seenFiles, analyzed?.length === 1 ? analyzed[0].path : input.filePath) : [];
-      const usable = parsedOutput !== undefined && groundedEvidence.length > 0;
-      await emitLogTrace(input, { kind: "model-turn", resultBytes: Buffer.byteLength(response.content),
-        outcome: usable ? "ok" : "error", reason: usable ? null : "invalid-output",
+      const inputTokens = response.usage?.inputTokens ?? estimatedInputTokens;
+      const outputTokens = response.usage?.outputTokens ?? estimateLogTokens(response.content);
+      const budgetExceeded = inputTokens + outputTokens > remainingTokens;
+      const usable = !budgetExceeded && parsedOutput !== undefined && groundedEvidence.length > 0;
+      await emitLogTrace(input, { kind: "model-turn", protocol: "json", resultBytes: Buffer.byteLength(response.content),
+        outcome: usable ? "ok" : "error", reason: budgetExceeded ? "token-budget-exhausted" : usable ? null : "invalid-output",
         ...(response.usage?.inputTokens !== undefined ? { inputTokens: response.usage.inputTokens } : {}),
         ...(response.usage?.outputTokens !== undefined ? { outputTokens: response.usage.outputTokens } : {}) });
 
@@ -388,15 +459,13 @@ export function createLlmLogAnalyzer(options: CreateLlmLogAnalyzerOptions): LogA
         model: options.modelLabel,
         outcome: usable ? "ok" : "invalid_output",
         latencyMs,
-        inputTokens:
-          response.usage?.inputTokens ??
-          Math.ceil(messages.reduce((total, message) => total + message.content.length, 0) / CHARS_PER_TOKEN),
-        outputTokens: response.usage?.outputTokens ?? Math.ceil(response.content.length / CHARS_PER_TOKEN)
+        inputTokens,
+        outputTokens
       });
 
+      if (budgetExceeded) return "token-budget-exhausted";
       if (!usable) {
-        // The budgeted single shot could not produce a valid grounded output; degrade honestly.
-        return degradeToFallback(input, "token-budget-exhausted");
+        return undefined;
       }
 
       return {
@@ -415,6 +484,15 @@ export function createLlmLogAnalyzer(options: CreateLlmLogAnalyzerOptions): LogA
         promptVersion: promptVersionFor(input),
         model: options.modelLabel
       };
+    }
+  };
+
+  return {
+    ...analyzer,
+    async analyze(input) {
+      input = withLogTrace(input);
+      const output = await analyzer.tryAnalyze(input);
+      return typeof output === "object" ? output : degradeToFallback(input, output ?? "invalid-model-output");
     }
   };
 }

@@ -11,6 +11,14 @@ import type { LogSkillSpec } from "./skillSpec";
 const basic = { schemaVersion: "skill/v1" as const, description: "Portable diagnostic", procedure: "Check the evidence." };
 const archive = () => exportSkillPackageArchive("Portable skill", "portable-skill", basic, [], new Map());
 describe("skill package format", () => {
+  it("round-trips the protocol override in SKILL.md", async () => {
+    const bytes = await exportSkillPackageArchive("Portable skill", "portable-skill",
+      { ...basic, protocolOverride: "json" }, [], new Map());
+    const zip = await JSZip.loadAsync(bytes);
+    expect(await zip.file("SKILL.md")!.async("string")).toContain("protocolOverride: json");
+    expect((await importSkillPackageArchive(bytes)).spec.protocolOverride).toBe("json");
+  });
+
   it("round-trips optional constructs, excludes tenant bindings and emits stable sorted files", async () => {
     const bytes = await exportSkillPackageArchive("Portable skill", "portable-skill", { ...basic,
       defaultSourceSnapshotId: "tenant-snapshot", knowledgeEntryIds: ["00000000-0000-4000-8000-000000000001"] }, [], new Map());
@@ -28,6 +36,7 @@ describe("skill package format", () => {
     ["parsing.yaml", "schemaVersion: [\n", "YAML 语法无效"],
     ["SKILL.md", "No frontmatter", "frontmatter"],
     ["SKILL.md", "---\nname: Portable\nschemaVersion: skill/v1\ndefaultSourceSnapshotId: other-tenant\n---\n", "defaultSourceSnapshotId"],
+    ["SKILL.md", "---\nname: Portable\nschemaVersion: skill/v1\nprotocolOverride: invalid\n---\n", "protocolOverride"],
     ["knowledge/entry.md", "---\ntitle: Entry\nsource:\n  type: unknown\n---\nBody", "source.type"],
     ["knowledge/entry.md", Buffer.from([0xff]), "UTF-8"],
     ["source/snapshot.zip", "content", "不支持的技能包文件"]

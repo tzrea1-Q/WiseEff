@@ -1,0 +1,410 @@
+<135>1 2026-10-14T09:14:00.388Z bench-node kernel - - - usb 1-1: urb complete status=0 actual=0
+<134>1 2026-10-14T09:14:00.790Z bench-node kernel - - - mmc0: req done bytes=4096
+<134>1 2026-10-14T09:14:02.303Z bench-node kernel - - - power_supply usb: online=1 voltage_now=9000000
+<134>1 2026-10-14T09:14:02.716Z bench-node kernel - - - usb 1-1: urb complete status=0 actual=7
+<134>1 2026-10-14T09:14:03.646Z bench-node kernel - - - mmc0: req done bytes=4096
+<134>1 2026-10-14T09:14:05.324Z bench-node kernel - - - power_supply usb: online=1 voltage_now=9000000
+<134>1 2026-10-14T09:14:05.523Z bench-node kernel - - - usb 1-1: urb complete status=0 actual=11
+<135>1 2026-10-14T09:14:06.188Z bench-node kernel - - - mmc0: req done bytes=4096
+<134>1 2026-10-14T09:14:06.238Z bench-node kernel - - - power_supply usb: online=1 voltage_now=9000000
+<134>1 2026-10-14T09:14:07.093Z bench-node kernel - - - usb 1-1: urb complete status=0 actual=12
+<134>1 2026-10-14T09:14:07.286Z bench-node kernel - - - mmc0: req done bytes=4096
+<134>1 2026-10-14T09:14:07.886Z bench-node kernel - - - power_supply usb: online=1 voltage_now=9000000
+<134>1 2026-10-14T09:14:08.697Z bench-node kernel - - - usb 1-1: urb complete status=0 actual=11
+<134>1 2026-10-14T09:14:10.126Z bench-node kernel - - - mmc0: req done bytes=4096
+<135>1 2026-10-14T09:14:10.826Z bench-node kernel - - - power_supply usb: online=1 voltage_now=9000000
+<134>1 2026-10-14T09:14:10.982Z bench-node kernel - - - usb 1-1: urb complete status=0 actual=13
+<134>1 2026-10-14T09:14:11.038Z bench-node kernel - - - mmc0: req done bytes=4096
+<134>1 2026-10-14T09:14:11.402Z bench-node kernel - - - power_supply usb: online=1 voltage_now=9000000
+<134>1 2026-10-14T09:14:11.446Z bench-node kernel - - - usb 1-1: urb complete status=0 actual=2
+<134>1 2026-10-14T09:14:14.062Z bench-node kernel - - - mmc0: req done bytes=4096
+<134>1 2026-10-14T09:14:14.222Z bench-node kernel - - - power_supply usb: online=1 voltage_now=9000000
+<135>1 2026-10-14T09:14:15.718Z bench-node kernel - - - usb 1-1: urb complete status=0 actual=2
+<134>1 2026-10-14T09:14:18.730Z bench-node kernel - - - mmc0: req done bytes=4096
+<134>1 2026-10-14T09:14:19.176Z bench-node kernel - - - power_supply usb: online=1 voltage_now=9000000
+<134>1 2026-10-14T09:14:19.716Z bench-node kernel - - - usb 1-1: urb complete status=0 actual=2
+<134>1 2026-10-14T09:14:23.061Z bench-node kernel - - - mmc0: req done bytes=4096
+<134>1 2026-10-14T09:14:23.103Z bench-node kernel - - - power_supply usb: online=1 voltage_now=9000000
+<134>1 2026-10-14T09:14:23.595Z bench-node kernel - - - usb 1-1: urb complete status=0 actual=19
+<135>1 2026-10-14T09:14:24.977Z bench-node kernel - - - mmc0: req done bytes=4096
+<134>1 2026-10-14T09:14:25.928Z bench-node kernel - - - power_supply usb: online=1 voltage_now=9000000
+<134>1 2026-10-14T09:14:27.261Z bench-node kernel - - - usb 1-1: urb complete status=0 actual=10
+<134>1 2026-10-14T09:14:27.462Z bench-node kernel - - - mmc0: req done bytes=4096
+<134>1 2026-10-14T09:14:28.216Z bench-node kernel - - - power_supply usb: online=1 voltage_now=9000000
+<134>1 2026-10-14T09:14:28.926Z bench-node kernel - - - usb 1-1: urb complete status=0 actual=16
+<134>1 2026-10-14T09:14:29.845Z bench-node kernel - - - mmc0: req done bytes=4096
+<131>1 2026-10-14T09:14:31.021Z bench-node kernel - - - usb 1-2: device descriptor read/64, error -71
+<134>1 2026-10-14T09:14:31.194Z bench-node kernel - - - usb 1-2: new full-speed USB device number 7
+<135>1 2026-10-14T09:14:32.889Z bench-node kernel - - - power_supply usb: online=1 voltage_now=9000000
+<134>1 2026-10-14T09:14:35.620Z bench-node kernel - - - usb 1-1: urb complete status=0 actual=12
+<134>1 2026-10-14T09:14:35.804Z bench-node kernel - - - mmc0: req done bytes=4096
+<134>1 2026-10-14T09:14:37.459Z bench-node kernel - - - power_supply usb: online=1 voltage_now=9000000
+<134>1 2026-10-14T09:14:37.516Z bench-node kernel - - - usb 1-1: urb complete status=0 actual=14
+<134>1 2026-10-14T09:14:37.569Z bench-node kernel - - - mmc0: req done bytes=4096
+<134>1 2026-10-14T09:14:38.002Z bench-node kernel - - - power_supply usb: online=1 voltage_now=9000000
+<135>1 2026-10-14T09:14:38.214Z bench-node kernel - - - usb 1-1: urb complete status=0 actual=17
+<134>1 2026-10-14T09:14:38.934Z bench-node kernel - - - mmc0: req done bytes=4096
+<134>1 2026-10-14T09:14:39.698Z bench-node kernel - - - power_supply usb: online=1 voltage_now=9000000
+<134>1 2026-10-14T09:14:40.263Z bench-node kernel - - - usb 1-1: urb complete status=0 actual=1
+<134>1 2026-10-14T09:14:41.610Z bench-node kernel - - - mmc0: req done bytes=4096
+<134>1 2026-10-14T09:14:42.997Z bench-node kernel - - - power_supply usb: online=1 voltage_now=9000000
+<134>1 2026-10-14T09:14:43.695Z bench-node kernel - - - usb 1-1: urb complete status=0 actual=3
+<134>1 2026-10-14T09:14:44.012Z bench-node kernel - - - pwr-ic 2-006c: IINLIM selector 0x1e -> 0x0f
+<135>1 2026-10-14T09:14:44.178Z bench-node kernel - - - mmc0: req done bytes=4096
+<134>1 2026-10-14T09:14:44.181Z bench-node kernel - - - tcpm port0: Ready, explicit_contract=1 mv=9000 ma=3000
+<134>1 2026-10-14T09:14:44.221Z bench-node kernel - - - power_supply usb: online=1 voltage_now=9000000
+<134>1 2026-10-14T09:14:45.087Z bench-node kernel - - - usb 1-1: urb complete status=0 actual=1
+<134>1 2026-10-14T09:14:46.544Z bench-node kernel - - - mmc0: req done bytes=4096
+<134>1 2026-10-14T09:14:48.117Z bench-node kernel - - - power_supply usb: online=1 voltage_now=9000000
+<134>1 2026-10-14T09:14:48.922Z bench-node kernel - - - usb 1-1: urb complete status=0 actual=13
+<134>1 2026-10-14T09:14:48.968Z bench-node kernel - - - mmc0: req done bytes=4096
+<135>1 2026-10-14T09:14:50.740Z bench-node kernel - - - power_supply usb: online=1 voltage_now=9000000
+<134>1 2026-10-14T09:14:50.786Z bench-node kernel - - - usb 1-1: urb complete status=0 actual=3
+<134>1 2026-10-14T09:14:53.785Z bench-node kernel - - - mmc0: req done bytes=4096
+<134>1 2026-10-14T09:14:53.966Z bench-node kernel - - - power_supply usb: online=1 voltage_now=9000000
+<134>1 2026-10-14T09:14:57.134Z bench-node kernel - - - usb 1-1: urb complete status=0 actual=10
+<134>1 2026-10-14T09:14:59.718Z bench-node kernel - - - mmc0: req done bytes=4096
+<134>1 2026-10-14T09:15:00.148Z bench-node kernel - - - power_supply usb: online=1 voltage_now=9000000
+<135>1 2026-10-14T09:15:00.336Z bench-node kernel - - - usb 1-1: urb complete status=0 actual=3
+<134>1 2026-10-14T09:15:00.380Z bench-node kernel - - - mmc0: req done bytes=4096
+<134>1 2026-10-14T09:15:00.883Z bench-node kernel - - - power_supply usb: online=1 voltage_now=9000000
+<134>1 2026-10-14T09:15:00.940Z bench-node kernel - - - usb 1-1: urb complete status=0 actual=3
+<134>1 2026-10-14T09:15:01.577Z bench-node kernel - - - mmc0: req done bytes=4096
+<134>1 2026-10-14T09:15:02.224Z bench-node kernel - - - power_supply usb: online=1 voltage_now=9000000
+<134>1 2026-10-14T09:15:02.271Z bench-node kernel - - - usb 1-1: urb complete status=0 actual=7
+<135>1 2026-10-14T09:15:02.473Z bench-node kernel - - - mmc0: req done bytes=4096
+<134>1 2026-10-14T09:15:03.348Z bench-node kernel - - - power_supply usb: online=1 voltage_now=9000000
+<134>1 2026-10-14T09:15:04.101Z bench-node kernel - - - usb 1-1: urb complete status=0 actual=18
+<134>1 2026-10-14T09:15:04.533Z bench-node kernel - - - mmc0: req done bytes=4096
+<134>1 2026-10-14T09:15:05.091Z bench-node kernel - - - power_supply usb: online=1 voltage_now=9000000
+<134>1 2026-10-14T09:15:08.333Z bench-node kernel - - - usb 1-1: urb complete status=0 actual=19
+<134>1 2026-10-14T09:15:08.777Z bench-node kernel - - - mmc0: req done bytes=4096
+<135>1 2026-10-14T09:15:09.419Z bench-node kernel - - - power_supply usb: online=1 voltage_now=9000000
+<134>1 2026-10-14T09:15:09.879Z bench-node kernel - - - usb 1-1: urb complete status=0 actual=16
+<134>1 2026-10-14T09:15:10.496Z bench-node kernel - - - mmc0: req done bytes=4096
+<134>1 2026-10-14T09:15:12.047Z bench-node kernel - - - power_supply usb: online=1 voltage_now=9000000
+<134>1 2026-10-14T09:15:15.039Z bench-node kernel - - - usb 1-1: urb complete status=0 actual=19
+<134>1 2026-10-14T09:15:15.539Z bench-node kernel - - - mmc0: req done bytes=4096
+<134>1 2026-10-14T09:15:16.047Z bench-node kernel - - - power_supply usb: online=1 voltage_now=9000000
+<135>1 2026-10-14T09:15:16.235Z bench-node kernel - - - usb 1-1: urb complete status=0 actual=15
+<134>1 2026-10-14T09:15:17.627Z bench-node kernel - - - mmc0: req done bytes=4096
+<134>1 2026-10-14T09:15:17.683Z bench-node kernel - - - power_supply usb: online=1 voltage_now=9000000
+<134>1 2026-10-14T09:15:18.383Z bench-node kernel - - - usb 1-1: urb complete status=0 actual=5
+<134>1 2026-10-14T09:15:21.414Z bench-node kernel - - - mmc0: req done bytes=4096
+<134>1 2026-10-14T09:15:21.615Z bench-node kernel - - - power_supply usb: online=1 voltage_now=9000000
+<134>1 2026-10-14T09:15:22.177Z bench-node kernel - - - usb 1-1: urb complete status=0 actual=18
+<135>1 2026-10-14T09:15:22.230Z bench-node kernel - - - mmc0: req done bytes=4096
+<134>1 2026-10-14T09:15:22.631Z bench-node kernel - - - power_supply usb: online=1 voltage_now=9000000
+<134>1 2026-10-14T09:15:23.101Z bench-node kernel - - - usb 1-1: urb complete status=0 actual=8
+<134>1 2026-10-14T09:15:25.771Z bench-node kernel - - - mmc0: req done bytes=4096
+<134>1 2026-10-14T09:15:25.976Z bench-node kernel - - - power_supply usb: online=1 voltage_now=9000000
+<134>1 2026-10-14T09:15:26.612Z bench-node kernel - - - usb 1-1: urb complete status=0 actual=13
+<134>1 2026-10-14T09:15:26.669Z bench-node kernel - - - mmc0: req done bytes=4096
+<135>1 2026-10-14T09:15:29.485Z bench-node kernel - - - power_supply usb: online=1 voltage_now=9000000
+<134>1 2026-10-14T09:15:30.272Z bench-node kernel - - - usb 1-1: urb complete status=0 actual=8
+<134>1 2026-10-14T09:15:30.684Z bench-node kernel - - - mmc0: req done bytes=4096
+<134>1 2026-10-14T09:15:31.279Z bench-node kernel - - - power_supply usb: online=1 voltage_now=9000000
+<134>1 2026-10-14T09:15:31.322Z bench-node kernel - - - usb 1-1: urb complete status=0 actual=10
+<134>1 2026-10-14T09:15:33.140Z bench-node kernel - - - mmc0: req done bytes=4096
+<134>1 2026-10-14T09:15:33.296Z bench-node kernel - - - power_supply usb: online=1 voltage_now=9000000
+<135>1 2026-10-14T09:15:33.355Z bench-node kernel - - - usb 1-1: urb complete status=0 actual=7
+<134>1 2026-10-14T09:15:34.055Z bench-node kernel - - - mmc0: req done bytes=4096
+<134>1 2026-10-14T09:15:34.105Z bench-node kernel - - - power_supply usb: online=1 voltage_now=9000000
+<134>1 2026-10-14T09:15:34.825Z bench-node kernel - - - usb 1-1: urb complete status=0 actual=14
+<134>1 2026-10-14T09:15:35.549Z bench-node kernel - - - mmc0: req done bytes=4096
+<134>1 2026-10-14T09:15:35.722Z bench-node kernel - - - power_supply usb: online=1 voltage_now=9000000
+<134>1 2026-10-14T09:15:35.765Z bench-node kernel - - - usb 1-1: urb complete status=0 actual=13
+<135>1 2026-10-14T09:15:35.818Z bench-node kernel - - - mmc0: req done bytes=4096
+<135>1 2026-10-14T09:14:00.034Z bench-node chargerd - - - adc ibat_ma=45.7 vbus_mv=8992
+<134>1 2026-10-14T09:14:00.665Z bench-node chargerd - - - fuel_gauge sample soc=64 charge_type=fast
+<134>1 2026-10-14T09:14:01.127Z bench-node chargerd - - - loop elapsed_ms=45.6 watchdog_pet=1
+<134>1 2026-10-14T09:14:02.356Z bench-node chargerd - - - adc ibat_ma=40.5 vbus_mv=8990
+<134>1 2026-10-14T09:14:02.856Z bench-node chargerd - - - fuel_gauge sample soc=63 charge_type=fast
+<134>1 2026-10-14T09:14:02.970Z bench-node chargerd - - - loop elapsed_ms=13.8 watchdog_pet=1
+<134>1 2026-10-14T09:14:05.289Z bench-node chargerd - - - adc ibat_ma=18.3 vbus_mv=8992
+<135>1 2026-10-14T09:14:05.685Z bench-node chargerd - - - fuel_gauge sample soc=67 charge_type=fast
+<134>1 2026-10-14T09:14:06.971Z bench-node chargerd - - - loop elapsed_ms=44.3 watchdog_pet=1
+<134>1 2026-10-14T09:14:07.011Z bench-node chargerd - - - adc ibat_ma=32.7 vbus_mv=8996
+<134>1 2026-10-14T09:14:07.048Z bench-node chargerd - - - fuel_gauge sample soc=62 charge_type=fast
+<134>1 2026-10-14T09:14:07.082Z bench-node chargerd - - - loop elapsed_ms=27.5 watchdog_pet=1
+<134>1 2026-10-14T09:14:08.039Z bench-node chargerd - - - adc ibat_ma=26.7 vbus_mv=8997
+<134>1 2026-10-14T09:14:08.475Z bench-node chargerd - - - fuel_gauge sample soc=66 charge_type=fast
+<135>1 2026-10-14T09:14:10.756Z bench-node chargerd - - - loop elapsed_ms=46.5 watchdog_pet=1
+<134>1 2026-10-14T09:14:11.267Z bench-node chargerd - - - adc ibat_ma=36.8 vbus_mv=8992
+<134>1 2026-10-14T09:14:11.784Z bench-node chargerd - - - fuel_gauge sample soc=62 charge_type=fast
+<134>1 2026-10-14T09:14:13.078Z bench-node chargerd - - - loop elapsed_ms=27.9 watchdog_pet=1
+<134>1 2026-10-14T09:14:13.114Z bench-node chargerd - - - adc ibat_ma=22.2 vbus_mv=8996
+<134>1 2026-10-14T09:14:13.151Z bench-node chargerd - - - fuel_gauge sample soc=62 charge_type=fast
+<134>1 2026-10-14T09:14:15.515Z bench-node chargerd - - - loop elapsed_ms=28.2 watchdog_pet=1
+<135>1 2026-10-14T09:14:15.804Z bench-node chargerd - - - adc ibat_ma=13.4 vbus_mv=8995
+<134>1 2026-10-14T09:14:15.947Z bench-node chargerd - - - fuel_gauge sample soc=60 charge_type=fast
+<134>1 2026-10-14T09:14:15.983Z bench-node chargerd - - - loop elapsed_ms=40.9 watchdog_pet=1
+<134>1 2026-10-14T09:14:17.064Z bench-node chargerd - - - adc ibat_ma=26.6 vbus_mv=8998
+<134>1 2026-10-14T09:14:17.206Z bench-node chargerd - - - fuel_gauge sample soc=68 charge_type=fast
+<134>1 2026-10-14T09:14:17.239Z bench-node chargerd - - - loop elapsed_ms=40.0 watchdog_pet=1
+<134>1 2026-10-14T09:14:17.845Z bench-node chargerd - - - adc ibat_ma=46.1 vbus_mv=8995
+<135>1 2026-10-14T09:14:17.995Z bench-node chargerd - - - fuel_gauge sample soc=60 charge_type=fast
+<134>1 2026-10-14T09:14:18.347Z bench-node chargerd - - - loop elapsed_ms=42.1 watchdog_pet=1
+<134>1 2026-10-14T09:14:20.249Z bench-node chargerd - - - adc ibat_ma=16.8 vbus_mv=8991
+<134>1 2026-10-14T09:14:20.649Z bench-node chargerd - - - fuel_gauge sample soc=67 charge_type=fast
+<134>1 2026-10-14T09:14:20.770Z bench-node chargerd - - - loop elapsed_ms=29.2 watchdog_pet=1
+<134>1 2026-10-14T09:14:20.809Z bench-node chargerd - - - adc ibat_ma=47.3 vbus_mv=8990
+<134>1 2026-10-14T09:14:21.108Z bench-node chargerd - - - fuel_gauge sample soc=64 charge_type=fast
+<135>1 2026-10-14T09:14:21.692Z bench-node chargerd - - - loop elapsed_ms=39.9 watchdog_pet=1
+<134>1 2026-10-14T09:14:22.139Z bench-node chargerd - - - adc ibat_ma=36.7 vbus_mv=8996
+<134>1 2026-10-14T09:14:23.121Z bench-node chargerd - - - fuel_gauge sample soc=64 charge_type=fast
+<134>1 2026-10-14T09:14:23.398Z bench-node chargerd - - - loop elapsed_ms=33.8 watchdog_pet=1
+<134>1 2026-10-14T09:14:23.829Z bench-node chargerd - - - adc ibat_ma=23.1 vbus_mv=8990
+<134>1 2026-10-14T09:14:24.978Z bench-node chargerd - - - fuel_gauge sample soc=64 charge_type=fast
+<134>1 2026-10-14T09:14:25.547Z bench-node chargerd - - - loop elapsed_ms=31.2 watchdog_pet=1
+<135>1 2026-10-14T09:14:26.788Z bench-node chargerd - - - adc ibat_ma=23.7 vbus_mv=8990
+<134>1 2026-10-14T09:14:28.758Z bench-node chargerd - - - fuel_gauge sample soc=62 charge_type=fast
+<134>1 2026-10-14T09:14:28.914Z bench-node chargerd - - - loop elapsed_ms=35.1 watchdog_pet=1
+<134>1 2026-10-14T09:14:29.569Z bench-node chargerd - - - adc ibat_ma=28.1 vbus_mv=8996
+<134>1 2026-10-14T09:14:30.546Z bench-node chargerd - - - fuel_gauge sample soc=67 charge_type=fast
+<134>1 2026-10-14T09:14:30.667Z bench-node chargerd - - - loop elapsed_ms=16.4 watchdog_pet=1
+<134>1 2026-10-14T09:14:31.702Z bench-node chargerd - - - adc ibat_ma=33.8 vbus_mv=8997
+<135>1 2026-10-14T09:14:33.726Z bench-node chargerd - - - fuel_gauge sample soc=62 charge_type=fast
+<134>1 2026-10-14T09:14:33.764Z bench-node chargerd - - - loop elapsed_ms=29.7 watchdog_pet=1
+<134>1 2026-10-14T09:14:33.797Z bench-node chargerd - - - adc ibat_ma=23.9 vbus_mv=8993
+<134>1 2026-10-14T09:14:34.807Z bench-node chargerd - - - fuel_gauge sample soc=63 charge_type=fast
+<134>1 2026-10-14T09:14:36.747Z bench-node chargerd - - - loop elapsed_ms=40.1 watchdog_pet=1
+<134>1 2026-10-14T09:14:36.785Z bench-node chargerd - - - adc ibat_ma=20.6 vbus_mv=8991
+<134>1 2026-10-14T09:14:37.384Z bench-node chargerd - - - fuel_gauge sample soc=65 charge_type=fast
+<135>1 2026-10-14T09:14:38.564Z bench-node chargerd - - - loop elapsed_ms=23.1 watchdog_pet=1
+<134>1 2026-10-14T09:14:39.671Z bench-node chargerd - - - adc ibat_ma=13.8 vbus_mv=8990
+<134>1 2026-10-14T09:14:39.810Z bench-node chargerd - - - fuel_gauge sample soc=65 charge_type=fast
+<134>1 2026-10-14T09:14:40.921Z bench-node chargerd - - - loop elapsed_ms=44.6 watchdog_pet=1
+<134>1 2026-10-14T09:14:42.032Z bench-node chargerd - - - adc ibat_ma=45.7 vbus_mv=8994
+<134>1 2026-10-14T09:14:42.154Z bench-node chargerd - - - fuel_gauge sample soc=67 charge_type=fast
+<134>1 2026-10-14T09:14:42.505Z bench-node chargerd - - - loop elapsed_ms=18.6 watchdog_pet=1
+<135>1 2026-10-14T09:14:42.540Z bench-node chargerd - - - adc ibat_ma=14.0 vbus_mv=8995
+<134>1 2026-10-14T09:14:43.162Z bench-node chargerd - - - fuel_gauge sample soc=65 charge_type=fast
+<134>1 2026-10-14T09:14:43.812Z bench-node chargerd - - - icl election source=cdev2 requested_ma=1500 previous_ma=3000
+<134>1 2026-10-14T09:14:44.126Z bench-node chargerd - - - input sample vbus_mv=8998 ibus_ma=1489
+<134>1 2026-10-14T09:14:44.129Z bench-node chargerd - - - loop elapsed_ms=9.8 watchdog_pet=1
+<134>1 2026-10-14T09:14:44.766Z bench-node chargerd - - - adc ibat_ma=40.2 vbus_mv=8994
+<134>1 2026-10-14T09:14:45.274Z bench-node chargerd - - - fuel_gauge sample soc=65 charge_type=fast
+<134>1 2026-10-14T09:14:45.649Z bench-node chargerd - - - loop elapsed_ms=19.3 watchdog_pet=1
+<134>1 2026-10-14T09:14:46.156Z bench-node chargerd - - - adc ibat_ma=9.5 vbus_mv=8991
+<135>1 2026-10-14T09:14:46.422Z bench-node chargerd - - - fuel_gauge sample soc=64 charge_type=fast
+<134>1 2026-10-14T09:14:46.813Z bench-node chargerd - - - loop elapsed_ms=27.1 watchdog_pet=1
+<134>1 2026-10-14T09:14:46.851Z bench-node chargerd - - - adc ibat_ma=33.3 vbus_mv=8996
+<134>1 2026-10-14T09:14:46.975Z bench-node chargerd - - - fuel_gauge sample soc=62 charge_type=fast
+<134>1 2026-10-14T09:14:47.567Z bench-node chargerd - - - loop elapsed_ms=17.1 watchdog_pet=1
+<134>1 2026-10-14T09:14:47.694Z bench-node chargerd - - - adc ibat_ma=25.9 vbus_mv=8991
+<134>1 2026-10-14T09:14:47.724Z bench-node chargerd - - - fuel_gauge sample soc=66 charge_type=fast
+<135>1 2026-10-14T09:14:48.259Z bench-node chargerd - - - loop elapsed_ms=14.2 watchdog_pet=1
+<134>1 2026-10-14T09:14:50.731Z bench-node chargerd - - - adc ibat_ma=32.4 vbus_mv=8994
+<134>1 2026-10-14T09:14:51.354Z bench-node chargerd - - - fuel_gauge sample soc=66 charge_type=fast
+<134>1 2026-10-14T09:14:51.495Z bench-node chargerd - - - loop elapsed_ms=45.1 watchdog_pet=1
+<134>1 2026-10-14T09:14:51.836Z bench-node chargerd - - - adc ibat_ma=47.4 vbus_mv=8992
+<134>1 2026-10-14T09:14:51.872Z bench-node chargerd - - - fuel_gauge sample soc=61 charge_type=fast
+<134>1 2026-10-14T09:14:51.903Z bench-node chargerd - - - loop elapsed_ms=27.1 watchdog_pet=1
+<135>1 2026-10-14T09:14:54.084Z bench-node chargerd - - - adc ibat_ma=17.8 vbus_mv=8992
+<134>1 2026-10-14T09:14:54.124Z bench-node chargerd - - - fuel_gauge sample soc=65 charge_type=fast
+<134>1 2026-10-14T09:14:55.431Z bench-node chargerd - - - loop elapsed_ms=29.7 watchdog_pet=1
+<134>1 2026-10-14T09:14:57.223Z bench-node chargerd - - - adc ibat_ma=10.8 vbus_mv=8997
+<134>1 2026-10-14T09:14:57.260Z bench-node chargerd - - - fuel_gauge sample soc=63 charge_type=fast
+<134>1 2026-10-14T09:14:57.813Z bench-node chargerd - - - loop elapsed_ms=32.9 watchdog_pet=1
+<134>1 2026-10-14T09:14:57.853Z bench-node chargerd - - - adc ibat_ma=20.9 vbus_mv=8995
+<135>1 2026-10-14T09:14:58.004Z bench-node chargerd - - - fuel_gauge sample soc=64 charge_type=fast
+<134>1 2026-10-14T09:15:00.478Z bench-node chargerd - - - loop elapsed_ms=28.9 watchdog_pet=1
+<134>1 2026-10-14T09:15:00.838Z bench-node chargerd - - - adc ibat_ma=9.8 vbus_mv=8990
+<134>1 2026-10-14T09:15:01.807Z bench-node chargerd - - - fuel_gauge sample soc=67 charge_type=fast
+<134>1 2026-10-14T09:15:02.444Z bench-node chargerd - - - loop elapsed_ms=21.3 watchdog_pet=1
+<134>1 2026-10-14T09:15:02.586Z bench-node chargerd - - - adc ibat_ma=12.0 vbus_mv=8991
+<134>1 2026-10-14T09:15:02.625Z bench-node chargerd - - - fuel_gauge sample soc=63 charge_type=fast
+<135>1 2026-10-14T09:15:03.711Z bench-node chargerd - - - loop elapsed_ms=13.3 watchdog_pet=1
+<134>1 2026-10-14T09:15:03.832Z bench-node chargerd - - - adc ibat_ma=10.2 vbus_mv=8995
+<134>1 2026-10-14T09:15:05.980Z bench-node chargerd - - - fuel_gauge sample soc=66 charge_type=fast
+<134>1 2026-10-14T09:15:06.920Z bench-node chargerd - - - loop elapsed_ms=40.1 watchdog_pet=1
+<134>1 2026-10-14T09:15:07.066Z bench-node chargerd - - - adc ibat_ma=11.9 vbus_mv=8995
+<134>1 2026-10-14T09:15:07.100Z bench-node chargerd - - - fuel_gauge sample soc=65 charge_type=fast
+<134>1 2026-10-14T09:15:07.524Z bench-node chargerd - - - loop elapsed_ms=41.6 watchdog_pet=1
+<135>1 2026-10-14T09:15:07.790Z bench-node chargerd - - - adc ibat_ma=34.7 vbus_mv=8991
+<134>1 2026-10-14T09:15:08.144Z bench-node chargerd - - - fuel_gauge sample soc=65 charge_type=fast
+<134>1 2026-10-14T09:15:08.185Z bench-node chargerd - - - loop elapsed_ms=45.5 watchdog_pet=1
+<134>1 2026-10-14T09:15:08.215Z bench-node chargerd - - - adc ibat_ma=25.6 vbus_mv=8996
+<134>1 2026-10-14T09:15:08.514Z bench-node chargerd - - - fuel_gauge sample soc=62 charge_type=fast
+<134>1 2026-10-14T09:15:08.872Z bench-node chargerd - - - loop elapsed_ms=23.6 watchdog_pet=1
+<134>1 2026-10-14T09:15:08.909Z bench-node chargerd - - - adc ibat_ma=23.4 vbus_mv=8993
+<135>1 2026-10-14T09:15:10.058Z bench-node chargerd - - - fuel_gauge sample soc=61 charge_type=fast
+<134>1 2026-10-14T09:15:11.198Z bench-node chargerd - - - loop elapsed_ms=41.1 watchdog_pet=1
+<134>1 2026-10-14T09:15:11.347Z bench-node chargerd - - - adc ibat_ma=33.0 vbus_mv=8991
+<134>1 2026-10-14T09:15:11.459Z bench-node chargerd - - - fuel_gauge sample soc=66 charge_type=fast
+<134>1 2026-10-14T09:15:12.516Z bench-node chargerd - - - loop elapsed_ms=25.9 watchdog_pet=1
+<134>1 2026-10-14T09:15:13.617Z bench-node chargerd - - - adc ibat_ma=43.2 vbus_mv=8993
+<134>1 2026-10-14T09:15:14.067Z bench-node chargerd - - - fuel_gauge sample soc=60 charge_type=fast
+<135>1 2026-10-14T09:15:14.615Z bench-node chargerd - - - loop elapsed_ms=28.9 watchdog_pet=1
+<134>1 2026-10-14T09:15:14.980Z bench-node chargerd - - - adc ibat_ma=34.0 vbus_mv=8998
+<134>1 2026-10-14T09:15:15.555Z bench-node chargerd - - - fuel_gauge sample soc=63 charge_type=fast
+<134>1 2026-10-14T09:15:16.728Z bench-node chargerd - - - loop elapsed_ms=32.2 watchdog_pet=1
+<134>1 2026-10-14T09:15:16.841Z bench-node chargerd - - - adc ibat_ma=20.9 vbus_mv=8995
+<134>1 2026-10-14T09:15:17.223Z bench-node chargerd - - - fuel_gauge sample soc=68 charge_type=fast
+<134>1 2026-10-14T09:15:17.789Z bench-node chargerd - - - loop elapsed_ms=46.3 watchdog_pet=1
+<135>1 2026-10-14T09:15:17.942Z bench-node chargerd - - - adc ibat_ma=45.4 vbus_mv=8992
+<134>1 2026-10-14T09:15:17.979Z bench-node chargerd - - - fuel_gauge sample soc=68 charge_type=fast
+<134>1 2026-10-14T09:15:18.102Z bench-node chargerd - - - loop elapsed_ms=46.9 watchdog_pet=1
+<134>1 2026-10-14T09:15:18.240Z bench-node chargerd - - - adc ibat_ma=22.9 vbus_mv=8996
+<134>1 2026-10-14T09:15:19.551Z bench-node chargerd - - - fuel_gauge sample soc=64 charge_type=fast
+<134>1 2026-10-14T09:15:19.980Z bench-node chargerd - - - loop elapsed_ms=32.0 watchdog_pet=1
+<134>1 2026-10-14T09:15:20.112Z bench-node chargerd - - - adc ibat_ma=44.3 vbus_mv=8991
+<135>1 2026-10-14T09:15:20.551Z bench-node chargerd - - - fuel_gauge sample soc=60 charge_type=fast
+<134>1 2026-10-14T09:15:20.582Z bench-node chargerd - - - loop elapsed_ms=23.6 watchdog_pet=1
+<134>1 2026-10-14T09:15:20.870Z bench-node chargerd - - - adc ibat_ma=19.3 vbus_mv=8991
+<134>1 2026-10-14T09:15:20.906Z bench-node chargerd - - - fuel_gauge sample soc=60 charge_type=fast
+<134>1 2026-10-14T09:15:21.254Z bench-node chargerd - - - loop elapsed_ms=41.4 watchdog_pet=1
+<134>1 2026-10-14T09:15:21.573Z bench-node chargerd - - - adc ibat_ma=28.8 vbus_mv=8996
+<134>1 2026-10-14T09:15:22.251Z bench-node chargerd - - - fuel_gauge sample soc=68 charge_type=fast
+<135>1 2026-10-14T09:15:22.578Z bench-node chargerd - - - loop elapsed_ms=27.4 watchdog_pet=1
+<134>1 2026-10-14T09:15:24.684Z bench-node chargerd - - - adc ibat_ma=35.9 vbus_mv=8990
+<134>1 2026-10-14T09:15:24.723Z bench-node chargerd - - - fuel_gauge sample soc=65 charge_type=fast
+<134>1 2026-10-14T09:15:25.754Z bench-node chargerd - - - loop elapsed_ms=44.4 watchdog_pet=1
+<134>1 2026-10-14T09:15:28.000Z bench-node chargerd - - - adc ibat_ma=15.7 vbus_mv=8997
+<134>1 2026-10-14T09:15:28.478Z bench-node chargerd - - - fuel_gauge sample soc=62 charge_type=fast
+<134>1 2026-10-14T09:15:28.863Z bench-node chargerd - - - loop elapsed_ms=43.9 watchdog_pet=1
+<135>1 2026-10-14T09:15:29.369Z bench-node chargerd - - - adc ibat_ma=23.6 vbus_mv=8995
+<134>1 2026-10-14T09:15:31.618Z bench-node chargerd - - - fuel_gauge sample soc=63 charge_type=fast
+<134>1 2026-10-14T09:15:32.046Z bench-node chargerd - - - loop elapsed_ms=41.1 watchdog_pet=1
+<134>1 2026-10-14T09:15:32.167Z bench-node chargerd - - - adc ibat_ma=15.6 vbus_mv=8994
+<134>1 2026-10-14T09:15:33.099Z bench-node chargerd - - - fuel_gauge sample soc=64 charge_type=fast
+<134>1 2026-10-14T09:15:33.667Z bench-node chargerd - - - loop elapsed_ms=40.7 watchdog_pet=1
+<134>1 2026-10-14T09:15:33.803Z bench-node chargerd - - - adc ibat_ma=42.3 vbus_mv=8992
+<135>1 2026-10-14T09:15:34.094Z bench-node chargerd - - - fuel_gauge sample soc=64 charge_type=fast
+<134>1 2026-10-14T09:15:34.125Z bench-node chargerd - - - loop elapsed_ms=19.0 watchdog_pet=1
+<134>1 2026-10-14T09:15:34.698Z bench-node chargerd - - - adc ibat_ma=37.2 vbus_mv=8995
+<135>1 2026-10-14T09:14:00.187Z bench-node thermald - - - zone=usb_shell temp_mc=42580 poll_ms=1000
+<134>1 2026-10-14T09:14:00.802Z bench-node thermald - - - zone=skin temp_mc=36280 trend=stable
+<134>1 2026-10-14T09:14:01.276Z bench-node thermald - - - zone=board temp_mc=3890 hysteresis_mc=2000
+<134>1 2026-10-14T09:14:01.897Z bench-node thermald - - - zone=usb_shell temp_mc=42500 poll_ms=1000
+<134>1 2026-10-14T09:14:02.509Z bench-node thermald - - - zone=skin temp_mc=36220 trend=stable
+<134>1 2026-10-14T09:14:02.548Z bench-node thermald - - - zone=board temp_mc=38910 hysteresis_mc=2000
+<134>1 2026-10-14T09:14:03.069Z bench-node thermald - - - zone=usb_shell temp_mc=42500 poll_ms=1000
+<135>1 2026-10-14T09:14:05.931Z bench-node thermald - - - zone=skin temp_mc=36270 trend=stable
+<134>1 2026-10-14T09:14:06.415Z bench-node thermald - - - zone=board temp_mc=3894 hysteresis_mc=2000
+<134>1 2026-10-14T09:14:06.460Z bench-node thermald - - - zone=usb_shell temp_mc=42580 poll_ms=1000
+<134>1 2026-10-14T09:14:06.811Z bench-node thermald - - - zone=skin temp_mc=36250 trend=stable
+<134>1 2026-10-14T09:14:06.977Z bench-node thermald - - - zone=board temp_mc=38913 hysteresis_mc=2000
+<134>1 2026-10-14T09:14:09.347Z bench-node thermald - - - zone=usb_shell temp_mc=42580 poll_ms=1000
+<134>1 2026-10-14T09:14:09.390Z bench-node thermald - - - zone=skin temp_mc=36270 trend=stable
+<135>1 2026-10-14T09:14:09.536Z bench-node thermald - - - zone=board temp_mc=38919 hysteresis_mc=2000
+<134>1 2026-10-14T09:14:12.470Z bench-node thermald - - - zone=usb_shell temp_mc=42540 poll_ms=1000
+<134>1 2026-10-14T09:14:12.851Z bench-node thermald - - - zone=skin temp_mc=36250 trend=stable
+<134>1 2026-10-14T09:14:13.446Z bench-node thermald - - - zone=board temp_mc=3891 hysteresis_mc=2000
+<134>1 2026-10-14T09:14:13.805Z bench-node thermald - - - zone=usb_shell temp_mc=42500 poll_ms=1000
+<134>1 2026-10-14T09:14:14.246Z bench-node thermald - - - zone=skin temp_mc=36280 trend=stable
+<134>1 2026-10-14T09:14:14.289Z bench-node thermald - - - zone=board temp_mc=38918 hysteresis_mc=2000
+<135>1 2026-10-14T09:14:14.449Z bench-node thermald - - - zone=usb_shell temp_mc=42500 poll_ms=1000
+<134>1 2026-10-14T09:14:14.804Z bench-node thermald - - - zone=skin temp_mc=36210 trend=stable
+<134>1 2026-10-14T09:14:15.236Z bench-node thermald - - - zone=board temp_mc=3890 hysteresis_mc=2000
+<134>1 2026-10-14T09:14:15.391Z bench-node thermald - - - zone=usb_shell temp_mc=42530 poll_ms=1000
+<134>1 2026-10-14T09:14:16.860Z bench-node thermald - - - zone=skin temp_mc=36220 trend=stable
+<134>1 2026-10-14T09:14:17.036Z bench-node thermald - - - zone=board temp_mc=3891 hysteresis_mc=2000
+<134>1 2026-10-14T09:14:17.084Z bench-node thermald - - - zone=usb_shell temp_mc=42580 poll_ms=1000
+<135>1 2026-10-14T09:14:18.443Z bench-node thermald - - - zone=skin temp_mc=36200 trend=stable
+<134>1 2026-10-14T09:14:21.564Z bench-node thermald - - - zone=board temp_mc=3890 hysteresis_mc=2000
+<134>1 2026-10-14T09:14:22.301Z bench-node thermald - - - zone=usb_shell temp_mc=42550 poll_ms=1000
+<134>1 2026-10-14T09:14:22.346Z bench-node thermald - - - zone=skin temp_mc=36210 trend=stable
+<134>1 2026-10-14T09:14:22.993Z bench-node thermald - - - zone=board temp_mc=38911 hysteresis_mc=2000
+<134>1 2026-10-14T09:14:23.371Z bench-node thermald - - - zone=usb_shell temp_mc=42550 poll_ms=1000
+<134>1 2026-10-14T09:14:23.710Z bench-node thermald - - - zone=skin temp_mc=36210 trend=stable
+<135>1 2026-10-14T09:14:23.861Z bench-node thermald - - - zone=board temp_mc=38913 hysteresis_mc=2000
+<134>1 2026-10-14T09:14:24.200Z bench-node thermald - - - zone=usb_shell temp_mc=42530 poll_ms=1000
+<134>1 2026-10-14T09:14:24.242Z bench-node thermald - - - zone=skin temp_mc=36220 trend=stable
+<134>1 2026-10-14T09:14:24.645Z bench-node thermald - - - zone=board temp_mc=3894 hysteresis_mc=2000
+<134>1 2026-10-14T09:14:24.684Z bench-node thermald - - - zone=usb_shell temp_mc=42500 poll_ms=1000
+<134>1 2026-10-14T09:14:24.732Z bench-node thermald - - - zone=skin temp_mc=36270 trend=stable
+<134>1 2026-10-14T09:14:25.537Z bench-node thermald - - - zone=board temp_mc=38919 hysteresis_mc=2000
+<135>1 2026-10-14T09:14:26.245Z bench-node thermald - - - zone=usb_shell temp_mc=42540 poll_ms=1000
+<134>1 2026-10-14T09:14:27.057Z bench-node thermald - - - zone=skin temp_mc=36220 trend=stable
+<134>1 2026-10-14T09:14:28.510Z bench-node thermald - - - zone=board temp_mc=38916 hysteresis_mc=2000
+<134>1 2026-10-14T09:14:28.548Z bench-node thermald - - - zone=usb_shell temp_mc=42560 poll_ms=1000
+<134>1 2026-10-14T09:14:28.876Z bench-node thermald - - - zone=skin temp_mc=36240 trend=stable
+<134>1 2026-10-14T09:14:29.048Z bench-node thermald - - - zone=board temp_mc=38918 hysteresis_mc=2000
+<134>1 2026-10-14T09:14:29.090Z bench-node thermald - - - zone=usb_shell temp_mc=42580 poll_ms=1000
+<135>1 2026-10-14T09:14:29.128Z bench-node thermald - - - zone=skin temp_mc=36240 trend=stable
+<134>1 2026-10-14T09:14:29.476Z bench-node thermald - - - zone=board temp_mc=38916 hysteresis_mc=2000
+<134>1 2026-10-14T09:14:32.002Z bench-node thermald - - - zone=usb_shell temp_mc=42520 poll_ms=1000
+<134>1 2026-10-14T09:14:32.764Z bench-node thermald - - - zone=skin temp_mc=36210 trend=stable
+<134>1 2026-10-14T09:14:35.314Z bench-node thermald - - - zone=board temp_mc=38916 hysteresis_mc=2000
+<134>1 2026-10-14T09:14:35.787Z bench-node thermald - - - zone=usb_shell temp_mc=42560 poll_ms=1000
+<134>1 2026-10-14T09:14:36.134Z bench-node thermald - - - zone=skin temp_mc=36270 trend=stable
+<135>1 2026-10-14T09:14:36.321Z bench-node thermald - - - zone=board temp_mc=38911 hysteresis_mc=2000
+<134>1 2026-10-14T09:14:39.357Z bench-node thermald - - - zone=usb_shell temp_mc=42540 poll_ms=1000
+<134>1 2026-10-14T09:14:39.503Z bench-node thermald - - - zone=skin temp_mc=36200 trend=stable
+<134>1 2026-10-14T09:14:39.922Z bench-node thermald - - - zone=board temp_mc=3891 hysteresis_mc=2000
+<134>1 2026-10-14T09:14:39.969Z bench-node thermald - - - zone=usb_shell temp_mc=42540 poll_ms=1000
+<134>1 2026-10-14T09:14:40.386Z bench-node thermald - - - zone=skin temp_mc=36240 trend=stable
+<134>1 2026-10-14T09:14:41.077Z bench-node thermald - - - zone=board temp_mc=38914 hysteresis_mc=2000
+<135>1 2026-10-14T09:14:41.127Z bench-node thermald - - - zone=usb_shell temp_mc=42530 poll_ms=1000
+<134>1 2026-10-14T09:14:41.304Z bench-node thermald - - - zone=skin temp_mc=36200 trend=stable
+<134>1 2026-10-14T09:14:41.348Z bench-node thermald - - - zone=board temp_mc=38915 hysteresis_mc=2000
+<134>1 2026-10-14T09:14:41.504Z bench-node thermald - - - zone=usb_shell temp_mc=42550 poll_ms=1000
+<134>1 2026-10-14T09:14:42.109Z bench-node thermald - - - zone=usb_shell trip=3 temp_mc=47520 trip_mc=47500
+<134>1 2026-10-14T09:14:42.166Z bench-node thermald - - - cdev2 cur_state 0 -> 1 zone=usb_shell
+<134>1 2026-10-14T09:14:44.335Z bench-node thermald - - - zone=skin temp_mc=36270 trend=stable
+<134>1 2026-10-14T09:14:44.381Z bench-node thermald - - - zone=board temp_mc=3891 hysteresis_mc=2000
+<134>1 2026-10-14T09:14:44.431Z bench-node thermald - - - zone=usb_shell temp_mc=42530 poll_ms=1000
+<135>1 2026-10-14T09:14:44.843Z bench-node thermald - - - zone=skin temp_mc=36210 trend=stable
+<134>1 2026-10-14T09:14:45.575Z bench-node thermald - - - zone=board temp_mc=38917 hysteresis_mc=2000
+<134>1 2026-10-14T09:14:45.994Z bench-node thermald - - - zone=usb_shell temp_mc=42500 poll_ms=1000
+<134>1 2026-10-14T09:14:47.183Z bench-node thermald - - - zone=skin temp_mc=36280 trend=stable
+<134>1 2026-10-14T09:14:47.876Z bench-node thermald - - - zone=board temp_mc=3894 hysteresis_mc=2000
+<134>1 2026-10-14T09:14:49.504Z bench-node thermald - - - zone=usb_shell temp_mc=42560 poll_ms=1000
+<134>1 2026-10-14T09:14:49.669Z bench-node thermald - - - zone=skin temp_mc=36200 trend=stable
+<135>1 2026-10-14T09:14:50.899Z bench-node thermald - - - zone=board temp_mc=3895 hysteresis_mc=2000
+<134>1 2026-10-14T09:14:51.519Z bench-node thermald - - - zone=usb_shell temp_mc=42500 poll_ms=1000
+<134>1 2026-10-14T09:14:51.557Z bench-node thermald - - - zone=skin temp_mc=36280 trend=stable
+<134>1 2026-10-14T09:14:52.358Z bench-node thermald - - - zone=board temp_mc=3898 hysteresis_mc=2000
+<134>1 2026-10-14T09:14:52.827Z bench-node thermald - - - zone=usb_shell temp_mc=42550 poll_ms=1000
+<134>1 2026-10-14T09:14:53.437Z bench-node thermald - - - zone=skin temp_mc=36230 trend=stable
+<134>1 2026-10-14T09:14:54.115Z bench-node thermald - - - zone=board temp_mc=38916 hysteresis_mc=2000
+<135>1 2026-10-14T09:14:56.649Z bench-node thermald - - - zone=usb_shell temp_mc=42550 poll_ms=1000
+<134>1 2026-10-14T09:14:57.122Z bench-node thermald - - - zone=skin temp_mc=36220 trend=stable
+<134>1 2026-10-14T09:14:57.308Z bench-node thermald - - - zone=board temp_mc=38915 hysteresis_mc=2000
+<134>1 2026-10-14T09:15:00.127Z bench-node thermald - - - zone=usb_shell temp_mc=42580 poll_ms=1000
+<134>1 2026-10-14T09:15:00.747Z bench-node thermald - - - zone=skin temp_mc=36260 trend=stable
+<134>1 2026-10-14T09:15:00.790Z bench-node thermald - - - zone=board temp_mc=3898 hysteresis_mc=2000
+<134>1 2026-10-14T09:15:01.611Z bench-node thermald - - - zone=usb_shell temp_mc=42550 poll_ms=1000
+<135>1 2026-10-14T09:15:02.988Z bench-node thermald - - - zone=skin temp_mc=36230 trend=stable
+<134>1 2026-10-14T09:15:03.434Z bench-node thermald - - - zone=board temp_mc=38916 hysteresis_mc=2000
+<134>1 2026-10-14T09:15:06.346Z bench-node thermald - - - zone=usb_shell temp_mc=42580 poll_ms=1000
+<134>1 2026-10-14T09:15:06.703Z bench-node thermald - - - zone=skin temp_mc=36260 trend=stable
+<134>1 2026-10-14T09:15:06.741Z bench-node thermald - - - zone=board temp_mc=38913 hysteresis_mc=2000
+<134>1 2026-10-14T09:15:07.589Z bench-node thermald - - - zone=usb_shell temp_mc=42550 poll_ms=1000
+<134>1 2026-10-14T09:15:08.041Z bench-node thermald - - - zone=skin temp_mc=36200 trend=stable
+<135>1 2026-10-14T09:15:08.451Z bench-node thermald - - - zone=board temp_mc=38913 hysteresis_mc=2000
+<134>1 2026-10-14T09:15:09.089Z bench-node thermald - - - zone=usb_shell temp_mc=42550 poll_ms=1000
+<134>1 2026-10-14T09:15:10.642Z bench-node thermald - - - zone=skin temp_mc=36200 trend=stable
+<134>1 2026-10-14T09:15:13.253Z bench-node thermald - - - zone=board temp_mc=3897 hysteresis_mc=2000
+<134>1 2026-10-14T09:15:14.456Z bench-node thermald - - - zone=usb_shell temp_mc=42570 poll_ms=1000
+<134>1 2026-10-14T09:15:17.088Z bench-node thermald - - - zone=skin temp_mc=36220 trend=stable
+<134>1 2026-10-14T09:15:18.355Z bench-node thermald - - - zone=board temp_mc=38914 hysteresis_mc=2000
+<135>1 2026-10-14T09:15:21.021Z bench-node thermald - - - zone=usb_shell temp_mc=42550 poll_ms=1000
+<134>1 2026-10-14T09:15:21.069Z bench-node thermald - - - zone=skin temp_mc=36260 trend=stable
+<134>1 2026-10-14T09:15:21.247Z bench-node thermald - - - zone=board temp_mc=3892 hysteresis_mc=2000
+<134>1 2026-10-14T09:15:21.430Z bench-node thermald - - - zone=usb_shell temp_mc=42570 poll_ms=1000
+<134>1 2026-10-14T09:15:22.054Z bench-node thermald - - - zone=skin temp_mc=36260 trend=stable
+<134>1 2026-10-14T09:15:23.299Z bench-node thermald - - - zone=board temp_mc=38919 hysteresis_mc=2000
+<134>1 2026-10-14T09:15:23.903Z bench-node thermald - - - zone=usb_shell temp_mc=42560 poll_ms=1000
+<135>1 2026-10-14T09:15:24.462Z bench-node thermald - - - zone=skin temp_mc=36270 trend=stable
+<134>1 2026-10-14T09:15:24.631Z bench-node thermald - - - zone=board temp_mc=38912 hysteresis_mc=2000
+<134>1 2026-10-14T09:15:25.212Z bench-node thermald - - - zone=usb_shell temp_mc=42520 poll_ms=1000
+<134>1 2026-10-14T09:15:25.639Z bench-node thermald - - - zone=skin temp_mc=36200 trend=stable
+<134>1 2026-10-14T09:15:26.255Z bench-node thermald - - - zone=board temp_mc=38911 hysteresis_mc=2000
+<134>1 2026-10-14T09:15:26.856Z bench-node thermald - - - zone=usb_shell temp_mc=42530 poll_ms=1000
+<134>1 2026-10-14T09:15:27.470Z bench-node thermald - - - zone=skin temp_mc=36280 trend=stable
+<135>1 2026-10-14T09:15:28.964Z bench-node thermald - - - zone=board temp_mc=3890 hysteresis_mc=2000
+<134>1 2026-10-14T09:15:29.147Z bench-node thermald - - - zone=usb_shell temp_mc=42550 poll_ms=1000
+<134>1 2026-10-14T09:15:29.773Z bench-node thermald - - - zone=skin temp_mc=36210 trend=stable
+<134>1 2026-10-14T09:15:29.824Z bench-node thermald - - - zone=board temp_mc=38916 hysteresis_mc=2000
+<134>1 2026-10-14T09:15:32.243Z bench-node thermald - - - zone=usb_shell temp_mc=42580 poll_ms=1000
+<134>1 2026-10-14T09:15:32.418Z bench-node thermald - - - zone=skin temp_mc=36240 trend=stable
+<134>1 2026-10-14T09:15:32.992Z bench-node thermald - - - zone=board temp_mc=38918 hysteresis_mc=2000
+<135>1 2026-10-14T09:15:33.536Z bench-node thermald - - - zone=usb_shell temp_mc=42550 poll_ms=1000
+<134>1 2026-10-14T09:15:33.698Z bench-node thermald - - - zone=skin temp_mc=36210 trend=stable
+<134>1 2026-10-14T09:15:34.148Z bench-node thermald - - - zone=board temp_mc=38918 hysteresis_mc=2000
+<134>1 2026-10-14T09:15:34.329Z bench-node thermald - - - zone=usb_shell temp_mc=42570 poll_ms=1000
+<134>1 2026-10-14T09:15:34.723Z bench-node thermald - - - zone=skin temp_mc=36210 trend=stable
+<134>1 2026-10-14T09:15:35.950Z bench-node thermald - - - zone=board temp_mc=38914 hysteresis_mc=2000

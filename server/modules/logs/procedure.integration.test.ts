@@ -14,19 +14,58 @@ import { createScriptedLogAnalysisModel } from "./analyzer/scriptedModel";
 import type { getLogSkill } from "./skillsService";
 import type { LogSkillRevisionDto } from "./skillsRepository";
 import type { LogRecordDto } from "./types";
+import { logSkillResponseSchema, logSkillRevisionListResponseSchema } from "../contracts/dtoSchemas/logs";
 
 const available = await isTestDatabaseAvailable();
 type Skill = Awaited<ReturnType<typeof getLogSkill>>;
 type Upload = { log: LogRecordDto; job: { id: string; runId: string } };
 
 describe.skipIf(!available)("diagnostic procedures over PostgreSQL", () => {
+  it("reads legacy checklist-like Markdown in detail and history, but rejects saving it as a new draft", async () => {
+    const ephemeral = await createEphemeralTestDatabase("legacychecks");
+    const db = createPostgresDatabase(ephemeral.url);
+    const auth = makeTestAuthContext({ organizationId: "legacy-skill-org", userId: "legacy-skill-admin",
+      roles: [{ roleId: "admin", projectId: null }], permissions: ["logs:view", "logs:admin-domains"] });
+    const procedure = "## Checks\n" + Array.from({ length: 17 }, (_, index) => `- [ ] \`check-${index}\` Inspect component`).join("\n");
+    try {
+      await seedCoreGraph(db, { organization: { id: auth.organization.id }, users: [{ id: auth.user.id }] });
+      const router = createRouter();
+      registerLogRoutes(router, { db, objectStore: createMemoryObjectStore(), getCurrentAuthContext: () => auth });
+      const request = <T,>(url: string, method = "GET", body?: unknown) => requestJson<T>(createHttpServer(router), url,
+        { method, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
+      const created = await request<{ item: Skill }>("/api/v1/log-skills", "POST", { name: "Legacy procedure", status: "draft" });
+      expect(created.status).toBe(201);
+      const { id, currentRevision } = created.body.item;
+      await db.query(`update log_skill_revisions set spec = spec || $2::jsonb, status = 'published',
+        published_at = now(), published_by_user_id = $3 where id = $1`, [currentRevision.id,
+        JSON.stringify({ procedure, procedureChecks: [{ id: "malformed" }] }), auth.user.id]);
+      const base = `/api/v1/log-skills/${id}`;
+      const detail = await request<{ item: Skill }>(base);
+      expect(detail.status).toBe(200);
+      expect(detail.body.item.currentRevision.spec.procedureChecks).toBeUndefined();
+      const decoded = logSkillResponseSchema.parse(detail.body);
+      expect(decoded.item.currentRevision.spec).toMatchObject({ procedure });
+      expect(decoded.item.currentRevision.spec.procedureChecks).toBeUndefined();
+      const history = await request<{ items: LogSkillRevisionDto[] }>(`${base}/revisions`);
+      expect(history.status).toBe(200);
+      expect(logSkillRevisionListResponseSchema.parse(history.body).items[0].spec).toMatchObject({ procedure });
+      const save = await request(`${base}/draft`, "PUT", { spec: { schemaVersion: "skill/v1", procedure },
+        baseDraftRevisionId: null, basePublishedRevisionId: currentRevision.id });
+      expect(save.status).toBe(400);
+    } finally {
+      await db.close();
+      await ephemeral.drop();
+    }
+  });
+
   it("uses the published procedure for queued and pinned runs while new uploads use the next publication", async () => {
     const ephemeral = await createEphemeralTestDatabase("procedure");
     const db = createPostgresDatabase(ephemeral.url);
     const objectStore = createMemoryObjectStore();
     const auth = makeTestAuthContext({ organizationId: "procedure-org", userId: "procedure-admin",
       roles: [{ roleId: "admin", projectId: null }], permissions: ["logs:view", "logs:upload", "logs:analyze", "logs:admin-domains"] });
-    const firstProcedure = "## Scope\nInspect the cooling path before judging thermal foldback.";
+    const firstProcedure = "## Scope\nInspect the cooling path before judging thermal foldback.\n\n## 检查项\n- [ ] `cooling` 核对散热路径（必查）";
+    const firstChecks = [{ id: "cooling", description: "核对散热路径", required: true }];
     const nextProcedure = "## Scope\nCompare the fan speed with the thermal foldback window.";
     const unpublishedProcedure = "## Scope\nUnpublished draft: inspect the ambient temperature.";
     try {
@@ -43,9 +82,11 @@ describe.skipIf(!available)("diagnostic procedures over PostgreSQL", () => {
         spec: { ...skill.currentRevision.spec, procedure: firstProcedure }, baseDraftRevisionId: null, basePublishedRevisionId: skill.currentRevision.id
       });
       expect(draft.status).toBe(200);
+      expect(draft.body.item.spec.procedureChecks).toEqual(firstChecks);
       const published = await request<{ item: Skill }>(`${base}/publish`, "POST", { draftRevisionId: draft.body.item.id });
       expect(published.status).toBe(200);
       const firstRevision = published.body.item.currentRevision;
+      expect(firstRevision.spec.procedureChecks).toEqual(firstChecks);
       const uploadBody = { fileName: "device.log", contentType: "text/plain", skillId: skill.id,
         contentBase64: Buffer.from("INFO boot\nERROR code=E_THERMAL_FOLDBACK charge_current_ma=2000\n").toString("base64") };
       const queued = await request<Upload>("/api/v1/log-files", "POST", uploadBody);
@@ -61,9 +102,11 @@ describe.skipIf(!available)("diagnostic procedures over PostgreSQL", () => {
         const model = createScriptedLogAnalysisModel([
           { content: { action: "tool", tool: "read_line_range", args: { file: "device.log", startLine: 1, endLine: 2 } } },
           { content: { action: "final", conclusion: "Thermal foldback reduced charging current.", impact: "Charging is slower.", severity: "Warning", confidence: 0.9,
+            notes: { checks: [{ id: "cooling", status: "done", anchors: [{ file: "device.log", line: 2 }] }] },
             suggestedActions: ["Inspect cooling."], evidence: [{ filePath: "device.log", lineNumbers: [2], inference: "The log reports thermal foldback.", suggestedAction: "Inspect cooling." }] } }
         ]);
-        const analyzer = createAgentLoopLogAnalyzer({ model, modelLabel: "procedure-scripted", maxSteps: 3, tokenBudget: 100_000 });
+        const analyzer = createAgentLoopLogAnalyzer({ model, modelLabel: "procedure-scripted", maxSteps: 3, tokenBudget: 100_000,
+          hypothesisLedger: true, procedureChecklist: true });
         expect(await processLogAnalysisJobById({ db, objectStore, jobId: upload.job.id, analyzer })).toEqual({ status: "processed" });
         const prompt = model.calls[0].find((message) => message.role === "system")?.content;
         expect(prompt).toContain(JSON.stringify(revision.spec.procedure));
@@ -75,9 +118,12 @@ describe.skipIf(!available)("diagnostic procedures over PostgreSQL", () => {
         expect(report.body.item).toMatchObject({ status: "complete", analysisSource: "agent",
           skillRevision: { id: revision.id, number: revision.number },
           evidence: [{ filePath: "device.log", lineNumbers: [2] }] });
+        expect(report.body.item.checks).toEqual(revision.id === firstRevision.id
+          ? [{ ...firstChecks[0], status: "done", anchors: [{ file: "device.log", line: 2 }] }] : undefined);
         expect((await db.query(`select r.skill_revision_id, p.prompt_version, p.analysis_source, p.model
           from log_analysis_runs r join log_analysis_reports p on p.run_id = r.id where r.id = $1`, [upload.job.runId])).rows)
-          .toEqual([{ skill_revision_id: revision.id, prompt_version: LOG_ANALYSIS_LOOP_PROMPT_VERSION, analysis_source: "agent", model: "procedure-scripted" }]);
+          .toEqual([{ skill_revision_id: revision.id, prompt_version: revision.id === firstRevision.id
+            ? "2026-10-19.loop.procedure.signals.source.12" : LOG_ANALYSIS_LOOP_PROMPT_VERSION, analysis_source: "agent", model: "procedure-scripted" }]);
         return prompt;
       }
       const firstPrompt = await process(queued.body, firstRevision);
@@ -86,6 +132,7 @@ describe.skipIf(!available)("diagnostic procedures over PostgreSQL", () => {
       expect(nextPublished.status).toBe(200);
       const nextRevision = nextPublished.body.item.currentRevision;
       expect(nextRevision).toMatchObject({ id: nextDraft.body.item.id, number: firstRevision.number + 1, spec: { procedure: nextProcedure } });
+      expect(nextRevision.spec).not.toHaveProperty("procedureChecks");
       expect((await request<{ item: LogSkillRevisionDto }>(`${base}/draft`, "PUT", {
         spec: { ...nextRevision.spec, procedure: unpublishedProcedure }, baseDraftRevisionId: null, basePublishedRevisionId: nextRevision.id
       })).status).toBe(200);

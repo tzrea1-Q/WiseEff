@@ -29,7 +29,8 @@ import type { LogSkillSpec } from "./skillSpec";
 
 const available = await isTestDatabaseAvailable();
 const content = "addr=0x0C val=0x00\naddr=0x0C val=0x20\naddr=0x0D val=0x20\n";
-const spec: LogSkillSpec = { schemaVersion: "skill/v1", description: "Decode charging faults", procedure: "Inspect the register evidence, then check cooling.",
+const spec: LogSkillSpec = { schemaVersion: "skill/v1", description: "Decode charging faults",
+  procedure: "Inspect the register evidence, then check cooling.\n\n## Checks\n- [ ] `register` Inspect the register (required)\n- [ ] `cooling` Check cooling",
   stepBudget: 6, tokenBudget: 8000, parsing: { schemaVersion: "parsing/v1",
     registers: { REG0C: { width: 8, fields: [{ name: "CHRG_FAULT", bits: [5, 4], enum: { "0": "normal", "2": "thermal_shutdown" } }] } },
     registerMaps: { bq: { selectBy: "addr", cases: { "0x0C": "REG0C" } } },
@@ -102,7 +103,7 @@ describe.skipIf(!available)("skill packages over PostgreSQL", () => {
 
       const draftProfile = { severityMap: { error: ["FAULT"], info: ["INFO"] } };
       const draft = await saveLogSkillDraft(h.db, h.auth, seeded.id, { ...seeded.currentRevision.spec,
-        description: "", modelOverride: "draft-model", formatProfile: draftProfile,
+        description: "", modelOverride: "draft-model", protocolOverride: "auto", formatProfile: draftProfile,
         procedure: spec.procedure, parsing: spec.parsing,
         signalRules: { ...seeded.currentRevision.spec.signalRules!, rules: [...seeded.currentRevision.spec.signalRules!.rules, ...spec.signalRules!.rules] },
         parseTests: spec.parseTests, stepBudget: 4, tokenBudget: 6000, knowledgeEntryIds: [h.entry.id]
@@ -114,12 +115,17 @@ describe.skipIf(!available)("skill packages over PostgreSQL", () => {
       const archived = await importSkillPackageArchive(bytes);
       expect(archived.spec.description).toBe(""); // An explicit empty description overrides the row.
       expect(archived.spec.modelOverride).toBe("draft-model");
+      expect(archived.spec.protocolOverride).toBe("auto");
       expect(archived.spec.formatProfile).toEqual(draftProfile);
+      expect(archived.spec.procedure).toBe(spec.procedure);
       const imported = await importLogSkillPackage(h.db, h.store, h.other, bytes, "draft", h.otherInvocation, h.context, undefined, "Complete charging");
       const knowledgeIds = imported.currentRevision.spec.knowledgeEntryIds!;
       expect(knowledgeIds).toHaveLength(1);
       expect(knowledgeIds[0]).not.toBe(h.entry.id);
       expect(imported.currentRevision.spec).toEqual({ ...draft.spec, knowledgeEntryIds: knowledgeIds });
+      expect(imported.currentRevision.spec.procedureChecks).toEqual([
+        { id: "register", description: "Inspect the register", required: true }, { id: "cooling", description: "Check cooling", required: false }
+      ]);
       expect(imported).toMatchObject({ description: draft.spec.description, modelOverride: draft.spec.modelOverride,
         formatProfile: draft.spec.formatProfile, webhook: { enabled: false, secretConfigured: false } });
       expect(imported.id).not.toBe(seeded.id);

@@ -812,6 +812,7 @@ export const routeManifest = [
   { id: "logs.getAnalysisCaseRun", method: "GET", path: "/api/v1/log-skills/:skillId/analysis-case-runs/:runId", module: "logs", stability: "mvp" },
   { id: "logs.getAnalysisCaseTrace", method: "GET", path: "/api/v1/log-skills/:skillId/analysis-case-runs/:runId/cases/:caseId/trace", module: "logs", stability: "mvp" },
   { id: "logs.getAnalysisCasePrefill", method: "GET", path: "/api/v1/logs/:logId/analysis-case-prefill", module: "logs", stability: "mvp" },
+  { id: "logs.confirmEvalCaseDraftExport", method: "POST", path: "/api/v1/logs/:logId/reports/:reportId/eval-case-draft", module: "logs", stability: "mvp" },
   { id: "logs.importAnalysisCases", method: "POST", path: "/api/v1/log-skills/:skillId/analysis-cases/import", module: "logs", stability: "mvp" },
   { id: "logs.exportAnalysisCases", method: "GET", path: "/api/v1/log-skills/:skillId/analysis-cases/export", module: "logs", stability: "mvp" },
   { id: "logs.startDryRun", method: "POST", path: "/api/v1/log-skills/:skillId/dry-runs", module: "logs", stability: "mvp" },

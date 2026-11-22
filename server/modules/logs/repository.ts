@@ -21,6 +21,7 @@ import { readableKnowledgeEntryIds } from "./skillKnowledge";
 import type { LogArchiveState, LogFeedbackRating, LogRecordDto } from "./types";
 import type { LogRecordStatus, LogRunStatus, LogStage } from "./status";
 import type { RelatedParameterRunSnapshot } from "./relatedParameter";
+import { readStoredProcedureChecks, type LogAlternativeHypothesis } from "./hypotheses";
 
 type LogFileObjectRow = {
   id: string;
@@ -45,12 +46,16 @@ type RevisionRow = {
   source_snapshot_selection?: "matched_version" | "default" | "none" | null;
   requested_source_version?: string | null;
   knowledge_revisions?: Array<{ entryId: string; revisionId: string; pages?: number[] }>;
+  historical_run_ids?: string[];
 };
 
 type LogRecordRow = RevisionRow & {
   historical_attribution?: LogRecordDto["historicalAttribution"];
   skill_selection?: LogRecordDto["skillSelection"] | null;
   signal_summary?: import("./genericSignals").LogSignalSummary | null;
+  alternative_hypotheses?: LogAlternativeHypothesis[] | null;
+  procedure_checks?: LogRecordDto["checks"] | null;
+  verification?: LogRecordDto["verification"] | null;
   id: string;
   current_run_id?: string | null;
   report_id: string | null;
@@ -151,6 +156,7 @@ export type LogRunDto = {
   skillNameSnapshot?: string;
   skillRevisionNumberSnapshot?: number;
   knowledgeRevisions: Array<{ entryId: string; revisionId?: string; pages?: number[] }>;
+  historicalRunIds?: string[];
   sourceSnapshot?: AnalyzeLogInput["sourceSnapshot"];
   sourceSnapshotSelection?: "matched_version" | "default" | "none";
   requestedSourceVersion?: string;
@@ -191,6 +197,7 @@ export type LogWorkerRunSnapshot = {
   sourceSnapshotSelection: "matched_version" | "default" | "none";
   requestedSourceVersion?: string;
   procedure?: LogSkillSpec["procedure"];
+  procedureChecks?: LogSkillSpec["procedureChecks"];
   parsing?: LogSkillSpec["parsing"];
   sourceSnapshot: AnalyzeLogInput["sourceSnapshot"];
   jobId: string;
@@ -219,6 +226,7 @@ export type LogWorkerRunSnapshot = {
     formatProfile: LogFormatProfile | null;
     /** Per-domain model-name override (P3b); null = global model. */
     modelOverride: string | null;
+    protocolOverride?: LogSkillSpec["protocolOverride"];
     stepBudget?: number;
     tokenBudget?: number;
   } | null;
@@ -230,7 +238,11 @@ export type PersistLogAnalysisReportInput = {
   runId: string;
   report: {
     knowledgeRevisions?: Array<{ entryId: string; revisionId: string; pages?: number[] }>;
+    historicalRunIds?: string[];
     signalSummary?: import("./genericSignals").LogSignalSummary;
+    alternativeHypotheses?: LogAlternativeHypothesis[];
+    checks?: LogRecordDto["checks"];
+    verification?: LogRecordDto["verification"];
     confidence: number;
     conclusion: string;
     impact: string;
@@ -315,6 +327,9 @@ function toLogDto(row: LogRecordRow, evidence = [] as LogRecordDto["evidence"], 
     stage: row.stage ?? "parse",
     confidence: row.confidence === null ? 0 : Number(row.confidence),
     conclusion: row.conclusion ?? defaultConclusion(status, row.failure_reason),
+    alternativeHypotheses: row.alternative_hypotheses ?? undefined,
+    ...(row.procedure_checks ? { checks: row.procedure_checks } : {}),
+    verification: row.verification ?? undefined,
     impact: row.impact ?? defaultImpact(status),
     evidence,
     suggestedActions: row.suggested_actions ?? [],
@@ -335,6 +350,7 @@ function toLogDto(row: LogRecordRow, evidence = [] as LogRecordDto["evidence"], 
     skillRevisionNumberSnapshot: row.skill_revision_number_snapshot ?? undefined,
     knowledgeRevisions: (row.knowledge_revisions ?? []).map(({ entryId, revisionId, pages }) => ({ entryId,
       ...(readableKnowledgeIds.has(entryId) ? { revisionId, ...(pages ? { pages } : {}) } : {}) })),
+    ...(row.historical_run_ids?.length ? { historicalRunIds: row.historical_run_ids } : {}),
     logDomainId: row.log_domain_id ?? undefined,
     logDomainName: row.log_domain_name ?? undefined,
     analysisSource: row.analysis_source ?? undefined,
@@ -373,6 +389,7 @@ function toRunDto(row: RunRow, readableKnowledgeIds: Set<string>): LogRunDto {
   return {
     knowledgeRevisions: (row.knowledge_revisions ?? []).map(({ entryId, revisionId, pages }) => ({ entryId,
       ...(readableKnowledgeIds.has(entryId) ? { revisionId, ...(pages ? { pages } : {}) } : {}) })),
+    ...(row.historical_run_ids?.length ? { historicalRunIds: row.historical_run_ids } : {}),
     ...sourceProvenance(row),
     id: row.id,
     logId: row.log_record_id,
@@ -398,6 +415,7 @@ function toWorkerLogRunSnapshot(row: WorkerLogRunSnapshotRow): LogWorkerRunSnaps
     jobId: row.job_id,
     skillRevisionId: row.skill_revision_id,
     procedure: row.skill_revision_spec?.procedure,
+    procedureChecks: readStoredProcedureChecks(row.skill_revision_spec?.procedureChecks),
     signalRules: row.skill_revision_spec?.signalRules,
     files: row.skill_revision_spec?.files,
     parsing: row.skill_revision_spec?.parsing,
@@ -422,6 +440,7 @@ function toWorkerLogRunSnapshot(row: WorkerLogRunSnapshotRow): LogWorkerRunSnaps
           description: row.log_domain_description,
           formatProfile: row.skill_revision_spec?.formatProfile ?? null,
           modelOverride: row.skill_revision_spec?.modelOverride ?? null,
+          protocolOverride: row.skill_revision_spec?.protocolOverride,
           stepBudget: row.skill_revision_spec?.stepBudget,
           tokenBudget: row.skill_revision_spec?.tokenBudget
         }
@@ -442,6 +461,9 @@ const logSelect = `
     coalesce(lar.current_stage, 'parse') as stage,
     report.confidence,
     report.conclusion,
+    report.alternative_hypotheses,
+    report.procedure_checks,
+    report.verification,
     report.impact,
     report.suggested_actions,
     report.severity,
@@ -465,7 +487,7 @@ const logSelect = `
     lar.skill_revision_number_snapshot,
     lar.skill_revision_id, sr.revision_number as skill_revision_number,
     lar.source_snapshot_id, lar.source_snapshot_status, lar.source_snapshot_selection, lar.requested_source_version,
-    source.version_label as source_snapshot_version_label, lar.knowledge_revisions
+    source.version_label as source_snapshot_version_label, lar.knowledge_revisions, lar.historical_run_ids
   from log_records lr
   inner join log_file_objects lfo on lfo.id = lr.file_object_id
   left join log_analysis_runs lar on lar.id = lr.current_run_id
@@ -807,6 +829,7 @@ export async function getLogDetail(db: Queryable, auth: LogPrincipal, logId: str
   );
 
   const readableKnowledgeIds = integration ? new Set<string>() : await readableKnowledgeEntryIds(db, auth, (row.knowledge_revisions ?? []).map((revision) => revision.entryId));
+  if (integration) row.historical_run_ids = undefined;
   return { ...toLogDto(row, evidenceResult.rows.map(toEvidenceDto), readableKnowledgeIds), canDelete: !integration && canDeleteLog(auth, row), files: fileInventory(await loadLogFiles(db, organizationId, logId)) };
 }
 
@@ -816,7 +839,7 @@ export async function listRuns(db: Queryable, auth: AuthContext, logId: string) 
     select lar.id, lar.log_record_id, lar.status, lar.current_stage, lar.progress, lar.error_message, lar.updated_at, lar.skill_revision_id, sr.revision_number as skill_revision_number,
       lar.skill_name_snapshot,lar.skill_revision_number_snapshot,
       lar.source_snapshot_id, lar.source_snapshot_status, lar.source_snapshot_selection, lar.requested_source_version,
-      source.version_label as source_snapshot_version_label, lar.knowledge_revisions
+      source.version_label as source_snapshot_version_label, lar.knowledge_revisions, lar.historical_run_ids
     from log_analysis_runs lar
     left join log_skill_revisions sr on sr.id = lar.skill_revision_id and sr.organization_id = lar.organization_id
     left join log_source_snapshots source on source.id = lar.source_snapshot_id and source.organization_id = lar.organization_id
@@ -979,85 +1002,94 @@ export async function persistLogDecodedArtifact(db: Database, input: {
   });
 }
 
-export async function persistLogAnalysisReport(db: Database, input: PersistLogAnalysisReportInput) {
-  await db.transaction(async (tx) => {
-    await tx.query(`update log_analysis_runs set knowledge_revisions = $3::jsonb where organization_id = $1 and id = $2`,
-      [input.organizationId, input.runId, jsonb(input.report.knowledgeRevisions ?? [])]);
+async function writeLogAnalysisReport(tx: Queryable, input: PersistLogAnalysisReportInput, signal?: AbortSignal) {
+  await tx.query(`update log_analysis_runs set knowledge_revisions = $3::jsonb, historical_run_ids = $4 where organization_id = $1 and id = $2`,
+    [input.organizationId, input.runId, jsonb(input.report.knowledgeRevisions ?? []), input.report.historicalRunIds ?? []]);
+  await tx.query(
+    `
+    insert into log_analysis_reports (
+      id, organization_id, log_record_id, run_id, confidence, conclusion, impact,
+      severity, suggested_actions, raw_lines, analysis_source, degraded_reason, prompt_version, model, signal_summary, alternative_hypotheses, verification, procedure_checks
+    )
+    values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+    on conflict (id) do update
+    set confidence = excluded.confidence,
+      conclusion = excluded.conclusion,
+      impact = excluded.impact,
+      severity = excluded.severity,
+      suggested_actions = excluded.suggested_actions,
+      raw_lines = excluded.raw_lines,
+      analysis_source = excluded.analysis_source,
+      degraded_reason = excluded.degraded_reason,
+      prompt_version = excluded.prompt_version,
+      model = excluded.model,
+      signal_summary = excluded.signal_summary,
+      alternative_hypotheses = excluded.alternative_hypotheses,
+      verification = excluded.verification,
+      procedure_checks = excluded.procedure_checks
+    `,
+    [
+      `report-${input.runId}`,
+      input.organizationId,
+      input.logId,
+      input.runId,
+      input.report.confidence,
+      input.report.conclusion,
+      input.report.impact,
+      input.report.severity,
+      jsonb(input.report.suggestedActions),
+      jsonb(input.report.rawLines),
+      input.report.analysisSource ?? null,
+      input.report.degradedReason ?? null,
+      input.report.promptVersion ?? null,
+      input.report.model ?? null,
+      input.report.signalSummary ? jsonb(input.report.signalSummary) : null,
+      input.report.alternativeHypotheses ? jsonb(input.report.alternativeHypotheses) : null,
+      input.report.verification ? jsonb(input.report.verification) : null,
+      input.report.checks ? jsonb(input.report.checks) : null
+    ]
+  );
+  await tx.query(
+    `
+    delete from log_evidence
+    where organization_id = $1
+      and run_id = $2
+    `,
+    [input.organizationId, input.runId]
+  );
+
+  for (const [index, evidence] of input.evidence.entries()) {
+    signal?.throwIfAborted();
     await tx.query(
       `
-      insert into log_analysis_reports (
-        id, organization_id, log_record_id, run_id, confidence, conclusion, impact,
-        severity, suggested_actions, raw_lines, analysis_source, degraded_reason, prompt_version, model, signal_summary
+      insert into log_evidence (
+        id, organization_id, log_record_id, run_id, stage, line_numbers,
+        inference, suggested_action, rule_hit, file_path, decoded_fields, source_snapshot_id, source_path, source_line
       )
-      values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
-      on conflict (id) do update
-      set confidence = excluded.confidence,
-        conclusion = excluded.conclusion,
-        impact = excluded.impact,
-        severity = excluded.severity,
-        suggested_actions = excluded.suggested_actions,
-        raw_lines = excluded.raw_lines,
-        analysis_source = excluded.analysis_source,
-        degraded_reason = excluded.degraded_reason,
-        prompt_version = excluded.prompt_version,
-        model = excluded.model,
-        signal_summary = excluded.signal_summary
+      values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb, $12, $13, $14)
       `,
       [
-        `report-${input.runId}`,
+        `evidence-${input.runId}-${index}`,
         input.organizationId,
         input.logId,
         input.runId,
-        input.report.confidence,
-        input.report.conclusion,
-        input.report.impact,
-        input.report.severity,
-        jsonb(input.report.suggestedActions),
-        jsonb(input.report.rawLines),
-        input.report.analysisSource ?? null,
-        input.report.degradedReason ?? null,
-        input.report.promptVersion ?? null,
-        input.report.model ?? null,
-        input.report.signalSummary ? jsonb(input.report.signalSummary) : null
+        evidence.stageId,
+        evidence.lineNumbers,
+        evidence.inference,
+        evidence.suggestedAction,
+        evidence.ruleHit ?? null,
+        evidence.filePath ?? null,
+        evidence.decodedFields ? jsonb(evidence.decodedFields) : null,
+        evidence.sourceLocation?.snapshotId ?? null,
+        evidence.sourceLocation?.path ?? null,
+        evidence.sourceLocation?.line ?? null
       ]
     );
-    await tx.query(
-      `
-      delete from log_evidence
-      where organization_id = $1
-        and run_id = $2
-      `,
-      [input.organizationId, input.runId]
-    );
+  }
+}
 
-    for (const [index, evidence] of input.evidence.entries()) {
-      await tx.query(
-        `
-        insert into log_evidence (
-          id, organization_id, log_record_id, run_id, stage, line_numbers,
-          inference, suggested_action, rule_hit, file_path, decoded_fields, source_snapshot_id, source_path, source_line
-        )
-        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb, $12, $13, $14)
-        `,
-        [
-          `evidence-${input.runId}-${index}`,
-          input.organizationId,
-          input.logId,
-          input.runId,
-          evidence.stageId,
-          evidence.lineNumbers,
-          evidence.inference,
-          evidence.suggestedAction,
-          evidence.ruleHit ?? null,
-          evidence.filePath ?? null,
-          evidence.decodedFields ? jsonb(evidence.decodedFields) : null,
-          evidence.sourceLocation?.snapshotId ?? null,
-          evidence.sourceLocation?.path ?? null,
-          evidence.sourceLocation?.line ?? null
-        ]
-      );
-    }
-  });
+export async function persistLogAnalysisReport(db: Database, input: PersistLogAnalysisReportInput) {
+  await db.transaction((tx) => writeLogAnalysisReport(tx, input));
 }
 
 export async function completeLogAnalysisJobWithReport(db: Database, input: CompleteLogAnalysisJobWithReportInput) {
@@ -1067,6 +1099,7 @@ export async function completeLogAnalysisJobWithReport(db: Database, input: Comp
       const progressUpdated = await updateJobProgress(tx, {
         organizationId: input.organizationId,
         jobId: input.jobId,
+        targetId: input.runId,
         progress: 100,
         currentStage: "report",
         leaseOwner: input.leaseOwner
@@ -1075,84 +1108,7 @@ export async function completeLogAnalysisJobWithReport(db: Database, input: Comp
         throw new LogJobLeaseLostError();
       }
 
-      await tx.query(`update log_analysis_runs set knowledge_revisions = $3::jsonb where organization_id = $1 and id = $2`,
-        [input.organizationId, input.runId, jsonb(input.report.knowledgeRevisions ?? [])]);
-
-      await tx.query(
-        `
-        insert into log_analysis_reports (
-          id, organization_id, log_record_id, run_id, confidence, conclusion, impact,
-          severity, suggested_actions, raw_lines, analysis_source, degraded_reason, prompt_version, model, signal_summary
-        )
-        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
-        on conflict (id) do update
-        set confidence = excluded.confidence,
-          conclusion = excluded.conclusion,
-          impact = excluded.impact,
-          severity = excluded.severity,
-          suggested_actions = excluded.suggested_actions,
-          raw_lines = excluded.raw_lines,
-          analysis_source = excluded.analysis_source,
-          degraded_reason = excluded.degraded_reason,
-          prompt_version = excluded.prompt_version,
-          model = excluded.model,
-          signal_summary = excluded.signal_summary
-        `,
-        [
-          `report-${input.runId}`,
-          input.organizationId,
-          input.logId,
-          input.runId,
-          input.report.confidence,
-          input.report.conclusion,
-          input.report.impact,
-          input.report.severity,
-          jsonb(input.report.suggestedActions),
-          jsonb(input.report.rawLines),
-          input.report.analysisSource ?? null,
-          input.report.degradedReason ?? null,
-          input.report.promptVersion ?? null,
-          input.report.model ?? null,
-          input.report.signalSummary ? jsonb(input.report.signalSummary) : null
-        ]
-      );
-      await tx.query(
-        `
-        delete from log_evidence
-        where organization_id = $1
-          and run_id = $2
-        `,
-        [input.organizationId, input.runId]
-      );
-
-      for (const [index, evidence] of input.evidence.entries()) {
-        input.signal?.throwIfAborted();
-        await tx.query(
-          `
-          insert into log_evidence (
-            id, organization_id, log_record_id, run_id, stage, line_numbers,
-            inference, suggested_action, rule_hit, file_path, decoded_fields, source_snapshot_id, source_path, source_line
-          )
-          values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb, $12, $13, $14)
-          `,
-          [
-            `evidence-${input.runId}-${index}`,
-            input.organizationId,
-            input.logId,
-            input.runId,
-            evidence.stageId,
-            evidence.lineNumbers,
-            evidence.inference,
-            evidence.suggestedAction,
-            evidence.ruleHit ?? null,
-            evidence.filePath ?? null,
-            evidence.decodedFields ? jsonb(evidence.decodedFields) : null,
-            evidence.sourceLocation?.snapshotId ?? null,
-            evidence.sourceLocation?.path ?? null,
-            evidence.sourceLocation?.line ?? null
-          ]
-        );
-      }
+      await writeLogAnalysisReport(tx, input, input.signal);
 
       await updateRunStageProgress(tx, {
         organizationId: input.organizationId,

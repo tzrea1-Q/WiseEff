@@ -1,0 +1,27 @@
+domain: service-jsonl
+summary: "A service emits a long debug record and later rejects the same export batch."
+realLog: false
+tier: realistic
+provenance: authored
+scenarioTags: [encoding, distractor, generic-analysis]
+rootCauseCategory: configuration-error
+analysisQuestion: "What explains the rejection, and can the event still be located in this stream?"
+rootCausePoints:
+  - "The cold sink rejected row-v3 for bench-93 because it accepts row-v2; no rows were written."
+keyEvidenceLines: [160, 162, 163]
+expectedActions:
+  - "Set a row format supported by the cold sink and verify the next batch writes rows."
+  - "Use batch ID and the short adjacent records to cite the rejection when the debug record exceeds an excerpt cap."
+bundleFiles: [fixtures/events.log]
+keyEvidence:
+  - { file: events.log, line: 160 }
+  - { file: events.log, line: 162 }
+  - { file: events.log, line: 163 }
+realismChecklist:
+  lineFormat: "Structured service JSON Lines with ISO 8601 UTC timestamps at millisecond precision. The original is UTF-16LE/CRLF with a single debug record over 12 KiB of decoded UTF-8."
+  noiseRatio: "340 of 345 lines are routine traffic (98.6%). Incident, symptom and distraction lines are excluded from the numerator."
+  distractors: "The optional theme warning at events.log:66 is unrelated. The oversize debug event at events.log:161 carries the same batch ID but no format decision."
+  rootCauseDiscoverability: "The payload length is a distraction. Join the advertised format, actual rejection and zero-row commit by batch ID."
+  timeline: "Shared UTC in one stream. Batch start, debug event, validation and abort all precede the next routine sample window."
+  sensitiveData: "All hosts, processes, samples and identifiers were authored for the fixture. No personal data, real serial numbers or credentials."
+  annotationReview: "Read the short records around the long line and verified the rejection for bench-93 occurred before any write. Independent review (2026-11-18): ok. UTF-16LE and CRLF normalize without shifting the 12,544-byte debug record or the adjacent format-rejection and zero-row anchors."

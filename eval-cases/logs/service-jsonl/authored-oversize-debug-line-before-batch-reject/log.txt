@@ -1,0 +1,345 @@
+{"ts":"2026-10-14T09:14:00.014Z","level":"debug","component":"exporter","msg":"ready state=active sink_count=2"}
+{"ts":"2026-10-14T09:14:00.028Z","level":"info","component":"exporter","msg":"format cache size=9 hits=2"}
+{"ts":"2026-10-14T09:14:00.227Z","level":"info","component":"exporter","msg":"queued shard=aux index=2 depth=0"}
+{"ts":"2026-10-14T09:14:00.243Z","level":"info","component":"exporter","msg":"ready state=active sink_count=2"}
+{"ts":"2026-10-14T09:14:00.434Z","level":"info","component":"exporter","msg":"format cache size=15 hits=0"}
+{"ts":"2026-10-14T09:14:00.450Z","level":"info","component":"exporter","msg":"queued shard=aux index=5 depth=1"}
+{"ts":"2026-10-14T09:14:00.600Z","level":"info","component":"exporter","msg":"ready state=active sink_count=2"}
+{"ts":"2026-10-14T09:14:00.661Z","level":"debug","component":"exporter","msg":"format cache size=5 hits=3"}
+{"ts":"2026-10-14T09:14:00.719Z","level":"info","component":"exporter","msg":"queued shard=aux index=8 depth=2"}
+{"ts":"2026-10-14T09:14:00.773Z","level":"info","component":"exporter","msg":"ready state=active sink_count=2"}
+{"ts":"2026-10-14T09:14:01.723Z","level":"info","component":"exporter","msg":"format cache size=16 hits=0"}
+{"ts":"2026-10-14T09:14:02.106Z","level":"info","component":"exporter","msg":"queued shard=aux index=11 depth=1"}
+{"ts":"2026-10-14T09:14:02.311Z","level":"info","component":"exporter","msg":"ready state=active sink_count=2"}
+{"ts":"2026-10-14T09:14:02.550Z","level":"info","component":"exporter","msg":"format cache size=4 hits=4"}
+{"ts":"2026-10-14T09:14:02.972Z","level":"debug","component":"exporter","msg":"queued shard=aux index=14 depth=1"}
+{"ts":"2026-10-14T09:14:03.130Z","level":"info","component":"exporter","msg":"ready state=active sink_count=2"}
+{"ts":"2026-10-14T09:14:03.389Z","level":"info","component":"exporter","msg":"format cache size=10 hits=2"}
+{"ts":"2026-10-14T09:14:03.403Z","level":"info","component":"exporter","msg":"queued shard=aux index=17 depth=0"}
+{"ts":"2026-10-14T09:14:04.354Z","level":"info","component":"exporter","msg":"ready state=active sink_count=2"}
+{"ts":"2026-10-14T09:14:04.493Z","level":"info","component":"exporter","msg":"format cache size=3 hits=5"}
+{"ts":"2026-10-14T09:14:04.649Z","level":"info","component":"exporter","msg":"queued shard=aux index=20 depth=1"}
+{"ts":"2026-10-14T09:14:05.096Z","level":"debug","component":"exporter","msg":"ready state=active sink_count=2"}
+{"ts":"2026-10-14T09:14:05.155Z","level":"info","component":"exporter","msg":"format cache size=2 hits=0"}
+{"ts":"2026-10-14T09:14:05.167Z","level":"info","component":"exporter","msg":"queued shard=aux index=23 depth=2"}
+{"ts":"2026-10-14T09:14:05.219Z","level":"info","component":"exporter","msg":"ready state=active sink_count=2"}
+{"ts":"2026-10-14T09:14:05.278Z","level":"info","component":"exporter","msg":"format cache size=8 hits=6"}
+{"ts":"2026-10-14T09:14:05.337Z","level":"info","component":"exporter","msg":"queued shard=aux index=26 depth=0"}
+{"ts":"2026-10-14T09:14:05.352Z","level":"info","component":"exporter","msg":"ready state=active sink_count=2"}
+{"ts":"2026-10-14T09:14:06.264Z","level":"debug","component":"exporter","msg":"format cache size=5 hits=4"}
+{"ts":"2026-10-14T09:14:06.277Z","level":"info","component":"exporter","msg":"queued shard=aux index=29 depth=1"}
+{"ts":"2026-10-14T09:14:06.328Z","level":"info","component":"exporter","msg":"ready state=active sink_count=2"}
+{"ts":"2026-10-14T09:14:06.525Z","level":"info","component":"exporter","msg":"format cache size=17 hits=8"}
+{"ts":"2026-10-14T09:14:06.538Z","level":"info","component":"exporter","msg":"queued shard=aux index=32 depth=1"}
+{"ts":"2026-10-14T09:14:06.656Z","level":"info","component":"exporter","msg":"ready state=active sink_count=2"}
+{"ts":"2026-10-14T09:14:07.595Z","level":"info","component":"exporter","msg":"format cache size=6 hits=8"}
+{"ts":"2026-10-14T09:14:07.861Z","level":"debug","component":"exporter","msg":"queued shard=aux index=35 depth=0"}
+{"ts":"2026-10-14T09:14:08.087Z","level":"info","component":"exporter","msg":"ready state=active sink_count=2"}
+{"ts":"2026-10-14T09:14:08.588Z","level":"info","component":"exporter","msg":"format cache size=19 hits=2"}
+{"ts":"2026-10-14T09:14:08.752Z","level":"info","component":"exporter","msg":"queued shard=aux index=38 depth=2"}
+{"ts":"2026-10-14T09:14:09.633Z","level":"info","component":"exporter","msg":"ready state=active sink_count=2"}
+{"ts":"2026-10-14T09:14:09.781Z","level":"info","component":"exporter","msg":"format cache size=15 hits=8"}
+{"ts":"2026-10-14T09:14:09.840Z","level":"info","component":"exporter","msg":"queued shard=aux index=41 depth=0"}
+{"ts":"2026-10-14T09:14:10.647Z","level":"debug","component":"exporter","msg":"ready state=active sink_count=2"}
+{"ts":"2026-10-14T09:14:10.659Z","level":"info","component":"exporter","msg":"format cache size=11 hits=7"}
+{"ts":"2026-10-14T09:14:10.798Z","level":"info","component":"exporter","msg":"queued shard=aux index=44 depth=2"}
+{"ts":"2026-10-14T09:14:10.850Z","level":"info","component":"exporter","msg":"ready state=active sink_count=2"}
+{"ts":"2026-10-14T09:14:11.052Z","level":"info","component":"exporter","msg":"format cache size=6 hits=2"}
+{"ts":"2026-10-14T09:14:11.290Z","level":"info","component":"exporter","msg":"queued shard=aux index=47 depth=1"}
+{"ts":"2026-10-14T09:14:11.525Z","level":"info","component":"exporter","msg":"ready state=active sink_count=2"}
+{"ts":"2026-10-14T09:14:11.540Z","level":"debug","component":"exporter","msg":"format cache size=19 hits=1"}
+{"ts":"2026-10-14T09:14:11.966Z","level":"info","component":"exporter","msg":"queued shard=aux index=50 depth=2"}
+{"ts":"2026-10-14T09:14:12.732Z","level":"info","component":"exporter","msg":"ready state=active sink_count=2"}
+{"ts":"2026-10-14T09:14:12.934Z","level":"info","component":"exporter","msg":"format cache size=10 hits=7"}
+{"ts":"2026-10-14T09:14:13.115Z","level":"info","component":"exporter","msg":"queued shard=aux index=53 depth=1"}
+{"ts":"2026-10-14T09:14:13.516Z","level":"info","component":"exporter","msg":"ready state=active sink_count=2"}
+{"ts":"2026-10-14T09:14:13.652Z","level":"info","component":"exporter","msg":"format cache size=2 hits=7"}
+{"ts":"2026-10-14T09:14:13.713Z","level":"debug","component":"exporter","msg":"queued shard=aux index=56 depth=0"}
+{"ts":"2026-10-14T09:14:14.465Z","level":"info","component":"exporter","msg":"ready state=active sink_count=2"}
+{"ts":"2026-10-14T09:14:14.658Z","level":"info","component":"exporter","msg":"format cache size=17 hits=1"}
+{"ts":"2026-10-14T09:14:14.810Z","level":"info","component":"exporter","msg":"queued shard=aux index=59 depth=1"}
+{"ts":"2026-10-14T09:14:15.057Z","level":"info","component":"exporter","msg":"ready state=active sink_count=2"}
+{"ts":"2026-10-14T09:14:15.106Z","level":"info","component":"exporter","msg":"format cache size=11 hits=6"}
+{"ts":"2026-10-14T09:14:15.356Z","level":"info","component":"exporter","msg":"queued shard=aux index=62 depth=0"}
+{"ts":"2026-10-14T09:14:16.308Z","level":"debug","component":"exporter","msg":"ready state=active sink_count=2"}
+{"ts":"2026-10-14T09:14:16.557Z","level":"info","component":"exporter","msg":"format cache size=16 hits=0"}
+{"ts":"2026-10-14T09:14:17.112Z","level":"warn","component":"exporter","op":"init","status":"optional_theme_missing"}
+{"ts":"2026-10-14T09:14:17.501Z","level":"info","component":"exporter","msg":"queued shard=aux index=65 depth=1"}
+{"ts":"2026-10-14T09:14:18.277Z","level":"info","component":"exporter","msg":"ready state=active sink_count=2"}
+{"ts":"2026-10-14T09:14:18.698Z","level":"info","component":"exporter","msg":"format cache size=11 hits=3"}
+{"ts":"2026-10-14T09:14:18.760Z","level":"info","component":"exporter","msg":"queued shard=aux index=68 depth=0"}
+{"ts":"2026-10-14T09:14:18.775Z","level":"info","component":"exporter","msg":"ready state=active sink_count=2"}
+{"ts":"2026-10-14T09:14:18.937Z","level":"debug","component":"exporter","msg":"format cache size=15 hits=1"}
+{"ts":"2026-10-14T09:14:19.137Z","level":"info","component":"exporter","msg":"queued shard=aux index=71 depth=0"}
+{"ts":"2026-10-14T09:14:19.281Z","level":"info","component":"exporter","msg":"ready state=active sink_count=2"}
+{"ts":"2026-10-14T09:14:19.498Z","level":"info","component":"exporter","msg":"format cache size=17 hits=3"}
+{"ts":"2026-10-14T09:14:19.954Z","level":"info","component":"exporter","msg":"queued shard=aux index=74 depth=0"}
+{"ts":"2026-10-14T09:14:20.129Z","level":"info","component":"exporter","msg":"ready state=active sink_count=2"}
+{"ts":"2026-10-14T09:14:20.642Z","level":"info","component":"exporter","msg":"format cache size=9 hits=5"}
+{"ts":"2026-10-14T09:14:21.033Z","level":"debug","component":"exporter","msg":"queued shard=aux index=77 depth=2"}
+{"ts":"2026-10-14T09:14:21.413Z","level":"info","component":"exporter","msg":"ready state=active sink_count=2"}
+{"ts":"2026-10-14T09:14:22.153Z","level":"info","component":"exporter","msg":"format cache size=4 hits=2"}
+{"ts":"2026-10-14T09:14:22.412Z","level":"info","component":"exporter","msg":"queued shard=aux index=80 depth=2"}
+{"ts":"2026-10-14T09:14:22.427Z","level":"info","component":"exporter","msg":"ready state=active sink_count=2"}
+{"ts":"2026-10-14T09:14:22.695Z","level":"info","component":"exporter","msg":"format cache size=10 hits=4"}
+{"ts":"2026-10-14T09:14:22.851Z","level":"info","component":"exporter","msg":"queued shard=aux index=83 depth=0"}
+{"ts":"2026-10-14T09:14:23.227Z","level":"debug","component":"exporter","msg":"ready state=active sink_count=2"}
+{"ts":"2026-10-14T09:14:23.738Z","level":"info","component":"exporter","msg":"format cache size=9 hits=5"}
+{"ts":"2026-10-14T09:14:23.752Z","level":"info","component":"exporter","msg":"queued shard=aux index=86 depth=1"}
+{"ts":"2026-10-14T09:14:24.600Z","level":"info","component":"exporter","msg":"ready state=active sink_count=2"}
+{"ts":"2026-10-14T09:14:24.763Z","level":"info","component":"exporter","msg":"format cache size=8 hits=1"}
+{"ts":"2026-10-14T09:14:24.890Z","level":"info","component":"exporter","msg":"queued shard=aux index=89 depth=1"}
+{"ts":"2026-10-14T09:14:25.043Z","level":"info","component":"exporter","msg":"ready state=active sink_count=2"}
+{"ts":"2026-10-14T09:14:25.057Z","level":"debug","component":"exporter","msg":"format cache size=7 hits=3"}
+{"ts":"2026-10-14T09:14:25.072Z","level":"info","component":"exporter","msg":"queued shard=aux index=92 depth=2"}
+{"ts":"2026-10-14T09:14:25.254Z","level":"info","component":"exporter","msg":"ready state=active sink_count=2"}
+{"ts":"2026-10-14T09:14:25.303Z","level":"info","component":"exporter","msg":"format cache size=2 hits=4"}
+{"ts":"2026-10-14T09:14:25.530Z","level":"info","component":"exporter","msg":"queued shard=aux index=95 depth=2"}
+{"ts":"2026-10-14T09:14:25.585Z","level":"info","component":"exporter","msg":"ready state=active sink_count=2"}
+{"ts":"2026-10-14T09:14:25.702Z","level":"info","component":"exporter","msg":"format cache size=13 hits=2"}
+{"ts":"2026-10-14T09:14:25.860Z","level":"debug","component":"exporter","msg":"queued shard=aux index=98 depth=1"}
+{"ts":"2026-10-14T09:14:26.369Z","level":"info","component":"exporter","msg":"ready state=active sink_count=2"}
+{"ts":"2026-10-14T09:14:26.567Z","level":"info","component":"exporter","msg":"format cache size=7 hits=8"}
+{"ts":"2026-10-14T09:14:27.001Z","level":"info","component":"exporter","msg":"queued shard=aux index=101 depth=1"}
+{"ts":"2026-10-14T09:14:27.803Z","level":"info","component":"exporter","msg":"ready state=active sink_count=2"}
+{"ts":"2026-10-14T09:14:28.747Z","level":"info","component":"exporter","msg":"format cache size=9 hits=6"}
+{"ts":"2026-10-14T09:14:28.763Z","level":"info","component":"exporter","msg":"queued shard=aux index=104 depth=0"}
+{"ts":"2026-10-14T09:14:29.518Z","level":"debug","component":"exporter","msg":"ready state=active sink_count=2"}
+{"ts":"2026-10-14T09:14:29.926Z","level":"info","component":"exporter","msg":"format cache size=1 hits=7"}
+{"ts":"2026-10-14T09:14:30.111Z","level":"info","component":"exporter","msg":"queued shard=aux index=107 depth=1"}
+{"ts":"2026-10-14T09:14:30.124Z","level":"info","component":"exporter","msg":"ready state=active sink_count=2"}
+{"ts":"2026-10-14T09:14:30.324Z","level":"info","component":"exporter","msg":"format cache size=13 hits=5"}
+{"ts":"2026-10-14T09:14:30.431Z","level":"info","component":"exporter","msg":"queued shard=aux index=110 depth=1"}
+{"ts":"2026-10-14T09:14:30.444Z","level":"info","component":"exporter","msg":"ready state=active sink_count=2"}
+{"ts":"2026-10-14T09:14:31.212Z","level":"debug","component":"exporter","msg":"format cache size=5 hits=3"}
+{"ts":"2026-10-14T09:14:31.317Z","level":"info","component":"exporter","msg":"queued shard=aux index=113 depth=0"}
+{"ts":"2026-10-14T09:14:32.101Z","level":"info","component":"exporter","msg":"ready state=active sink_count=2"}
+{"ts":"2026-10-14T09:14:32.113Z","level":"info","component":"exporter","msg":"format cache size=3 hits=2"}
+{"ts":"2026-10-14T09:14:32.360Z","level":"info","component":"exporter","msg":"queued shard=aux index=116 depth=1"}
+{"ts":"2026-10-14T09:14:32.374Z","level":"info","component":"exporter","msg":"ready state=active sink_count=2"}
+{"ts":"2026-10-14T09:14:32.639Z","level":"info","component":"exporter","msg":"format cache size=4 hits=6"}
+{"ts":"2026-10-14T09:14:32.656Z","level":"debug","component":"exporter","msg":"queued shard=aux index=119 depth=2"}
+{"ts":"2026-10-14T09:14:32.670Z","level":"info","component":"exporter","msg":"ready state=active sink_count=2"}
+{"ts":"2026-10-14T09:14:33.382Z","level":"info","component":"exporter","msg":"format cache size=5 hits=7"}
+{"ts":"2026-10-14T09:14:33.429Z","level":"info","component":"exporter","msg":"queued shard=aux index=122 depth=2"}
+{"ts":"2026-10-14T09:14:34.276Z","level":"info","component":"exporter","msg":"ready state=active sink_count=2"}
+{"ts":"2026-10-14T09:14:35.165Z","level":"info","component":"exporter","msg":"format cache size=18 hits=2"}
+{"ts":"2026-10-14T09:14:35.313Z","level":"info","component":"exporter","msg":"queued shard=aux index=125 depth=0"}
+{"ts":"2026-10-14T09:14:35.754Z","level":"debug","component":"exporter","msg":"ready state=active sink_count=2"}
+{"ts":"2026-10-14T09:14:35.919Z","level":"info","component":"exporter","msg":"format cache size=14 hits=4"}
+{"ts":"2026-10-14T09:14:35.965Z","level":"info","component":"exporter","msg":"queued shard=aux index=128 depth=1"}
+{"ts":"2026-10-14T09:14:36.174Z","level":"info","component":"exporter","msg":"ready state=active sink_count=2"}
+{"ts":"2026-10-14T09:14:36.236Z","level":"info","component":"exporter","msg":"format cache size=11 hits=3"}
+{"ts":"2026-10-14T09:14:36.295Z","level":"info","component":"exporter","msg":"queued shard=aux index=131 depth=0"}
+{"ts":"2026-10-14T09:14:36.310Z","level":"info","component":"exporter","msg":"ready state=active sink_count=2"}
+{"ts":"2026-10-14T09:14:36.416Z","level":"debug","component":"exporter","msg":"format cache size=19 hits=3"}
+{"ts":"2026-10-14T09:14:36.429Z","level":"info","component":"exporter","msg":"queued shard=aux index=134 depth=1"}
+{"ts":"2026-10-14T09:14:37.344Z","level":"info","component":"exporter","msg":"ready state=active sink_count=2"}
+{"ts":"2026-10-14T09:14:37.404Z","level":"info","component":"exporter","msg":"format cache size=2 hits=0"}
+{"ts":"2026-10-14T09:14:37.611Z","level":"info","component":"exporter","msg":"queued shard=aux index=137 depth=1"}
+{"ts":"2026-10-14T09:14:37.788Z","level":"info","component":"exporter","msg":"ready state=active sink_count=2"}
+{"ts":"2026-10-14T09:14:37.992Z","level":"info","component":"exporter","msg":"format cache size=2 hits=4"}
+{"ts":"2026-10-14T09:14:38.262Z","level":"debug","component":"exporter","msg":"queued shard=aux index=140 depth=0"}
+{"ts":"2026-10-14T09:14:38.276Z","level":"info","component":"exporter","msg":"ready state=active sink_count=2"}
+{"ts":"2026-10-14T09:14:39.154Z","level":"info","component":"exporter","msg":"format cache size=0 hits=7"}
+{"ts":"2026-10-14T09:14:39.646Z","level":"info","component":"exporter","msg":"queued shard=aux index=143 depth=2"}
+{"ts":"2026-10-14T09:14:39.798Z","level":"info","component":"exporter","msg":"ready state=active sink_count=2"}
+{"ts":"2026-10-14T09:14:40.058Z","level":"info","component":"exporter","msg":"format cache size=15 hits=2"}
+{"ts":"2026-10-14T09:14:40.071Z","level":"info","component":"exporter","msg":"queued shard=aux index=146 depth=1"}
+{"ts":"2026-10-14T09:14:40.116Z","level":"debug","component":"exporter","msg":"ready state=active sink_count=2"}
+{"ts":"2026-10-14T09:14:40.252Z","level":"info","component":"exporter","msg":"format cache size=16 hits=2"}
+{"ts":"2026-10-14T09:14:40.514Z","level":"info","component":"exporter","msg":"queued shard=aux index=149 depth=1"}
+{"ts":"2026-10-14T09:14:40.972Z","level":"info","component":"exporter","msg":"ready state=active sink_count=2"}
+{"ts":"2026-10-14T09:14:41.025Z","level":"info","component":"exporter","msg":"format cache size=7 hits=4"}
+{"ts":"2026-10-14T09:14:41.259Z","level":"info","component":"exporter","msg":"queued shard=aux index=152 depth=0"}
+{"ts":"2026-10-14T09:14:41.765Z","level":"info","component":"exporter","msg":"ready state=active sink_count=2"}
+{"ts":"2026-10-14T09:14:41.992Z","level":"debug","component":"exporter","msg":"format cache size=8 hits=0"}
+{"ts":"2026-10-14T09:14:42.009Z","level":"info","component":"exporter","msg":"queued shard=aux index=155 depth=1"}
+{"ts":"2026-10-14T09:14:42.896Z","level":"info","component":"exporter","msg":"ready state=active sink_count=2"}
+{"ts":"2026-10-14T09:14:43.371Z","level":"info","component":"exporter","msg":"format cache size=1 hits=3"}
+{"ts":"2026-10-14T09:14:43.814Z","level":"info","component":"exporter","op":"encode_batch","batch":"bench-93","format":"row-v3","sink":"cold","state":"begin"}
+{"ts":"2026-10-14T09:14:43.839Z","level":"debug","component":"exporter","op":"debug_payload","batch":"bench-93","samples":"sample.000=026361 sample.001=0cfed1 sample.002=008774 sample.003=03c260 sample.004=058368 sample.005=07dd7c sample.006=023c59 sample.007=03d718 sample.008=066be5 sample.009=0a6f28 sample.010=02203d sample.011=0563fd sample.012=02b11f sample.013=0cb037 sample.014=099333 sample.015=0dc51b sample.016=097c18 sample.017=0a55c6 sample.018=0bbcb8 sample.019=0419dd sample.020=0693d5 sample.021=02ac9a sample.022=0a949c sample.023=0d9dd9 sample.024=01ad51 sample.025=07473a sample.026=024cf8 sample.027=0612a6 sample.028=06056b sample.029=08186a sample.030=0fcef1 sample.031=0764cc sample.032=09fca8 sample.033=08bb1c sample.034=036a68 sample.035=0cbe0d sample.036=0c9ad2 sample.037=0422fe sample.038=071d68 sample.039=025efd sample.040=07ecb1 sample.041=004e88 sample.042=02046b sample.043=02ea4a sample.044=06bc43 sample.045=02c6c5 sample.046=0b63f2 sample.047=04fd9d sample.048=0339ca sample.049=0d0ab2 sample.050=0c858e sample.051=021711 sample.052=011646 sample.053=09ec14 sample.054=0a91b8 sample.055=0dd70c sample.056=0801c2 sample.057=08b65a sample.058=0e750a sample.059=02e811 sample.060=0261be sample.061=0ea6a0 sample.062=053756 sample.063=0c6b46 sample.064=0cdda7 sample.065=06343b sample.066=0c828a sample.067=02189f sample.068=013cfd sample.069=00fa37 sample.070=069cfd sample.071=073993 sample.072=029034 sample.073=03f4a2 sample.074=088f6c sample.075=099264 sample.076=067f9d sample.077=0f375c sample.078=02d68a sample.079=08480f sample.080=00248b sample.081=0dc4d2 sample.082=07d0fd sample.083=09e9cf sample.084=02336d sample.085=0ca2b6 sample.086=0bce53 sample.087=0dc264 sample.088=04d275 sample.089=0e60cf sample.090=08a253 sample.091=022dd6 sample.092=0a264e sample.093=01d88f sample.094=0516a5 sample.095=032839 sample.096=033915 sample.097=071db3 sample.098=0a98c2 sample.099=0857f4 sample.100=01984a sample.101=05a488 sample.102=025e6e sample.103=00319e sample.104=0cfb9e sample.105=0deaa0 sample.106=052be6 sample.107=08f538 sample.108=070001 sample.109=0d961d sample.110=0f6137 sample.111=0d327f sample.112=085452 sample.113=01e9b0 sample.114=07e22a sample.115=0b889f sample.116=0008b8 sample.117=09331d sample.118=01cf24 sample.119=04f026 sample.120=01a98d sample.121=05b5c5 sample.122=07dc6c sample.123=04e7d6 sample.124=05e666 sample.125=09b26e sample.126=06b308 sample.127=04dbcb sample.128=0f5409 sample.129=0a0b7e sample.130=01e149 sample.131=03ec57 sample.132=0c7a97 sample.133=001ca4 sample.134=053b91 sample.135=002728 sample.136=0a2541 sample.137=0290b3 sample.138=0568cc sample.139=07f4b5 sample.140=0adb49 sample.141=0d82f0 sample.142=0ad4ce sample.143=02ae45 sample.144=02a8ec sample.145=00a6d0 sample.146=0e0e05 sample.147=06028d sample.148=057d67 sample.149=01c15a sample.150=08d7ec sample.151=0edea8 sample.152=036628 sample.153=082b25 sample.154=0a16f0 sample.155=000d49 sample.156=0238a0 sample.157=038597 sample.158=0258db sample.159=0b6492 sample.160=099e1e sample.161=047e59 sample.162=053c55 sample.163=05e828 sample.164=049cb1 sample.165=0a27d2 sample.166=04fc17 sample.167=0279f2 sample.168=062cbd sample.169=00f169 sample.170=06cbd2 sample.171=039fc8 sample.172=0c4014 sample.173=0accfe sample.174=0e5f24 sample.175=0edcb4 sample.176=0863b0 sample.177=0fd2bf sample.178=0fb4b8 sample.179=0e2d57 sample.180=02254d sample.181=0e2477 sample.182=039f5a sample.183=04cfe2 sample.184=03a924 sample.185=0b8e62 sample.186=0e757a sample.187=069d8f sample.188=033495 sample.189=03957a sample.190=06a39f sample.191=05972d sample.192=0d1812 sample.193=0ae4ac sample.194=051fb1 sample.195=05f485 sample.196=0f8f54 sample.197=02572a sample.198=03fc9a sample.199=0d67f9 sample.200=07cf5e sample.201=0d5cc9 sample.202=0d5d3e sample.203=032b9e sample.204=0f772f sample.205=090ef5 sample.206=0f4acd sample.207=05a9e9 sample.208=0507a9 sample.209=0419d1 sample.210=0f8c4d sample.211=0114c2 sample.212=0b851b sample.213=0d8c49 sample.214=084e9a sample.215=076170 sample.216=0a9292 sample.217=06d7bb sample.218=0b2080 sample.219=0afe18 sample.220=0ddcf3 sample.221=0afd8d sample.222=0dc7d8 sample.223=040b2c sample.224=0a55c5 sample.225=0fa151 sample.226=04119d sample.227=036d4c sample.228=00484b sample.229=01856b sample.230=0260d3 sample.231=090456 sample.232=09ba6d sample.233=0a2ca8 sample.234=015fe3 sample.235=0f58d7 sample.236=0c38fb sample.237=02b1ce sample.238=0daef0 sample.239=0ea5eb sample.240=05aa6f sample.241=00166c sample.242=0e43e2 sample.243=04c602 sample.244=0eefd2 sample.245=0182d8 sample.246=0b9a65 sample.247=03a804 sample.248=06a706 sample.249=0848a7 sample.250=0bc30b sample.251=0142f9 sample.252=09bb4f sample.253=0a1a9b sample.254=0599bb sample.255=0fc04f sample.256=02ffbb sample.257=04d914 sample.258=06b112 sample.259=00b0f1 sample.260=0a7fe5 sample.261=0249aa sample.262=07c257 sample.263=04c246 sample.264=0ace4e sample.265=09ce91 sample.266=0af553 sample.267=06ad9a sample.268=0be1b6 sample.269=024e68 sample.270=064644 sample.271=06ef99 sample.272=0dcf7d sample.273=0ae4f0 sample.274=0c6f2b sample.275=07a17d sample.276=08768f sample.277=09f8ee sample.278=0460be sample.279=06d13a sample.280=0fb77a sample.281=0c2cc2 sample.282=047bf8 sample.283=0ab420 sample.284=041eac sample.285=00441e sample.286=045d15 sample.287=0e049c sample.288=0b8b3d sample.289=007ad8 sample.290=034f30 sample.291=0c818a sample.292=043374 sample.293=08c028 sample.294=024de6 sample.295=0f72bf sample.296=0d98d0 sample.297=0977c8 sample.298=0e043e sample.299=091600 sample.300=08cc6b sample.301=0799d5 sample.302=0218a0 sample.303=0773eb sample.304=065045 sample.305=08d09a sample.306=01bd9a sample.307=0a9b99 sample.308=09aaf1 sample.309=0a878f sample.310=079cd1 sample.311=0c4e92 sample.312=0295f8 sample.313=018137 sample.314=0149ec sample.315=03675a sample.316=09a3f9 sample.317=0f9a7e sample.318=0657ba sample.319=048be6 sample.320=0561c7 sample.321=084bda sample.322=0db745 sample.323=0a318e sample.324=055061 sample.325=07bc03 sample.326=0e21c1 sample.327=07bf74 sample.328=05d17a sample.329=0ee6f2 sample.330=0a2e82 sample.331=08a63b sample.332=06ed5b sample.333=0a2469 sample.334=0e1e56 sample.335=0a5237 sample.336=0d2edc sample.337=064aae sample.338=0831a3 sample.339=086c4c sample.340=07b279 sample.341=0bf476 sample.342=07f77b sample.343=0fd7b4 sample.344=0fd504 sample.345=0c4b75 sample.346=0a059d sample.347=000fbd sample.348=057e39 sample.349=09788e sample.350=0f6a8e sample.351=0f12a9 sample.352=0d29ff sample.353=000c0c sample.354=05beb0 sample.355=075c37 sample.356=0faa22 sample.357=022526 sample.358=0e0348 sample.359=09314c sample.360=0e1220 sample.361=078f79 sample.362=065cec sample.363=0fb9c3 sample.364=0e607a sample.365=0ab59d sample.366=0ddc39 sample.367=0ce9d6 sample.368=0552f9 sample.369=0eec00 sample.370=08daa1 sample.371=013fb8 sample.372=018d6a sample.373=0561ca sample.374=021b33 sample.375=0ad88c sample.376=0a44f0 sample.377=09e166 sample.378=07e05f sample.379=0b795e sample.380=04621b sample.381=003b71 sample.382=0d969a sample.383=0e868c sample.384=0c00f3 sample.385=065844 sample.386=04d6e3 sample.387=08adac sample.388=0eff1c sample.389=07886f sample.390=0e3537 sample.391=0b5cae sample.392=09a7eb sample.393=003240 sample.394=0607bd sample.395=04c0c5 sample.396=0c6774 sample.397=0c3ffb sample.398=0304f8 sample.399=0e058b sample.400=030fb7 sample.401=098f78 sample.402=0e5bd0 sample.403=0db9ca sample.404=06325d sample.405=0a65bc sample.406=000e1d sample.407=07647a sample.408=03293a sample.409=00ad8a sample.410=07a7de sample.411=0cae0d sample.412=03b33b sample.413=0bb82e sample.414=073fc7 sample.415=024311 sample.416=0f0df2 sample.417=05752f sample.418=0a70d2 sample.419=0fe33d sample.420=0ad9a5 sample.421=090c1a sample.422=054627 sample.423=09f9a4 sample.424=0e7217 sample.425=0119a9 sample.426=0f6ba0 sample.427=0e36bd sample.428=0073ed sample.429=06b515 sample.430=039445 sample.431=050c18 sample.432=093c2a sample.433=06757a sample.434=04b2dd sample.435=09ea53 sample.436=091743 sample.437=0e6d13 sample.438=064527 sample.439=0b6e41 sample.440=06b85a sample.441=05cfaa sample.442=08f512 sample.443=0ca480 sample.444=08db0a sample.445=0ec230 sample.446=0df536 sample.447=0567d7 sample.448=00908d sample.449=077d04 sample.450=0efa86 sample.451=0eb20e sample.452=001f4c sample.453=0f8e28 sample.454=07d589 sample.455=092c4e sample.456=0b23bc sample.457=04b662 sample.458=025c4d sample.459=0844ea sample.460=065e5d sample.461=03cde1 sample.462=0532aa sample.463=0f7040 sample.464=004d9b sample.465=034902 sample.466=0cc9e0 sample.467=0b3a05 sample.468=071c9a sample.469=04ee9c sample.470=075c19 sample.471=009c4f sample.472=0071d5 sample.473=0b8d6a sample.474=0944c0 sample.475=00c956 sample.476=046240 sample.477=057e2c sample.478=08512c sample.479=02c0ca sample.480=0dc7da sample.481=0f5e70 sample.482=0aac14 sample.483=09614f sample.484=0114d1 sample.485=0954c3 sample.486=093e5e sample.487=016e15 sample.488=0f323d sample.489=07663c sample.490=083d3f sample.491=0950ef sample.492=00f891 sample.493=02dffe sample.494=08c292 sample.495=0049a2 sample.496=046f04 sample.497=0ab913 sample.498=0f6519 sample.499=02973e sample.500=0a0112 sample.501=0590a5 sample.502=084344 sample.503=055fc4 sample.504=018e42 sample.505=077e49 sample.506=02c823 sample.507=07a375 sample.508=01db98 sample.509=0f4ef9 sample.510=00cbec sample.511=08710d sample.512=05462f sample.513=0381c4 sample.514=057454 sample.515=0ac49f sample.516=0b143d sample.517=049bf5 sample.518=00d126 sample.519=0da493 sample.520=011514 sample.521=07dd98 sample.522=0b161a sample.523=098b00 sample.524=06f1e4 sample.525=0cf343 sample.526=00f39a sample.527=023549 sample.528=0d0c5a sample.529=086b04 sample.530=0b6d04 sample.531=089e5b sample.532=0a6004 sample.533=0b2fc0 sample.534=0cb118 sample.535=0f25ca sample.536=0f1fba sample.537=0e89a5 sample.538=0be8f1 sample.539=053ad9 sample.540=079a1b sample.541=037a57 sample.542=04a4b0 sample.543=0fc66c sample.544=0107ab sample.545=0beaed sample.546=0a5622 sample.547=0360e2 sample.548=0d9602 sample.549=08ef89 sample.550=034965 sample.551=06a76a sample.552=0a4f6e sample.553=06aef2 sample.554=0c6a81 sample.555=05a04d sample.556=05d347 sample.557=033847 sample.558=08c177 sample.559=0a1923 sample.560=0285a8 sample.561=022e28 sample.562=04b083 sample.563=0b1a25 sample.564=068bf8 sample.565=0ee64b sample.566=08b4dc sample.567=0c5ed6 sample.568=07a7d3 sample.569=00654b sample.570=03e6b2 sample.571=08b7e5 sample.572=064b87 sample.573=05ea87 sample.574=049628 sample.575=01fe89 sample.576=0c84e6 sample.577=0ba60d sample.578=08e1bb sample.579=0b5732 sample.580=0a8418 sample.581=04243b sample.582=08f193 sample.583=0f376a sample.584=0d8269 sample.585=0fa056 sample.586=08770f sample.587=03e528 sample.588=08d99b sample.589=0471ec sample.590=08baaa sample.591=03a726 sample.592=0ee869 sample.593=048a03 sample.594=08ef28 sample.595=0b5ec3 sample.596=002406 sample.597=025c3f sample.598=0f7875 sample.599=07163d sample.600=013803 sample.601=0c8340 sample.602=0e95b3 sample.603=020d74 sample.604=07dd07 sample.605=01c89c sample.606=02c395 sample.607=0f71fa sample.608=0416c6 sample.609=03427e sample.610=0b4a6b sample.611=00876c sample.612=081290 sample.613=058c47 sample.614=033400 sample.615=07068a sample.616=0a330f sample.617=0e19fa sample.618=0d0dae sample.619=06f5da sample.620=05bf54 sample.621=0581b8 sample.622=061750 sample.623=0549c0 sample.624=0ac006 sample.625=05c417 sample.626=07104c sample.627=06bf47 sample.628=0d0483 sample.629=0d60f3 sample.630=07fb61 sample.631=024272 sample.632=04d77f sample.633=0799bc sample.634=0fe21a sample.635=0e2527 sample.636=011abe sample.637=07e31b sample.638=0c581d sample.639=0b4f8d sample.640=032b8a sample.641=02b5f2 sample.642=0bd14f sample.643=07b458 sample.644=06b5ff sample.645=02eeb3 sample.646=0e0e41 sample.647=074311 sample.648=0f1c7a sample.649=073d78 sample.650=075d91 sample.651=02f0e1 sample.652=0818ae sample.653=07613e sample.654=04693a sample.655=03e9fc sample.656=0ffae0 sample.657=02354f sample.658=0a4b73 sample.659=000580 sample.660=065d7e sample.661=04904a sample.662=0601d1 sample.663=06b137 sample.664=075575 sample.665=05b39f sample.666=086bfb sample.667=04942b sample.668=035c94 sample.669=0a579f sample.670=08060b sample.671=09ab34 sample.672=082f42 sample.673=0053d0 sample.674=090bfc sample.675=0cb9d4 sample.676=0d51fc sample.677=0a1497 sample.678=0309f6 sample.679=088566 sample.680=06a1a6 sample.681=049b6f sample.682=0df5c0 sample.683=08636d sample.684=04362c sample.685=0fbbe2 sample.686=02c33d sample.687=0ff2d8 sample.688=0e4dd1 sample.689=0d7ac9"}
+{"ts":"2026-10-14T09:14:43.921Z","level":"error","component":"exporter","op":"accept_batch","batch":"bench-93","sink":"cold","supported_format":"row-v2","received_format":"row-v3","status":415}
+{"ts":"2026-10-14T09:14:44.002Z","level":"info","component":"exporter","op":"commit","batch":"bench-93","rows_written":0,"state":"aborted"}
+{"ts":"2026-10-14T09:14:44.153Z","level":"info","component":"exporter","msg":"queued shard=aux index=158 depth=2"}
+{"ts":"2026-10-14T09:14:44.318Z","level":"info","component":"exporter","msg":"ready state=active sink_count=2"}
+{"ts":"2026-10-14T09:14:44.374Z","level":"info","component":"exporter","msg":"format cache size=16 hits=6"}
+{"ts":"2026-10-14T09:14:44.481Z","level":"debug","component":"exporter","msg":"queued shard=aux index=161 depth=1"}
+{"ts":"2026-10-14T09:14:44.909Z","level":"info","component":"exporter","msg":"ready state=active sink_count=2"}
+{"ts":"2026-10-14T09:14:45.674Z","level":"info","component":"exporter","msg":"format cache size=4 hits=7"}
+{"ts":"2026-10-14T09:14:45.836Z","level":"info","component":"exporter","msg":"queued shard=aux index=164 depth=1"}
+{"ts":"2026-10-14T09:14:45.943Z","level":"info","component":"exporter","msg":"ready state=active sink_count=2"}
+{"ts":"2026-10-14T09:14:46.064Z","level":"info","component":"exporter","msg":"format cache size=15 hits=0"}
+{"ts":"2026-10-14T09:14:46.263Z","level":"info","component":"exporter","msg":"queued shard=aux index=167 depth=1"}
+{"ts":"2026-10-14T09:14:46.464Z","level":"debug","component":"exporter","msg":"ready state=active sink_count=2"}
+{"ts":"2026-10-14T09:14:46.477Z","level":"info","component":"exporter","msg":"format cache size=7 hits=5"}
+{"ts":"2026-10-14T09:14:46.599Z","level":"info","component":"exporter","msg":"queued shard=aux index=170 depth=0"}
+{"ts":"2026-10-14T09:14:46.775Z","level":"info","component":"exporter","msg":"ready state=active sink_count=2"}
+{"ts":"2026-10-14T09:14:46.948Z","level":"info","component":"exporter","msg":"format cache size=7 hits=8"}
+{"ts":"2026-10-14T09:14:47.371Z","level":"info","component":"exporter","msg":"queued shard=aux index=173 depth=0"}
+{"ts":"2026-10-14T09:14:47.598Z","level":"info","component":"exporter","msg":"ready state=active sink_count=2"}
+{"ts":"2026-10-14T09:14:47.713Z","level":"debug","component":"exporter","msg":"format cache size=2 hits=6"}
+{"ts":"2026-10-14T09:14:47.845Z","level":"info","component":"exporter","msg":"queued shard=aux index=176 depth=1"}
+{"ts":"2026-10-14T09:14:47.982Z","level":"info","component":"exporter","msg":"ready state=active sink_count=2"}
+{"ts":"2026-10-14T09:14:48.699Z","level":"info","component":"exporter","msg":"format cache size=10 hits=1"}
+{"ts":"2026-10-14T09:14:48.843Z","level":"info","component":"exporter","msg":"queued shard=aux index=179 depth=2"}
+{"ts":"2026-10-14T09:14:49.011Z","level":"info","component":"exporter","msg":"ready state=active sink_count=2"}
+{"ts":"2026-10-14T09:14:49.134Z","level":"info","component":"exporter","msg":"format cache size=15 hits=3"}
+{"ts":"2026-10-14T09:14:49.148Z","level":"debug","component":"exporter","msg":"queued shard=aux index=182 depth=2"}
+{"ts":"2026-10-14T09:14:49.160Z","level":"info","component":"exporter","msg":"ready state=active sink_count=2"}
+{"ts":"2026-10-14T09:14:49.417Z","level":"info","component":"exporter","msg":"format cache size=7 hits=0"}
+{"ts":"2026-10-14T09:14:49.472Z","level":"info","component":"exporter","msg":"queued shard=aux index=185 depth=2"}
+{"ts":"2026-10-14T09:14:49.670Z","level":"info","component":"exporter","msg":"ready state=active sink_count=2"}
+{"ts":"2026-10-14T09:14:49.926Z","level":"info","component":"exporter","msg":"format cache size=14 hits=8"}
+{"ts":"2026-10-14T09:14:50.343Z","level":"info","component":"exporter","msg":"queued shard=aux index=188 depth=0"}
+{"ts":"2026-10-14T09:14:51.328Z","level":"debug","component":"exporter","msg":"ready state=active sink_count=2"}
+{"ts":"2026-10-14T09:14:51.465Z","level":"info","component":"exporter","msg":"format cache size=3 hits=3"}
+{"ts":"2026-10-14T09:14:52.175Z","level":"info","component":"exporter","msg":"queued shard=aux index=191 depth=1"}
+{"ts":"2026-10-14T09:14:52.661Z","level":"info","component":"exporter","msg":"ready state=active sink_count=2"}
+{"ts":"2026-10-14T09:14:53.034Z","level":"info","component":"exporter","msg":"format cache size=14 hits=2"}
+{"ts":"2026-10-14T09:14:53.090Z","level":"info","component":"exporter","msg":"queued shard=aux index=194 depth=1"}
+{"ts":"2026-10-14T09:14:53.299Z","level":"info","component":"exporter","msg":"ready state=active sink_count=2"}
+{"ts":"2026-10-14T09:14:53.434Z","level":"debug","component":"exporter","msg":"format cache size=0 hits=0"}
+{"ts":"2026-10-14T09:14:53.627Z","level":"info","component":"exporter","msg":"queued shard=aux index=197 depth=0"}
+{"ts":"2026-10-14T09:14:54.404Z","level":"info","component":"exporter","msg":"ready state=active sink_count=2"}
+{"ts":"2026-10-14T09:14:54.581Z","level":"info","component":"exporter","msg":"format cache size=12 hits=0"}
+{"ts":"2026-10-14T09:14:55.082Z","level":"info","component":"exporter","msg":"queued shard=aux index=200 depth=2"}
+{"ts":"2026-10-14T09:14:55.132Z","level":"info","component":"exporter","msg":"ready state=active sink_count=2"}
+{"ts":"2026-10-14T09:14:55.282Z","level":"info","component":"exporter","msg":"format cache size=13 hits=8"}
+{"ts":"2026-10-14T09:14:55.331Z","level":"debug","component":"exporter","msg":"queued shard=aux index=203 depth=1"}
+{"ts":"2026-10-14T09:14:55.346Z","level":"info","component":"exporter","msg":"ready state=active sink_count=2"}
+{"ts":"2026-10-14T09:14:55.360Z","level":"info","component":"exporter","msg":"format cache size=16 hits=6"}
+{"ts":"2026-10-14T09:14:56.309Z","level":"info","component":"exporter","msg":"queued shard=aux index=206 depth=2"}
+{"ts":"2026-10-14T09:14:56.435Z","level":"info","component":"exporter","msg":"ready state=active sink_count=2"}
+{"ts":"2026-10-14T09:14:56.927Z","level":"info","component":"exporter","msg":"format cache size=14 hits=0"}
+{"ts":"2026-10-14T09:14:56.942Z","level":"info","component":"exporter","msg":"queued shard=aux index=209 depth=0"}
+{"ts":"2026-10-14T09:14:56.955Z","level":"debug","component":"exporter","msg":"ready state=active sink_count=2"}
+{"ts":"2026-10-14T09:14:57.940Z","level":"info","component":"exporter","msg":"format cache size=7 hits=5"}
+{"ts":"2026-10-14T09:14:58.046Z","level":"info","component":"exporter","msg":"queued shard=aux index=212 depth=2"}
+{"ts":"2026-10-14T09:14:58.252Z","level":"info","component":"exporter","msg":"ready state=active sink_count=2"}
+{"ts":"2026-10-14T09:14:58.457Z","level":"info","component":"exporter","msg":"format cache size=17 hits=0"}
+{"ts":"2026-10-14T09:14:58.471Z","level":"info","component":"exporter","msg":"queued shard=aux index=215 depth=0"}
+{"ts":"2026-10-14T09:14:58.484Z","level":"info","component":"exporter","msg":"ready state=active sink_count=2"}
+{"ts":"2026-10-14T09:14:58.877Z","level":"debug","component":"exporter","msg":"format cache size=4 hits=5"}
+{"ts":"2026-10-14T09:14:59.122Z","level":"info","component":"exporter","msg":"queued shard=aux index=218 depth=1"}
+{"ts":"2026-10-14T09:14:59.138Z","level":"info","component":"exporter","msg":"ready state=active sink_count=2"}
+{"ts":"2026-10-14T09:14:59.362Z","level":"info","component":"exporter","msg":"format cache size=4 hits=5"}
+{"ts":"2026-10-14T09:14:59.377Z","level":"info","component":"exporter","msg":"queued shard=aux index=221 depth=2"}
+{"ts":"2026-10-14T09:14:59.439Z","level":"info","component":"exporter","msg":"ready state=active sink_count=2"}
+{"ts":"2026-10-14T09:14:59.647Z","level":"info","component":"exporter","msg":"format cache size=8 hits=1"}
+{"ts":"2026-10-14T09:15:00.548Z","level":"debug","component":"exporter","msg":"queued shard=aux index=224 depth=0"}
+{"ts":"2026-10-14T09:15:00.604Z","level":"info","component":"exporter","msg":"ready state=active sink_count=2"}
+{"ts":"2026-10-14T09:15:00.760Z","level":"info","component":"exporter","msg":"format cache size=8 hits=6"}
+{"ts":"2026-10-14T09:15:00.955Z","level":"info","component":"exporter","msg":"queued shard=aux index=227 depth=0"}
+{"ts":"2026-10-14T09:15:01.149Z","level":"info","component":"exporter","msg":"ready state=active sink_count=2"}
+{"ts":"2026-10-14T09:15:01.199Z","level":"info","component":"exporter","msg":"format cache size=14 hits=8"}
+{"ts":"2026-10-14T09:15:01.356Z","level":"info","component":"exporter","msg":"queued shard=aux index=230 depth=2"}
+{"ts":"2026-10-14T09:15:01.765Z","level":"debug","component":"exporter","msg":"ready state=active sink_count=2"}
+{"ts":"2026-10-14T09:15:01.949Z","level":"info","component":"exporter","msg":"format cache size=8 hits=2"}
+{"ts":"2026-10-14T09:15:02.090Z","level":"info","component":"exporter","msg":"queued shard=aux index=233 depth=1"}
+{"ts":"2026-10-14T09:15:02.136Z","level":"info","component":"exporter","msg":"ready state=active sink_count=2"}
+{"ts":"2026-10-14T09:15:02.297Z","level":"info","component":"exporter","msg":"format cache size=8 hits=5"}
+{"ts":"2026-10-14T09:15:02.722Z","level":"info","component":"exporter","msg":"queued shard=aux index=236 depth=1"}
+{"ts":"2026-10-14T09:15:02.855Z","level":"info","component":"exporter","msg":"ready state=active sink_count=2"}
+{"ts":"2026-10-14T09:15:02.909Z","level":"debug","component":"exporter","msg":"format cache size=10 hits=6"}
+{"ts":"2026-10-14T09:15:03.773Z","level":"info","component":"exporter","msg":"queued shard=aux index=239 depth=0"}
+{"ts":"2026-10-14T09:15:04.158Z","level":"info","component":"exporter","msg":"ready state=active sink_count=2"}
+{"ts":"2026-10-14T09:15:04.302Z","level":"info","component":"exporter","msg":"format cache size=15 hits=0"}
+{"ts":"2026-10-14T09:15:04.446Z","level":"info","component":"exporter","msg":"queued shard=aux index=242 depth=2"}
+{"ts":"2026-10-14T09:15:04.504Z","level":"info","component":"exporter","msg":"ready state=active sink_count=2"}
+{"ts":"2026-10-14T09:15:04.888Z","level":"info","component":"exporter","msg":"format cache size=13 hits=7"}
+{"ts":"2026-10-14T09:15:05.702Z","level":"debug","component":"exporter","msg":"queued shard=aux index=245 depth=1"}
+{"ts":"2026-10-14T09:15:05.906Z","level":"info","component":"exporter","msg":"ready state=active sink_count=2"}
+{"ts":"2026-10-14T09:15:06.171Z","level":"info","component":"exporter","msg":"format cache size=18 hits=5"}
+{"ts":"2026-10-14T09:15:06.216Z","level":"info","component":"exporter","msg":"queued shard=aux index=248 depth=1"}
+{"ts":"2026-10-14T09:15:06.477Z","level":"info","component":"exporter","msg":"ready state=active sink_count=2"}
+{"ts":"2026-10-14T09:15:06.600Z","level":"info","component":"exporter","msg":"format cache size=13 hits=8"}
+{"ts":"2026-10-14T09:15:06.807Z","level":"info","component":"exporter","msg":"queued shard=aux index=251 depth=1"}
+{"ts":"2026-10-14T09:15:06.858Z","level":"debug","component":"exporter","msg":"ready state=active sink_count=2"}
+{"ts":"2026-10-14T09:15:07.073Z","level":"info","component":"exporter","msg":"format cache size=10 hits=3"}
+{"ts":"2026-10-14T09:15:07.218Z","level":"info","component":"exporter","msg":"queued shard=aux index=254 depth=2"}
+{"ts":"2026-10-14T09:15:07.648Z","level":"info","component":"exporter","msg":"ready state=active sink_count=2"}
+{"ts":"2026-10-14T09:15:07.662Z","level":"info","component":"exporter","msg":"format cache size=0 hits=4"}
+{"ts":"2026-10-14T09:15:08.121Z","level":"info","component":"exporter","msg":"queued shard=aux index=257 depth=0"}
+{"ts":"2026-10-14T09:15:08.229Z","level":"info","component":"exporter","msg":"ready state=active sink_count=2"}
+{"ts":"2026-10-14T09:15:08.275Z","level":"debug","component":"exporter","msg":"format cache size=6 hits=7"}
+{"ts":"2026-10-14T09:15:08.414Z","level":"info","component":"exporter","msg":"queued shard=aux index=260 depth=0"}
+{"ts":"2026-10-14T09:15:08.578Z","level":"info","component":"exporter","msg":"ready state=active sink_count=2"}
+{"ts":"2026-10-14T09:15:08.960Z","level":"info","component":"exporter","msg":"format cache size=8 hits=6"}
+{"ts":"2026-10-14T09:15:09.392Z","level":"info","component":"exporter","msg":"queued shard=aux index=263 depth=0"}
+{"ts":"2026-10-14T09:15:09.836Z","level":"info","component":"exporter","msg":"ready state=active sink_count=2"}
+{"ts":"2026-10-14T09:15:10.095Z","level":"info","component":"exporter","msg":"format cache size=14 hits=6"}
+{"ts":"2026-10-14T09:15:10.227Z","level":"debug","component":"exporter","msg":"queued shard=aux index=266 depth=0"}
+{"ts":"2026-10-14T09:15:10.383Z","level":"info","component":"exporter","msg":"ready state=active sink_count=2"}
+{"ts":"2026-10-14T09:15:10.541Z","level":"info","component":"exporter","msg":"format cache size=2 hits=6"}
+{"ts":"2026-10-14T09:15:10.596Z","level":"info","component":"exporter","msg":"queued shard=aux index=269 depth=2"}
+{"ts":"2026-10-14T09:15:11.507Z","level":"info","component":"exporter","msg":"ready state=active sink_count=2"}
+{"ts":"2026-10-14T09:15:11.684Z","level":"info","component":"exporter","msg":"format cache size=7 hits=1"}
+{"ts":"2026-10-14T09:15:11.910Z","level":"info","component":"exporter","msg":"queued shard=aux index=272 depth=1"}
+{"ts":"2026-10-14T09:15:11.924Z","level":"debug","component":"exporter","msg":"ready state=active sink_count=2"}
+{"ts":"2026-10-14T09:15:12.164Z","level":"info","component":"exporter","msg":"format cache size=6 hits=2"}
+{"ts":"2026-10-14T09:15:12.177Z","level":"info","component":"exporter","msg":"queued shard=aux index=275 depth=0"}
+{"ts":"2026-10-14T09:15:12.387Z","level":"info","component":"exporter","msg":"ready state=active sink_count=2"}
+{"ts":"2026-10-14T09:15:13.231Z","level":"info","component":"exporter","msg":"format cache size=11 hits=3"}
+{"ts":"2026-10-14T09:15:13.291Z","level":"info","component":"exporter","msg":"queued shard=aux index=278 depth=1"}
+{"ts":"2026-10-14T09:15:13.446Z","level":"info","component":"exporter","msg":"ready state=active sink_count=2"}
+{"ts":"2026-10-14T09:15:13.586Z","level":"debug","component":"exporter","msg":"format cache size=3 hits=0"}
+{"ts":"2026-10-14T09:15:13.691Z","level":"info","component":"exporter","msg":"queued shard=aux index=281 depth=2"}
+{"ts":"2026-10-14T09:15:14.135Z","level":"info","component":"exporter","msg":"ready state=active sink_count=2"}
+{"ts":"2026-10-14T09:15:14.147Z","level":"info","component":"exporter","msg":"format cache size=1 hits=6"}
+{"ts":"2026-10-14T09:15:15.088Z","level":"info","component":"exporter","msg":"queued shard=aux index=284 depth=1"}
+{"ts":"2026-10-14T09:15:15.202Z","level":"info","component":"exporter","msg":"ready state=active sink_count=2"}
+{"ts":"2026-10-14T09:15:16.105Z","level":"info","component":"exporter","msg":"format cache size=3 hits=5"}
+{"ts":"2026-10-14T09:15:16.336Z","level":"debug","component":"exporter","msg":"queued shard=aux index=287 depth=0"}
+{"ts":"2026-10-14T09:15:16.351Z","level":"info","component":"exporter","msg":"ready state=active sink_count=2"}
+{"ts":"2026-10-14T09:15:17.107Z","level":"info","component":"exporter","msg":"format cache size=14 hits=7"}
+{"ts":"2026-10-14T09:15:17.274Z","level":"info","component":"exporter","msg":"queued shard=aux index=290 depth=1"}
+{"ts":"2026-10-14T09:15:17.431Z","level":"info","component":"exporter","msg":"ready state=active sink_count=2"}
+{"ts":"2026-10-14T09:15:18.351Z","level":"info","component":"exporter","msg":"format cache size=11 hits=0"}
+{"ts":"2026-10-14T09:15:19.295Z","level":"info","component":"exporter","msg":"queued shard=aux index=293 depth=2"}
+{"ts":"2026-10-14T09:15:20.289Z","level":"debug","component":"exporter","msg":"ready state=active sink_count=2"}
+{"ts":"2026-10-14T09:15:20.428Z","level":"info","component":"exporter","msg":"format cache size=9 hits=2"}
+{"ts":"2026-10-14T09:15:20.929Z","level":"info","component":"exporter","msg":"queued shard=aux index=296 depth=2"}
+{"ts":"2026-10-14T09:15:21.061Z","level":"info","component":"exporter","msg":"ready state=active sink_count=2"}
+{"ts":"2026-10-14T09:15:21.074Z","level":"info","component":"exporter","msg":"format cache size=13 hits=5"}
+{"ts":"2026-10-14T09:15:21.971Z","level":"info","component":"exporter","msg":"queued shard=aux index=299 depth=1"}
+{"ts":"2026-10-14T09:15:22.837Z","level":"info","component":"exporter","msg":"ready state=active sink_count=2"}
+{"ts":"2026-10-14T09:15:22.852Z","level":"debug","component":"exporter","msg":"format cache size=1 hits=6"}
+{"ts":"2026-10-14T09:15:23.317Z","level":"info","component":"exporter","msg":"queued shard=aux index=302 depth=0"}
+{"ts":"2026-10-14T09:15:23.446Z","level":"info","component":"exporter","msg":"ready state=active sink_count=2"}
+{"ts":"2026-10-14T09:15:24.202Z","level":"info","component":"exporter","msg":"format cache size=2 hits=2"}
+{"ts":"2026-10-14T09:15:24.977Z","level":"info","component":"exporter","msg":"queued shard=aux index=305 depth=0"}
+{"ts":"2026-10-14T09:15:25.388Z","level":"info","component":"exporter","msg":"ready state=active sink_count=2"}
+{"ts":"2026-10-14T09:15:25.532Z","level":"info","component":"exporter","msg":"format cache size=1 hits=8"}
+{"ts":"2026-10-14T09:15:25.546Z","level":"debug","component":"exporter","msg":"queued shard=aux index=308 depth=1"}
+{"ts":"2026-10-14T09:15:25.803Z","level":"info","component":"exporter","msg":"ready state=active sink_count=2"}
+{"ts":"2026-10-14T09:15:26.000Z","level":"info","component":"exporter","msg":"format cache size=16 hits=6"}
+{"ts":"2026-10-14T09:15:26.014Z","level":"info","component":"exporter","msg":"queued shard=aux index=311 depth=2"}
+{"ts":"2026-10-14T09:15:26.494Z","level":"info","component":"exporter","msg":"ready state=active sink_count=2"}
+{"ts":"2026-10-14T09:15:26.509Z","level":"info","component":"exporter","msg":"format cache size=6 hits=2"}
+{"ts":"2026-10-14T09:15:26.554Z","level":"info","component":"exporter","msg":"queued shard=aux index=314 depth=0"}
+{"ts":"2026-10-14T09:15:26.665Z","level":"debug","component":"exporter","msg":"ready state=active sink_count=2"}
+{"ts":"2026-10-14T09:15:27.396Z","level":"info","component":"exporter","msg":"format cache size=14 hits=3"}
+{"ts":"2026-10-14T09:15:27.410Z","level":"info","component":"exporter","msg":"queued shard=aux index=317 depth=1"}
+{"ts":"2026-10-14T09:15:27.459Z","level":"info","component":"exporter","msg":"ready state=active sink_count=2"}
+{"ts":"2026-10-14T09:15:27.692Z","level":"info","component":"exporter","msg":"format cache size=4 hits=5"}
+{"ts":"2026-10-14T09:15:27.708Z","level":"info","component":"exporter","msg":"queued shard=aux index=320 depth=2"}
+{"ts":"2026-10-14T09:15:27.723Z","level":"info","component":"exporter","msg":"ready state=active sink_count=2"}
+{"ts":"2026-10-14T09:15:28.151Z","level":"debug","component":"exporter","msg":"format cache size=10 hits=5"}
+{"ts":"2026-10-14T09:15:29.011Z","level":"info","component":"exporter","msg":"queued shard=aux index=323 depth=2"}
+{"ts":"2026-10-14T09:15:29.061Z","level":"info","component":"exporter","msg":"ready state=active sink_count=2"}
+{"ts":"2026-10-14T09:15:29.989Z","level":"info","component":"exporter","msg":"format cache size=11 hits=7"}
+{"ts":"2026-10-14T09:15:30.985Z","level":"info","component":"exporter","msg":"queued shard=aux index=326 depth=2"}
+{"ts":"2026-10-14T09:15:31.782Z","level":"info","component":"exporter","msg":"ready state=active sink_count=2"}
+{"ts":"2026-10-14T09:15:31.956Z","level":"info","component":"exporter","msg":"format cache size=2 hits=8"}
+{"ts":"2026-10-14T09:15:31.972Z","level":"debug","component":"exporter","msg":"queued shard=aux index=329 depth=2"}
+{"ts":"2026-10-14T09:15:32.818Z","level":"info","component":"exporter","msg":"ready state=active sink_count=2"}
+{"ts":"2026-10-14T09:15:33.016Z","level":"info","component":"exporter","msg":"format cache size=8 hits=8"}
+{"ts":"2026-10-14T09:15:33.149Z","level":"info","component":"exporter","msg":"queued shard=aux index=332 depth=1"}
+{"ts":"2026-10-14T09:15:33.954Z","level":"info","component":"exporter","msg":"ready state=active sink_count=2"}
+{"ts":"2026-10-14T09:15:34.109Z","level":"info","component":"exporter","msg":"format cache size=16 hits=8"}
+{"ts":"2026-10-14T09:15:34.558Z","level":"info","component":"exporter","msg":"queued shard=aux index=335 depth=1"}
+{"ts":"2026-10-14T09:15:34.742Z","level":"debug","component":"exporter","msg":"ready state=active sink_count=2"}
+{"ts":"2026-10-14T09:15:34.918Z","level":"info","component":"exporter","msg":"format cache size=9 hits=5"}
+{"ts":"2026-10-14T09:15:35.807Z","level":"info","component":"exporter","msg":"queued shard=aux index=338 depth=0"}
+{"ts":"2026-10-14T09:15:35.866Z","level":"info","component":"exporter","msg":"ready state=active sink_count=2"}

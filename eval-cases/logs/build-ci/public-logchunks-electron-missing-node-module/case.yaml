@@ -1,0 +1,25 @@
+# LogChunks by Carolin Brandt, Annibale Panichella and Moritz Beller, CC BY 4.0.
+# License terms at https://creativecommons.org/licenses/by/4.0/
+# The slice removes terminal control sequences and trailing whitespace, normalizes line endings to LF,
+# and replaces package-download endpoint addresses with a placeholder.
+# The XML label for build 303144317 in LogChunks/build-failure-reason/C++/electron@electron.xml
+# marks source lines 540–550. Evidence lines 121 and 126 map to source lines 540 and 545.
+domain: build-ci
+summary: A Node.js dependency fails to load during Electron's CI build.
+realLog: false
+tier: realistic
+provenance: public-dataset
+scenarioTags: [public-labelled, distractor]
+datasetSource:
+  name: LogChunks
+  version: "1.0.0"
+  url: https://zenodo.org/records/3632351
+  license: CC-BY-4.0
+  file: LogChunks.zip/LogChunks/logs/C++/electron@electron/failed/303144317.log
+  lines: [420, 649]
+rootCauseCategory: software-fault
+rootCausePoints:
+  - The Node.js loader cannot resolve fast-deep-equal while loading AJV's resolver in Electron's dependency tree.
+keyEvidenceLines: [121, 126]
+expectedActions:
+  - Check the installed dependency tree and restore the intended AJV dependencies from the build's pinned dependency configuration.

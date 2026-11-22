@@ -21,6 +21,7 @@ import type { ObjectStore } from "./objectStore";
 import type { LogAnalysisQueue } from "./logAnalysisQueue";
 import {
   archiveLogRecord,
+  confirmLogEvalCaseDraftExport,
   createLogFromFile,
   getLogRecord,
   getLogLineRange,
@@ -169,6 +170,12 @@ export function registerLogRoutes(
   router.get("/api/v1/logs/:logId/analysis-case-prefill", async (request) => {
     const auth = await getScopedAuth(options.getCurrentAuthContext, request, options.db);
     return { status: 200, body: await getAnalysisCasePrefill(requireDb(options.db), auth, request.params.logId) };
+  });
+  router.post("/api/v1/logs/:logId/reports/:reportId/eval-case-draft", async (request) => {
+    const auth = await getScopedAuth(options.getCurrentAuthContext, request, options.db);
+    await confirmLogEvalCaseDraftExport(requireDb(options.db), auth, request.params.logId, request.params.reportId,
+      { requestId: request.requestId });
+    return { status: 200, body: { ok: true } };
   });
   router.get("/api/v1/log-skills/:skillId/analysis-cases", async (request) => {
     const auth = await getScopedAuth(options.getCurrentAuthContext, request, options.db);

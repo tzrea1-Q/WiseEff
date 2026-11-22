@@ -1,0 +1,17 @@
+domain: service-jsonl
+summary: "Snapshot publication rotates active manifests and verifies each checksum."
+realLog: false
+tier: realistic
+provenance: authored
+scenarioTags: [no-fault, generic-analysis]
+rootCauseCategory: no-fault
+analysisQuestion: "Did manifest rotation stop publishing new snapshots?"
+expectRefusal: true
+realismChecklist:
+  lineFormat: "Structured service JSON Lines with ISO 8601 UTC timestamps at millisecond precision."
+  noiseRatio: "329 of 329 lines are routine traffic (100.0%). Incident, symptom and distraction lines are excluded from the numerator."
+  distractors: "No-fault exemption. All manifest results are successful."
+  rootCauseDiscoverability: "Generation changes and checksum-verified commits over the whole span are stronger evidence than one success record."
+  timeline: "UTC timestamps and generation IDs both advance throughout the capture."
+  sensitiveData: "All hosts, processes, samples and identifiers were authored for the fixture. No personal data, real serial numbers or credentials."
+  annotationReview: "Checked that generations are consecutive and every commit attests checksum verification. The question is limited to manifest publication. Independent review (2026-11-18): ok. All 329 manifest publishes commit with verified checksums, with consecutive generations 450–778."

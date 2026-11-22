@@ -25,6 +25,13 @@ export type LogAnalysisToolContext = {
   prefilter: PrefilterFindings;
   /** Bound to the log's organization + domain link set; absent = retrieval unavailable (offline eval). */
   searchDomainKnowledge?: (query: string) => Promise<LogDomainKnowledgeSearchResult>;
+  searchPastConclusions?: (params: {
+    query: string; offset: number; limit: number;
+  }) => Promise<{
+    retrievalMode: LogDomainKnowledgeSearchResult["retrievalMode"];
+    items: { runId: string; createdAt: string; summary: string; rootCauseCategory?: string; evidenceTemplates: string[] }[];
+    hasMore: boolean;
+  }>;
   /** Bound to the log's organization + relatedParameterId; absent = no related parameter or no database. */
   loadRelatedParameterContext?: () => Promise<RelatedParameterContext | null>;
 };
@@ -56,6 +63,6 @@ export type RelatedParameterContext = {
   }>;
 };
 
-export type LogAnalysisToolSuccess = { ok: true; result: unknown };
+export type LogAnalysisToolSuccess = { ok: true; result: unknown; historicalRunIds?: string[] };
 export type LogAnalysisToolFailure = { ok: false; error: string };
 export type LogAnalysisToolOutcome = LogAnalysisToolSuccess | LogAnalysisToolFailure;

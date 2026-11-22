@@ -1,0 +1,27 @@
+# RCAEval by Luan Pham (RMIT University), CC BY 4.0.
+# License terms at https://creativecommons.org/licenses/by/4.0/
+# Endpoint, identity and payment fields are redacted in place. CSV line endings and trailing whitespace are normalized.
+# RE3-SS/front-end_f2/1 labels front-end with F2 (missing parameters). Its root_cause.txt
+# matches source line 46278, local line 188, by timestamp 1732249469108847787.
+# Local lines 185 and 187 map to source lines 46275 and 46277. They localize the failing
+# request path. The upstream label supplies the fault class, and the log leaves the missing argument unspecified.
+domain: microservice-logs
+summary: Sock Shop's front-end fails an add-to-cart request after carts receives the item.
+realLog: false
+tier: realistic
+provenance: public-dataset
+scenarioTags: [public-labelled, distractor]
+datasetSource:
+  name: RCAEval RE3-SS (Sock Shop)
+  version: zenodo.14590730
+  url: https://zenodo.org/records/14590730
+  license: CC-BY-4.0
+  file: RE3-SS.zip/RE3-SS/front-end_f2/1/logs.csv
+  lines: [46091, 46450]
+rootCauseCategory: software-fault
+rootCausePoints:
+  - The upstream missing-parameter fault affects the front-end add-to-cart path. The front-end returns 500 after forwarding the request and carts logs the item addition.
+  - The excerpt localizes the failure to that path and leaves the exact missing argument undetermined.
+keyEvidenceLines: [185, 187, 188]
+expectedActions:
+  - Compare argument propagation across a successful and failing front-end add-to-cart request, including the downstream response.

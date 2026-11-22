@@ -1,0 +1,344 @@
+[  842.793083] kernel: clk: enable bus monitor gate=6
+[  843.049223] kernel: thermal thermal_zone0: temperature=43120
+[  843.835055] kernel: pinctrl: group state default applied
+[  844.089075] kernel: mmc0: cmd=13 status=0x900
+[  844.305805] kernel: clk: enable bus monitor gate=4
+[  844.521602] kernel: thermal thermal_zone0: temperature=43170
+[  844.579172] kernel: pinctrl: group state default applied
+[  845.435717] kernel: mmc0: cmd=13 status=0x900
+[  846.202035] kernel: clk: enable bus monitor gate=2
+[  846.217907] kernel: thermal thermal_zone0: temperature=43110
+[  846.390648] kernel: pinctrl: group state default applied
+[  847.137625] kernel: mmc0: cmd=13 status=0x900
+[  847.333417] kernel: clk: enable bus monitor gate=6
+[  847.510094] kernel: thermal thermal_zone0: temperature=43150
+[  847.567488] kernel: pinctrl: group state default applied
+[  847.584582] kernel: mmc0: cmd=13 status=0x900
+[  848.535668] kernel: clk: enable bus monitor gate=8
+[  848.799766] kernel: thermal thermal_zone0: temperature=4340
+[  849.581567] kernel: pinctrl: group state default applied
+[  849.595332] kernel: mmc0: cmd=13 status=0x900
+[  849.714854] kernel: clk: enable bus monitor gate=1
+[  849.729437] kernel: thermal thermal_zone0: temperature=4340
+[  850.128823] kernel: pinctrl: group state default applied
+[  850.299413] kernel: mmc0: cmd=13 status=0x900
+[  850.491088] kernel: clk: enable bus monitor gate=1
+[  850.684339] kernel: thermal thermal_zone0: temperature=43140
+[  850.940245] kernel: pinctrl: group state default applied
+[  850.993954] kernel: mmc0: cmd=13 status=0x900
+[  851.975896] kernel: clk: enable bus monitor gate=7
+[  852.227565] kernel: thermal thermal_zone0: temperature=43110
+[  853.162582] kernel: pinctrl: group state default applied
+[  853.665874] kernel: mmc0: cmd=13 status=0x900
+[  853.802405] kernel: clk: enable bus monitor gate=3
+[  853.817826] kernel: thermal thermal_zone0: temperature=43150
+[  854.847495] kernel: pinctrl: group state default applied
+[  855.063318] kernel: mmc0: cmd=13 status=0x900
+[  855.078868] kernel: clk: enable bus monitor gate=6
+[  855.095520] kernel: thermal thermal_zone0: temperature=43110
+[  855.109843] kernel: pinctrl: group state default applied
+[  855.648369] kernel: mmc0: cmd=13 status=0x900
+[  855.849592] kernel: clk: enable bus monitor gate=7
+[  856.101595] kernel: thermal thermal_zone0: temperature=4360
+[  856.148698] kernel: pinctrl: group state default applied
+[  856.192000] usb 1-1: device descriptor read/64, error -71
+[  856.297678] kernel: mmc0: cmd=13 status=0x900
+[  856.479000] usb 1-1: new high-speed USB device number 3 using ehci-platform
+[  857.100565] kernel: clk: enable bus monitor gate=6
+[  857.211701] kernel: thermal thermal_zone0: temperature=43120
+[  857.224393] kernel: pinctrl: group state default applied
+[  857.405611] kernel: mmc0: cmd=13 status=0x900
+[  857.467381] kernel: clk: enable bus monitor gate=8
+[  857.660428] kernel: thermal thermal_zone0: temperature=43170
+[  858.118785] kernel: pinctrl: group state default applied
+[  858.338502] kernel: mmc0: cmd=13 status=0x900
+[  858.400378] kernel: clk: enable bus monitor gate=6
+[  859.377629] kernel: thermal thermal_zone0: temperature=4320
+[  859.628338] kernel: pinctrl: group state default applied
+[  859.736811] kernel: mmc0: cmd=13 status=0x900
+[  859.884169] kernel: clk: enable bus monitor gate=4
+[  859.899475] kernel: thermal thermal_zone0: temperature=4370
+[  860.376112] kernel: pinctrl: group state default applied
+[  860.427018] kernel: mmc0: cmd=13 status=0x900
+[  860.630503] kernel: clk: enable bus monitor gate=6
+[  860.691644] kernel: thermal thermal_zone0: temperature=4320
+[  860.883506] kernel: pinctrl: group state default applied
+[  861.139825] kernel: mmc0: cmd=13 status=0x900
+[  861.343836] kernel: clk: enable bus monitor gate=3
+[  861.555113] kernel: thermal thermal_zone0: temperature=4370
+[  861.601311] kernel: pinctrl: group state default applied
+[  861.767423] kernel: mmc0: cmd=13 status=0x900
+[  862.505394] kernel: clk: enable bus monitor gate=6
+[  862.564746] kernel: thermal thermal_zone0: temperature=4350
+[  862.623046] kernel: pinctrl: group state default applied
+[  862.670801] kernel: mmc0: cmd=13 status=0x900
+[  862.684424] kernel: clk: enable bus monitor gate=1
+[  862.862412] kernel: thermal thermal_zone0: temperature=43120
+[  863.326043] kernel: pinctrl: group state default applied
+[  863.516342] kernel: mmc0: cmd=13 status=0x900
+[  863.700597] kernel: clk: enable bus monitor gate=0
+[  864.237929] kernel: thermal thermal_zone0: temperature=43140
+[  864.632425] kernel: pinctrl: group state default applied
+[  864.645781] kernel: mmc0: cmd=13 status=0x900
+[  864.661985] kernel: clk: enable bus monitor gate=6
+[  864.677109] kernel: thermal thermal_zone0: temperature=4380
+[  864.818781] kernel: pinctrl: group state default applied
+[  864.876173] kernel: mmc0: cmd=13 status=0x900
+[  865.141709] kernel: clk: enable bus monitor gate=8
+[  865.354000] kernel: thermal thermal_zone0: temperature=4310
+[  865.559979] kernel: pinctrl: group state default applied
+[  865.708335] kernel: mmc0: cmd=13 status=0x900
+[  865.840562] kernel: clk: enable bus monitor gate=2
+[  866.064787] kernel: thermal thermal_zone0: temperature=4300
+[  866.081446] kernel: pinctrl: group state default applied
+[  866.203860] kernel: mmc0: cmd=13 status=0x900
+[  866.481314] kernel: clk: enable bus monitor gate=4
+[  867.424012] kernel: thermal thermal_zone0: temperature=4350
+[  867.480430] kernel: pinctrl: group state default applied
+[  867.494871] kernel: mmc0: cmd=13 status=0x900
+[  867.659546] kernel: clk: enable bus monitor gate=7
+[  867.673752] kernel: thermal thermal_zone0: temperature=43100
+[  867.945016] kernel: pinctrl: group state default applied
+[  867.958723] kernel: mmc0: cmd=13 status=0x900
+[  868.956840] kernel: clk: enable bus monitor gate=7
+[  869.365815] kernel: thermal thermal_zone0: temperature=43110
+[  869.380149] kernel: pinctrl: group state default applied
+[  869.394345] kernel: mmc0: cmd=13 status=0x900
+[  869.408128] kernel: clk: enable bus monitor gate=0
+[  869.900723] kernel: thermal thermal_zone0: temperature=43150
+[  870.732355] kernel: pinctrl: group state default applied
+[  870.906897] kernel: mmc0: cmd=13 status=0x900
+[  871.146396] kernel: clk: enable bus monitor gate=1
+[  871.267570] kernel: thermal thermal_zone0: temperature=43110
+[  871.793978] kernel: pinctrl: group state default applied
+[  871.940060] kernel: mmc0: cmd=13 status=0x900
+[  872.146906] kernel: clk: enable bus monitor gate=2
+[  872.333917] kernel: thermal thermal_zone0: temperature=43150
+[  872.445665] kernel: pinctrl: group state default applied
+[  872.604737] kernel: mmc0: cmd=13 status=0x900
+[  873.367180] kernel: clk: enable bus monitor gate=4
+[  873.573606] kernel: thermal thermal_zone0: temperature=43120
+[  873.799411] kernel: pinctrl: group state default applied
+[  873.814986] kernel: mmc0: cmd=13 status=0x900
+[  874.018373] kernel: clk: enable bus monitor gate=8
+[  874.150503] kernel: thermal thermal_zone0: temperature=43160
+[  874.213722] kernel: pinctrl: group state default applied
+[  874.471446] kernel: mmc0: cmd=13 status=0x900
+[  874.719215] kernel: clk: enable bus monitor gate=1
+[  875.488203] kernel: thermal thermal_zone0: temperature=43170
+[  875.503353] kernel: pinctrl: group state default applied
+[  875.691762] kernel: mmc0: cmd=13 status=0x900
+[  875.704557] kernel: clk: enable bus monitor gate=2
+[  875.717573] kernel: thermal thermal_zone0: temperature=4380
+[  876.147952] kernel: pinctrl: group state default applied
+[  876.588873] kernel: mmc0: cmd=13 status=0x900
+[  877.576006] kernel: clk: enable bus monitor gate=4
+[  877.590193] kernel: thermal thermal_zone0: temperature=4380
+[  878.103639] kernel: pinctrl: group state default applied
+[  878.871141] kernel: mmc0: cmd=13 status=0x900
+[  878.886365] kernel: clk: enable bus monitor gate=0
+[  878.941236] kernel: thermal thermal_zone0: temperature=43110
+[  879.148266] kernel: pinctrl: group state default applied
+[  879.271151] kernel: mmc0: cmd=13 status=0x900
+[  880.291074] kernel: clk: enable bus monitor gate=4
+[  880.472277] kernel: thermal thermal_zone0: temperature=4310
+[  880.669285] kernel: pinctrl: group state default applied
+[  880.948126] kernel: mmc0: cmd=13 status=0x900
+[  881.150552] kernel: clk: enable bus monitor gate=7
+[  882.046906] kernel: thermal thermal_zone0: temperature=4340
+[  882.522105] kernel: pinctrl: group state default applied
+[  882.539326] kernel: mmc0: cmd=13 status=0x900
+[  883.481244] kernel: clk: enable bus monitor gate=1
+[  883.757696] kernel: thermal thermal_zone0: temperature=43180
+[  883.885703] kernel: pinctrl: group state default applied
+[  883.932127] kernel: mmc0: cmd=13 status=0x900
+[  884.797254] kernel: clk: enable bus monitor gate=4
+[  884.815000] pwm 20c0000.pwm: registered pwmchip2, npwm=4
+[  884.912485] kernel: thermal thermal_zone0: temperature=43160
+[  885.097000] OF: /soc/pwm@20c0000: #pwm-cells = 3
+[  885.102000] OF: /backlight: pwms[0]: /soc/pwm@20c0000: 2 argument cells
+[  885.118000] pwm-backlight backlight: unable to request PWM: -22
+[  885.694153] kernel: pinctrl: group state default applied
+[  885.836172] kernel: mmc0: cmd=13 status=0x900
+[  885.899485] kernel: clk: enable bus monitor gate=4
+[  885.916522] kernel: thermal thermal_zone0: temperature=4310
+[  886.112015] kernel: pinctrl: group state default applied
+[  886.244906] kernel: mmc0: cmd=13 status=0x900
+[  886.729987] kernel: clk: enable bus monitor gate=7
+[  886.895928] kernel: thermal thermal_zone0: temperature=43120
+[  887.319088] kernel: pinctrl: group state default applied
+[  887.332733] kernel: mmc0: cmd=13 status=0x900
+[  887.386536] kernel: clk: enable bus monitor gate=4
+[  887.497931] kernel: thermal thermal_zone0: temperature=43190
+[  887.739659] kernel: pinctrl: group state default applied
+[  887.955642] kernel: mmc0: cmd=13 status=0x900
+[  888.906015] kernel: clk: enable bus monitor gate=3
+[  889.106376] kernel: thermal thermal_zone0: temperature=43120
+[  890.028372] kernel: pinctrl: group state default applied
+[  890.160603] kernel: mmc0: cmd=13 status=0x900
+[  890.177085] kernel: clk: enable bus monitor gate=2
+[  890.231627] kernel: thermal thermal_zone0: temperature=43190
+[  890.247819] kernel: pinctrl: group state default applied
+[  890.260533] kernel: mmc0: cmd=13 status=0x900
+[  891.119568] kernel: clk: enable bus monitor gate=8
+[  891.650617] kernel: thermal thermal_zone0: temperature=43180
+[  892.053179] kernel: pinctrl: group state default applied
+[  892.255463] kernel: mmc0: cmd=13 status=0x900
+[  893.124657] kernel: clk: enable bus monitor gate=8
+[  893.260446] kernel: thermal thermal_zone0: temperature=4350
+[  893.475356] kernel: pinctrl: group state default applied
+[  893.535740] kernel: mmc0: cmd=13 status=0x900
+[  893.710483] kernel: clk: enable bus monitor gate=2
+[  894.193724] kernel: thermal thermal_zone0: temperature=43100
+[  895.207559] kernel: pinctrl: group state default applied
+[  895.255337] kernel: mmc0: cmd=13 status=0x900
+[  895.403916] kernel: clk: enable bus monitor gate=2
+[  895.418180] kernel: thermal thermal_zone0: temperature=43110
+[  895.430809] kernel: pinctrl: group state default applied
+[  895.444600] kernel: mmc0: cmd=13 status=0x900
+[  896.472590] kernel: clk: enable bus monitor gate=5
+[  896.612329] kernel: thermal thermal_zone0: temperature=4370
+[  897.028563] kernel: pinctrl: group state default applied
+[  897.179025] kernel: mmc0: cmd=13 status=0x900
+[  897.402593] kernel: clk: enable bus monitor gate=4
+[  898.187582] kernel: thermal thermal_zone0: temperature=43180
+[  898.659032] kernel: pinctrl: group state default applied
+[  898.892840] kernel: mmc0: cmd=13 status=0x900
+[  899.002001] kernel: clk: enable bus monitor gate=2
+[  899.060766] kernel: thermal thermal_zone0: temperature=4300
+[  899.221971] kernel: pinctrl: group state default applied
+[  899.365776] kernel: mmc0: cmd=13 status=0x900
+[  899.752731] kernel: clk: enable bus monitor gate=8
+[  899.768620] kernel: thermal thermal_zone0: temperature=4360
+[  900.650688] kernel: pinctrl: group state default applied
+[  901.125379] kernel: mmc0: cmd=13 status=0x900
+[  901.892436] kernel: clk: enable bus monitor gate=7
+[  902.359959] kernel: thermal thermal_zone0: temperature=4300
+[  903.328386] kernel: pinctrl: group state default applied
+[  903.525186] kernel: mmc0: cmd=13 status=0x900
+[  903.572099] kernel: clk: enable bus monitor gate=7
+[  904.357077] kernel: thermal thermal_zone0: temperature=4350
+[  904.491314] kernel: pinctrl: group state default applied
+[  904.538781] kernel: mmc0: cmd=13 status=0x900
+[  904.753679] kernel: clk: enable bus monitor gate=8
+[  905.682840] kernel: thermal thermal_zone0: temperature=43120
+[  906.206279] kernel: pinctrl: group state default applied
+[  906.267200] kernel: mmc0: cmd=13 status=0x900
+[  906.328139] kernel: clk: enable bus monitor gate=7
+[  906.340817] kernel: thermal thermal_zone0: temperature=4350
+[  906.516211] kernel: pinctrl: group state default applied
+[  907.267376] kernel: mmc0: cmd=13 status=0x900
+[  907.476766] kernel: clk: enable bus monitor gate=5
+[  907.591696] kernel: thermal thermal_zone0: temperature=4370
+[  907.639928] kernel: pinctrl: group state default applied
+[  907.702176] kernel: mmc0: cmd=13 status=0x900
+[  907.766010] kernel: clk: enable bus monitor gate=6
+[  907.938171] kernel: thermal thermal_zone0: temperature=4320
+[  907.987800] kernel: pinctrl: group state default applied
+[  908.200323] kernel: mmc0: cmd=13 status=0x900
+[  908.664133] kernel: clk: enable bus monitor gate=8
+[  908.677077] kernel: thermal thermal_zone0: temperature=4390
+[  908.926197] kernel: pinctrl: group state default applied
+[  909.060553] kernel: mmc0: cmd=13 status=0x900
+[  909.074197] kernel: clk: enable bus monitor gate=2
+[  910.094334] kernel: thermal thermal_zone0: temperature=4370
+[  910.576664] kernel: pinctrl: group state default applied
+[  911.116538] kernel: mmc0: cmd=13 status=0x900
+[  911.132833] kernel: clk: enable bus monitor gate=4
+[  911.264021] kernel: thermal thermal_zone0: temperature=4370
+[  911.479064] kernel: pinctrl: group state default applied
+[  911.538297] kernel: mmc0: cmd=13 status=0x900
+[  911.595083] kernel: clk: enable bus monitor gate=5
+[  911.652066] kernel: thermal thermal_zone0: temperature=43170
+[  912.083454] kernel: pinctrl: group state default applied
+[  912.100051] kernel: mmc0: cmd=13 status=0x900
+[  912.362520] kernel: clk: enable bus monitor gate=4
+[  912.616169] kernel: thermal thermal_zone0: temperature=43120
+[  912.730883] kernel: pinctrl: group state default applied
+[  913.711488] kernel: mmc0: cmd=13 status=0x900
+[  913.725359] kernel: clk: enable bus monitor gate=2
+[  914.547735] kernel: thermal thermal_zone0: temperature=43170
+[  914.703624] kernel: pinctrl: group state default applied
+[  914.919440] kernel: mmc0: cmd=13 status=0x900
+[  915.146034] kernel: clk: enable bus monitor gate=6
+[  916.113665] kernel: thermal thermal_zone0: temperature=4340
+[  916.286947] kernel: pinctrl: group state default applied
+[  916.697459] kernel: mmc0: cmd=13 status=0x900
+[  916.863069] kernel: clk: enable bus monitor gate=5
+[  917.095118] kernel: thermal thermal_zone0: temperature=43160
+[  917.951316] kernel: pinctrl: group state default applied
+[  918.232114] kernel: mmc0: cmd=13 status=0x900
+[  918.394742] kernel: clk: enable bus monitor gate=7
+[  918.510228] kernel: thermal thermal_zone0: temperature=4300
+[  919.041524] kernel: pinctrl: group state default applied
+[  919.181408] kernel: mmc0: cmd=13 status=0x900
+[  919.662523] kernel: clk: enable bus monitor gate=6
+[  919.727189] kernel: thermal thermal_zone0: temperature=43140
+[  920.578377] kernel: pinctrl: group state default applied
+[  920.594476] kernel: mmc0: cmd=13 status=0x900
+[  920.703342] kernel: clk: enable bus monitor gate=2
+[  920.880914] kernel: thermal thermal_zone0: temperature=4340
+[  921.075180] kernel: pinctrl: group state default applied
+[  921.329658] kernel: mmc0: cmd=13 status=0x900
+[  921.738358] kernel: clk: enable bus monitor gate=7
+[  921.795324] kernel: thermal thermal_zone0: temperature=43160
+[  921.970269] kernel: pinctrl: group state default applied
+[  922.232168] kernel: mmc0: cmd=13 status=0x900
+[  922.249489] kernel: clk: enable bus monitor gate=5
+[  922.464794] kernel: thermal thermal_zone0: temperature=43150
+[  922.613093] kernel: pinctrl: group state default applied
+[  923.041790] kernel: mmc0: cmd=13 status=0x900
+[  923.861670] kernel: clk: enable bus monitor gate=0
+[  923.875911] kernel: thermal thermal_zone0: temperature=4370
+[  924.332555] kernel: pinctrl: group state default applied
+[  924.443196] kernel: mmc0: cmd=13 status=0x900
+[  924.642139] kernel: clk: enable bus monitor gate=0
+[  924.655924] kernel: thermal thermal_zone0: temperature=43160
+[  924.932432] kernel: pinctrl: group state default applied
+[  925.100672] kernel: mmc0: cmd=13 status=0x900
+[  926.011114] kernel: clk: enable bus monitor gate=1
+[  926.064056] kernel: thermal thermal_zone0: temperature=4370
+[  926.126760] kernel: pinctrl: group state default applied
+[  926.179603] kernel: mmc0: cmd=13 status=0x900
+[  926.239020] kernel: clk: enable bus monitor gate=2
+[  926.393475] kernel: thermal thermal_zone0: temperature=4340
+[  926.409462] kernel: pinctrl: group state default applied
+[  926.849894] kernel: mmc0: cmd=13 status=0x900
+[  927.259138] kernel: clk: enable bus monitor gate=5
+[  928.081255] kernel: thermal thermal_zone0: temperature=43110
+[  928.284971] kernel: pinctrl: group state default applied
+[  928.493521] kernel: mmc0: cmd=13 status=0x900
+[  928.878248] kernel: clk: enable bus monitor gate=5
+[  928.894765] kernel: thermal thermal_zone0: temperature=43140
+[  928.953459] kernel: pinctrl: group state default applied
+[  929.010986] kernel: mmc0: cmd=13 status=0x900
+[  929.237572] kernel: clk: enable bus monitor gate=2
+[  930.175140] kernel: thermal thermal_zone0: temperature=4320
+[  931.131461] kernel: pinctrl: group state default applied
+[  931.305736] kernel: mmc0: cmd=13 status=0x900
+[  931.320593] kernel: clk: enable bus monitor gate=6
+[  931.563412] kernel: thermal thermal_zone0: temperature=43100
+[  931.579874] kernel: pinctrl: group state default applied
+[  931.699354] kernel: mmc0: cmd=13 status=0x900
+[  932.206364] kernel: clk: enable bus monitor gate=0
+[  933.038100] kernel: thermal thermal_zone0: temperature=4320
+[  933.239057] kernel: pinctrl: group state default applied
+[  933.668857] kernel: mmc0: cmd=13 status=0x900
+[  933.920529] kernel: clk: enable bus monitor gate=7
+[  934.678167] kernel: thermal thermal_zone0: temperature=4320
+[  935.623270] kernel: pinctrl: group state default applied
+[  935.777209] kernel: mmc0: cmd=13 status=0x900
+[  935.790712] kernel: clk: enable bus monitor gate=5
+[  935.954415] kernel: thermal thermal_zone0: temperature=43190
+[  935.970706] kernel: pinctrl: group state default applied
+[  936.455769] kernel: mmc0: cmd=13 status=0x900
+[  936.724896] kernel: clk: enable bus monitor gate=6
+[  936.738426] kernel: thermal thermal_zone0: temperature=4320
+[  936.792139] kernel: pinctrl: group state default applied
+[  936.853075] kernel: mmc0: cmd=13 status=0x900
+[  936.981566] kernel: clk: enable bus monitor gate=4
+[  937.029856] kernel: thermal thermal_zone0: temperature=43140
+[  937.305507] kernel: pinctrl: group state default applied
+[  937.549948] kernel: mmc0: cmd=13 status=0x900
+[  937.672328] kernel: clk: enable bus monitor gate=1
+[  937.854266] kernel: thermal thermal_zone0: temperature=43180

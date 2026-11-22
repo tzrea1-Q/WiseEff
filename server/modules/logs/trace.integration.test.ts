@@ -71,7 +71,7 @@ describe.skipIf(!available)("run traces and isolated draft dry runs over Postgre
       expect(trace.status).toBe(200);
       expect(trace.body.steps.map((step) => step.index)).toEqual([1, 2, 3]);
       expect(trace.body.steps.map((step) => step.kind)).toEqual(["model-turn", "tool-call", "model-turn"]);
-      expect(trace.body.steps[0]).toMatchObject({ inputTokens: 12, outputTokens: 8 });
+      expect(trace.body.steps[0]).toMatchObject({ protocol: "json", inputTokens: 12, outputTokens: 8 });
       expect(trace.body.steps[1].lines).toContainEqual({ file: "device.log", line: 2 });
       expect(observed[0]).toContain(procedure);
       async function assertPrivate() {

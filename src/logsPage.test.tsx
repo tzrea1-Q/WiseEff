@@ -33,6 +33,62 @@ afterEach(() => {
 });
 
 describe("LogsPage · Header", () => {
+  it.each([true, false])("displays check status and skip reason when the report has a checklist (%s)", (hasChecks) => {
+    const log = { ...initialState.logs[1], checks: hasChecks ? [
+      { id: "cooling", description: "核对散热", required: true, status: "done" as const, anchors: [{ file: "charging.log", line: 3 }] },
+      { id: "ambient", description: "核对环境温度", required: false, status: "skipped" as const, reason: "设备无环境温度传感器", anchors: [] },
+      { id: "rail", description: "检查电源轨", required: true, status: "pending" as const, anchors: [] }
+    ] : undefined };
+    render(<LogsPage search="" state={{ ...userState, logs: [log] }} dispatch={() => undefined} onNavigate={() => undefined} />);
+    const report = within(screen.getByRole("region", { name: log.conclusion }));
+    if (!hasChecks) {
+      expect(report.queryByRole("heading", { name: "诊断检查项" })).not.toBeInTheDocument();
+      return;
+    }
+    expect(report.getByRole("heading", { name: "诊断检查项" })).toBeVisible();
+    expect(report.getByText("已完成")).toBeVisible();
+    expect(report.getByText("已跳过")).toBeVisible();
+    expect(report.getByText("未处理")).toBeVisible();
+    expect(report.getByText("设备无环境温度传感器")).toBeVisible();
+    expect(report.getByText("charging.log:3")).toBeVisible();
+  });
+  it.each([
+    ["passed", "结论验证通过。"],
+    ["revised", "报告已根据结论验证结果修订。"],
+    ["failed", "结论验证未通过，请人工复核。"],
+    ["skipped", "本次未执行结论验证。"]
+  ] as const)("显示已完成报告的验证状态 %s", (status, label) => {
+    const log = { ...initialState.logs[1], verification: { status, checkedClaims: 2, unsupportedClaims: 0, model: "fixture-verifier" } };
+    render(<LogsPage search="" state={{ ...userState, logs: [log] }} dispatch={() => undefined} onNavigate={() => undefined} />);
+    const report = within(screen.getByRole("region", { name: log.conclusion }));
+    expect(report.getByText(label)).toBeVisible();
+    expect(report.queryByText(/验证模型/) !== null).toBe(status !== "skipped");
+  });
+
+  it("lists the historical run IDs returned for this report", async () => {
+    const log = { ...initialState.logs[1], historicalRunIds: ["reviewed-run-1", "reviewed-run-2"] };
+    render(<LogsPage search="" state={{ ...userState, logs: [log] }} dispatch={() => undefined} onNavigate={() => undefined} />);
+    const report = within(screen.getByRole("region", { name: log.conclusion }));
+    await userEvent.click(report.getByText("参考历史运行（2）"));
+    expect(report.getByText("reviewed-run-1")).toBeVisible();
+    expect(report.getByText("reviewed-run-2")).toBeVisible();
+  });
+
+  it.each([true, false])("在结论下方按报告内容显示已排除原因（%s）", (hasAlternatives) => {
+    const log = { ...initialState.logs[1], alternativeHypotheses: hasAlternatives
+      ? [{ statement: "充电器限流", reason: "日志记录热保护介入", anchors: [{ file: "charging.log", line: 3 }] }]
+      : undefined };
+    render(<LogsPage search="" state={{ ...userState, logs: [log] }} dispatch={() => undefined} onNavigate={() => undefined} />);
+    const report = within(screen.getByRole("region", { name: log.conclusion }));
+    if (hasAlternatives) {
+      expect(report.getByRole("heading", { name: "已排除的可能原因" })).toBeVisible();
+      expect(report.getByText("充电器限流")).toBeVisible();
+      expect(report.getByText("日志记录热保护介入")).toBeVisible();
+    } else {
+      expect(report.queryByRole("heading", { name: "已排除的可能原因" })).not.toBeInTheDocument();
+    }
+  });
+
   it.each([true, false])("参数管理未开放时隐藏关联参数和修改请求入口（已关联：%s）", async (linked) => {
     const log = { ...initialState.logs[0], status: "Complete" as const, stage: "report" as const,
       relatedParameterId: linked ? "binding-1" : undefined, relatedParameterProjectId: linked ? "project-1" : undefined };
@@ -278,6 +334,7 @@ describe("LogsPage · Header", () => {
       const path = new URL(String(url)).pathname;
       if (path === "/api/v1/logs") return new Response(JSON.stringify({ items: [other, summary] }));
       if (path === "/api/v1/logs/kernel-report") return new Response(JSON.stringify({ item: { ...summary, evidence,
+        verification: { status: "failed", checkedClaims: 2, unsupportedClaims: 1, model: "fixture-verifier" },
         signalSummary: { signals: [{ kind: "crash", severity: "Critical", source: "generic", title: "Hydrated signal", signature: "watchdog", count: 1,
           anchors: [{ file: "kernel.log", line: 1, content: "ibus=1450 temp=71 vbus=9012" }] }], templates: [], truncatedSignals: false, truncatedTemplates: false },
         rawLines: ["ibus=1450 temp=71 vbus=9012", "INFO waiting", "WARN thermal", "INFO reduced"] } }));
@@ -290,6 +347,7 @@ describe("LogsPage · Header", () => {
       initialAppState: { ...userState, logs: [] }, ports: { logAnalysisRepository: repository } });
     const button = await screen.findByRole("button", { name: /kernel\.log/ });
     if (entry === "selection") await userEvent.click(button);
+    expect(await screen.findByText("结论验证未通过，请人工复核。")).toBeVisible();
     const chain = screen.getByRole("region", { name: "日志分析证据链" });
     expect(await within(chain).findByText("kernel.log:1")).toBeInTheDocument();
     const fields = within(chain).getByRole("group", { name: "解码字段" });
@@ -595,7 +653,10 @@ describe("LogsPage · 分析来源与降级标注", () => {
     expect(provenance).not.toHaveTextContent("未找到源码版本");
   });
 
-  it("规则回退结果显著标注降级来源与原因", async () => {
+  it.each([
+    { source: "rules-fallback", reason: "provider-unavailable", label: "规则回退", explanation: "AI 分析服务不可用" },
+    { source: "single-shot-fallback", reason: "invalid-model-output", label: "降级分析 · 单次模型回退", explanation: "模型输出无效" }
+  ] as const)("$source 结果显著标注降级来源与原因", async ({ source, reason, label, explanation }) => {
     window.history.replaceState(null, "", "/logs");
     const degradedState = {
       ...userState,
@@ -605,8 +666,8 @@ describe("LogsPage · 分析来源与降级标注", () => {
           id: "log-degraded",
           reportId: "RPT-DEGRADED",
           fileName: "degraded_fallback.log",
-          analysisSource: "rules-fallback" as const,
-          degradedReason: "provider-unavailable" as const,
+          analysisSource: source,
+          degradedReason: reason,
           logDomainName: "charging-power",
           skillRevision: { id: "revision-3", number: 3 }
         },
@@ -617,8 +678,9 @@ describe("LogsPage · 分析来源与降级标注", () => {
     render(<App initialAppState={degradedState} />);
 
     const provenance = screen.getByTestId("analysis-provenance");
-    expect(provenance).toHaveTextContent("规则回退");
-    expect(provenance).toHaveTextContent(/AI 分析服务不可用/);
+    expect(provenance).toHaveTextContent(label);
+    expect(provenance).toHaveTextContent(explanation);
+    expect(provenance).not.toHaveTextContent("提前收敛");
     expect(provenance).toHaveTextContent("技能：charging-power v3");
     expect(await screen.findByText("置信度")).toBeInTheDocument();
     expect(screen.queryByText("AI置信度")).not.toBeInTheDocument();
@@ -671,7 +733,10 @@ describe("LogsPage · 分析来源与降级标注", () => {
     expect(screen.queryByText("规则评分")).not.toBeInTheDocument();
   });
 
-  it("提前收敛的 Agent 结论显著标注降级而不冒充完整分析", async () => {
+  it.each([
+    ["token-budget-exhausted", "分析步数或 token 预算耗尽"],
+    ["step-budget-exhausted", "日志分析步数达到上限"]
+  ] as const)("提前收敛的报告显示 %s 对应的降级原因", async (degradedReason, reasonText) => {
     window.history.replaceState(null, "", "/logs");
     const earlyConvergedState = {
       ...userState,
@@ -682,7 +747,7 @@ describe("LogsPage · 分析来源与降级标注", () => {
           reportId: "RPT-EARLY",
           fileName: "early_converged.log",
           analysisSource: "agent" as const,
-          degradedReason: "token-budget-exhausted" as const
+          degradedReason
         },
         ...userState.logs
       ]
@@ -692,8 +757,23 @@ describe("LogsPage · 分析来源与降级标注", () => {
 
     const provenance = screen.getByTestId("analysis-provenance");
     expect(provenance).toHaveTextContent("提前收敛");
+    expect(provenance).toHaveTextContent(reasonText);
     expect(provenance).toHaveTextContent(/提前收敛为低置信结论/);
     expect(provenance).not.toHaveTextContent("降级分析 · 规则回退");
     expect(await screen.findByText("置信度")).toBeInTheDocument();
+  });
+
+  it.each([
+    ["invalid-model-output", "模型输出无效"],
+    ["step-budget-exhausted", "日志分析步数达到上限"]
+  ] as const)("规则回退报告显示 %s 对应的降级原因", (degradedReason, reasonText) => {
+    window.history.replaceState(null, "", "/logs");
+    render(<App initialAppState={{ ...userState, logs: [
+      { ...completedTemplate, id: "log-rules-fallback", analysisSource: "rules-fallback", degradedReason },
+      ...userState.logs
+    ] }} />);
+
+    expect(screen.getByTestId("analysis-provenance")).toHaveTextContent("规则回退");
+    expect(screen.getByTestId("analysis-provenance")).toHaveTextContent(reasonText);
   });
 });

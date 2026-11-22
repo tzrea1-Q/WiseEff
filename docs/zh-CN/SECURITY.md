@@ -136,7 +136,7 @@ Live Xiaoze LLM 只从 `XIAOZE_LLM_API_BASE_URL`、`XIAOZE_LLM_MODEL`、`XIAOZE_
 
 - **不可信输入：** 诊断流程、上传日志、解码值、源码摘录、检索知识（`read_domain_knowledge`）及参数上下文（`get_related_parameter_context`）都是不可信模型输入。技能流程位于平台协议之下的独立分隔段，不能授予权限。每步输出必须是通过 schema 校验的严格 JSON（工具调用或最终报告），工具参数经 zod 校验且结果硬性截断。循环接地仅接受本次运行工具实际返回的日志行或源码位置；单发回退仅接受有界提示词摘录中的日志行。无法接地的输出直接弃用，改用确定性规则回退并显式标注降级。
 - **published-only 检索：** `read_domain_knowledge` 在 SQL 层继承知识库的 published-only 不变量，草稿与已归档条目绝不进入分析提示词。技能上传和技能包导入可以关联新建的知识草稿；发布技能不会发布这些条目。知识发布仍是独立的治理步骤（设计 D13）。
-- **诚实降级：** provider 故障走既有 job 重试/退避；最后一次尝试回退到规则引擎并记 `analysis_source = 'rules-fallback'` 与 `degraded_reason`。循环内核预算耗尽的提前收敛同样保持标注（`degraded_reason = 'token-budget-exhausted'`，置信度封顶）。降级结果绝不冒充完整分析，UI 必须保持来源徽标可见。
+- **诚实降级。** 模型服务故障沿用现有任务重试和退避。最后一次尝试回退到规则引擎，记录 `analysis_source = 'rules-fallback'` 和 `degraded_reason = 'provider-unavailable'`。循环内核提前收敛时标记 `step-budget-exhausted` 或 `token-budget-exhausted`，置信度上限为 0.5。UI 保持降级报告的来源徽标可见。
 - **证据纪律：** 日志、审计与指标记录 model 标签、latency、token 数、降级原因与 trace/request id；绝不记录 API key、原始 prompt、原始 provider payload 或原始日志内容。`/health/ready` 暴露 `logAnalysisLlm` 配置状态（与 `xiaozeLlm` 同语义），不暴露凭据。
 - **租户隔离：** worker 通过组织级仓储查询读取日志字节、业务域行、知识关联与参数上下文；业务域治理（含知识关联、Webhook 配置与按域模型覆盖）需要 `logs:admin-domains` 并写 `log-domain-*` 审计。
 

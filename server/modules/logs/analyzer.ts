@@ -1,3 +1,4 @@
+import type { LogAnalysisSource, LogDegradedReason } from "../../../src/domain/logs/types";
 import type { ParsedLogEntry, ParseResult } from "./parser";
 import { collectRuleEvidence } from "./prefilter";
 import { defaultChargingRuleSet } from "./chargingSignalRules";
@@ -5,14 +6,17 @@ import type { SignalRuleSet } from "./signalRules";
 import type { RelatedParameterRunSnapshot } from "./relatedParameter";
 import { extractLogSignals, type LogSignalSummary } from "./genericSignals";
 import { emitLogTrace, withLogTrace, LOG_TRACE_MAX_LINES, type LogAnalysisTraceStep } from "./traceTypes";
+import type { LogAnalysisProtocol } from "./logAnalysisProtocol";
+import type { LogAlternativeHypothesis, LogReportCheck } from "./hypotheses";
+import type { ProcedureCheck } from "../../../src/domain/logs/procedureChecks";
+import type { LogVerification } from "./verification";
 
 export type LogAnalysisSeverity = "Critical" | "Warning" | "Info";
 export type LogAnalysisStageId = "pattern" | "rootcause";
 export type LogRuleHit = string;
 
-/** Analyzer provenance for the additive output contract: degraded analysis never impersonates a full agent analysis. */
-export type LogAnalysisSource = "agent" | "rules-fallback";
-export type LogAnalysisDegradedReason = "provider-unavailable" | "token-budget-exhausted";
+export type { LogAnalysisSource };
+export type LogAnalysisDegradedReason = LogDegradedReason;
 
 export type AnalyzeLogInput = {
   onTrace?: (step: LogAnalysisTraceStep) => void | Promise<void>;
@@ -22,6 +26,7 @@ export type AnalyzeLogInput = {
   signalSummary?: LogSignalSummary;
   /** Untrusted diagnostic guidance from this run's immutable skill revision. */
   procedure?: string;
+  procedureChecks?: ProcedureCheck[];
   decoding?: { spec: import("./parsing/spec").ParsingSpec; events: import("./parsing/spec").DecodedEvent[]; counts: import("./parsing/spec").DecodeCounts };
   /** Pinned revision's source availability at worker execution; source tools bind this scope later. */
   sourceSnapshot?: { id: string; versionLabel?: string; status: "queued" | "indexing" | "ready" | "failed" | "archived" } | null;
@@ -36,6 +41,7 @@ export type AnalyzeLogInput = {
     description?: string;
     /** Pinned skill revision overrides; endpoint and credentials stay global. */
     modelOverride?: string;
+    protocolOverride?: LogAnalysisProtocol;
     stepBudget?: number;
     tokenBudget?: number;
   };
@@ -47,6 +53,9 @@ export type AnalyzeLogInput = {
    */
   organizationId?: string;
   logDomainId?: string;
+  /** Set by the user-run worker for history reads, using the run's bound project scope. */
+  pastConclusionScope?: { runId: string; projectId: string | null };
+  onHistoricalRunsRetrieved?: (runIds: string[]) => void;
   relatedParameterId?: string;
   /** Immutable canonical context frozen when this specific run was accepted. */
   relatedParameterSnapshot?: RelatedParameterRunSnapshot;
@@ -71,16 +80,20 @@ export type AnalyzeLogOutput = {
   impact: string;
   severity: LogAnalysisSeverity;
   evidence: AnalyzeLogEvidence[];
+  alternativeHypotheses?: LogAlternativeHypothesis[];
+  checks?: LogReportCheck[];
+  verification?: LogVerification;
   suggestedActions: string[];
   reportContext: {
     analysisQuestion?: string;
     lineCount: number;
     entryCount: number;
   };
-  /** Absent on legacy rule-analyzer output; "agent" or "rules-fallback" once the LLM kernel is in play. */
+  /** Absent on legacy rule-analyzer output. */
   analysisSource?: LogAnalysisSource;
   degradedReason?: LogAnalysisDegradedReason;
   promptVersion?: string;
+  historicalRunIds?: string[];
   model?: string;
 };
 

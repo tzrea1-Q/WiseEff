@@ -1,0 +1,360 @@
+04:24,1732249461094156844,user,ts=2024-11-22T04:24:21.09392423Z caller=middlewares.go:157 method=Health result=2 took=768.444µs,pod-1,node-1
+04:24,1732249461094196379,user,ts=2024-11-22T04:24:21.093967123Z caller=middlewares.go:157 method=Health result=2 took=752.595µs,pod-1,node-1
+04:24,1732249461143397337,front-end,Request received with body: {},pod-2,node-2
+04:24,1732249461147401885,user,ts=2024-11-22T04:24:21.147147277Z caller=middlewares.go:75 method=GetUsers id=[identity-1] result=1 took=918.66µs,pod-1,node-1
+04:24,1732249461150657233,front-end,"Received response: ""{\""firstName\"":\""[redacted]\"",\""lastName\"":\""[redacted]\"",\""username\"":\""[redacted]\"",\""id\"":\""[identity-1]\"",\""_links\"":{\""addresses\"":{\""href\"":\""http://user/customers/[identity-1]/addresses\""},\""cards\"":{\""href\"":\""http://user/customers/[identity-1]/cards\""},\""customer\"":{\""href\"":\""http://user/customers/[identity-1]\""},\""self\"":{\""href\"":\""http://user/customers/[identity-1]\""}}}\n""",pod-2,node-2
+04:24,1732249461150674609,front-end,GET Request to: http://user/customers/[identity-1]/addresses,pod-2,node-2
+04:24,1732249461151228561,front-end,GET Request to: http://user/customers/[identity-1]/cards,pod-2,node-2
+04:24,1732249461153633190,user,ts=2024-11-22T04:24:21.153450971Z caller=middlewares.go:75 method=GetUsers id=[identity-1] result=1 took=801.168µs,pod-1,node-1
+04:24,1732249461153896242,user,ts=2024-11-22T04:24:21.153775043Z caller=middlewares.go:75 method=GetUsers id=[identity-1] result=1 took=644.946µs,pod-1,node-1
+04:24,1732249461156447902,front-end,"Received response: ""{\""_embedded\"":{\""address\"":[{\""street\"":\""[redacted]\"",\""number\"":\""123\"",\""country\"":\""[redacted]\"",\""city\"":\""[redacted]\"",\""postcode\"":\""[redacted]\"",\""id\"":\""[identity-2]\"",\""_links\"":{\""address\"":{\""href\"":\""http://user/addresses/[identity-2]\""},\""self\"":{\""href\"":\""http://user/addresses/[identity-2]\""}}}]}}\n""",pod-2,node-2
+04:24,1732249461157259987,front-end,"Received response: ""{\""_embedded\"":{\""card\"":[{\""longNum\"":\""[redacted]\"",\""expires\"":\""[redacted]\"",\""ccv\"":\""[redacted]\"",\""id\"":\""[identity-3]\"",\""_links\"":{\""card\"":{\""href\"":\""http://user/cards/[identity-3]\""},\""self\"":{\""href\"":\""http://user/cards/[identity-3]\""}}}]}}\n""",pod-2,node-2
+04:24,1732249461157267056,front-end,"[ undefined, undefined ]",pod-2,node-2
+04:24,1732249461157270419,front-end,"Posting Order: {""customer"":""http://user/customers/[identity-1]"",""address"":""http://user/addresses/[identity-2]"",""card"":""http://user/cards/[identity-3]"",""items"":""http://carts/carts/[identity-1]/items""}",pod-2,node-2
+04:24,1732249461163054395,user,ts=2024-11-22T04:24:21.16282493Z caller=middlewares.go:104 method=GetAddresses id=[identity-2] result=1 took=640.096µs,pod-1,node-1
+04:24,1732249461163117932,user,ts=2024-11-22T04:24:21.162941919Z caller=middlewares.go:134 method=GetCards id=[identity-3] result=1 took=611.894µs,pod-1,node-1
+04:24,1732249461163420754,user,ts=2024-11-22T04:24:21.163295984Z caller=middlewares.go:75 method=GetUsers id=[identity-1] result=1 took=910.477µs,pod-1,node-1
+04:24,1732249461173100881,orders,"2024-11-22 04:24:21.172  INFO [orders,de26b3216896cac1,ef61a20fc315a01b,false] 6 --- [p-nio-80-exec-8] w.w.s.o.controllers.OrdersController     : Sending payment request: PaymentRequest{address=Address{id=null, number='123', street='123', city='123', country='123', postcode='123'}, card=Card{id=null, longNum='123123321', expires='1232', ccv='123'}, customer=Customer{id=null, firstName='FQxgGRaf', lastName='FQxgGRaf', username='FQxgGRaf', addresses=[], cards=[]}}",pod-3,node-1
+04:24,1732249461176537928,payment,ts=2024-11-22T04:24:21Z caller=logging.go:29 method=Authorise result=true took=822ns,pod-4,node-3
+04:24,1732249461177910270,orders,"2024-11-22 04:24:21.177  INFO [orders,de26b3216896cac1,ef61a20fc315a01b,false] 6 --- [p-nio-80-exec-8] w.w.s.o.controllers.OrdersController     : Received payment response: PaymentResponse{authorised=true, message=Payment authorised}",pod-3,node-1
+04:24,1732249461182937126,shipping,Adding shipment to queue...,pod-5,node-3
+04:24,1732249461185273794,queue-master,Received shipment task: [identity-1],pod-6,node-1
+04:24,1732249461185369259,queue-master,2024-11-22 04:24:21.185  INFO 6 --- [ool-6-thread-36] w.weave.socks.queuemaster.DockerSpawner  : Spawning new container,pod-6,node-1
+04:24,1732249461185925856,queue-master,2024-11-22 04:24:21.185  INFO 6 --- [ool-6-thread-36] o.apache.http.impl.execchain.RetryExec   : I/O exception (org.newsclub.net.unix.AFUNIXSocketException) caught when processing request to {}->unix://localhost:80: No such file or directory,pod-6,node-1
+04:24,1732249461185937719,queue-master,2024-11-22 04:24:21.185  INFO 6 --- [ool-6-thread-36] o.apache.http.impl.execchain.RetryExec   : Retrying request to {}->unix://localhost:80,pod-6,node-1
+04:24,1732249461186097585,queue-master,2024-11-22 04:24:21.185  INFO 6 --- [ool-6-thread-36] o.apache.http.impl.execchain.RetryExec   : I/O exception (org.newsclub.net.unix.AFUNIXSocketException) caught when processing request to {}->unix://localhost:80: No such file or directory,pod-6,node-1
+04:24,1732249461186106096,queue-master,2024-11-22 04:24:21.185  INFO 6 --- [ool-6-thread-36] o.apache.http.impl.execchain.RetryExec   : Retrying request to {}->unix://localhost:80,pod-6,node-1
+04:24,1732249461186240340,queue-master,2024-11-22 04:24:21.186  INFO 6 --- [ool-6-thread-36] o.apache.http.impl.execchain.RetryExec   : I/O exception (org.newsclub.net.unix.AFUNIXSocketException) caught when processing request to {}->unix://localhost:80: No such file or directory,pod-6,node-1
+04:24,1732249461186248502,queue-master,2024-11-22 04:24:21.186  INFO 6 --- [ool-6-thread-36] o.apache.http.impl.execchain.RetryExec   : Retrying request to {}->unix://localhost:80,pod-6,node-1
+04:24,1732249461186293465,queue-master,2024-11-22 04:24:21.186 ERROR 6 --- [ool-6-thread-36] w.weave.socks.queuemaster.DockerSpawner  : Exception trying to launch/remove worker container. javax.ws.rs.ProcessingException: org.newsclub.net.unix.AFUNIXSocketException: No such file or directory (socket: /var/run/docker.sock),pod-6,node-1
+04:24,1732249461189191957,front-end,"Order response: {""statusCode"":201,""body"":{""id"":""[identity-4]"",""customerId"":""[identity-1]"",""customer"":{""id"":null,""firstName"":""[redacted]"",""lastName"":""[redacted]"",""username"":""[redacted]"",""addresses"":[],""cards"":[]},""address"":{""id"":null,""number"":""123"",""street"":""[redacted]"",""city"":""[redacted]"",""postcode"":""[redacted]"",""country"":""[redacted]""},""card"":{""id"":null,""longNum"":""[redacted]"",""expires"":""[redacted]"",""ccv"":""[redacted]""},""items"":[{""id"":""[identity-5]"",""itemId"":""808a2de1-1aaa-4c25-a9b9-6612e8f29a38"",""quantity"":1,""unitPrice"":17.32}],""shipment"":{""id"":""97002f74-1237-4cba-beb2-789ad82e16d8"",""name"":""[identity-1]""},""date"":""2024-11-22T04:24:21.184+0000"",""total"":22.31},""headers"":{""x-application-context"":""orders:80"",""content-type"":""application/json;charset=UTF-8"",""date"":""Fri, 22 Nov 2024 04:24:21 GMT"",""x-envoy-upstream-service-time"":""29"",""server"":""envoy"",""connection"":""close"",""transfer-encoding"":""chunked""},""request"":{""uri"":{""protocol"":""http:"",""slashes"":true,""auth"":null,""host"":""orders"",""port"":80,""hostname"":""orders"",""hash"":null,""search"":null,""query"":null,""pathname"":""/orders"",""path"":""/orders"",""href"":""http://orders/orders""},""method"":""POST"",""headers"":{""accept"":""application/json"",""content-type"":""application/json"",""content-length"":232}}}",pod-2,node-2
+04:24,1732249461189211308,front-end,"Order response: {""id"":""[identity-4]"",""customerId"":""[identity-1]"",""customer"":{""id"":null,""firstName"":""[redacted]"",""lastName"":""[redacted]"",""username"":""[redacted]"",""addresses"":[],""cards"":[]},""address"":{""id"":null,""number"":""123"",""street"":""[redacted]"",""city"":""[redacted]"",""postcode"":""[redacted]"",""country"":""[redacted]""},""card"":{""id"":null,""longNum"":""[redacted]"",""expires"":""[redacted]"",""ccv"":""[redacted]""},""items"":[{""id"":""[identity-5]"",""itemId"":""808a2de1-1aaa-4c25-a9b9-6612e8f29a38"",""quantity"":1,""unitPrice"":17.32}],""shipment"":{""id"":""97002f74-1237-4cba-beb2-789ad82e16d8"",""name"":""[identity-1]""},""date"":""2024-11-22T04:24:21.184+0000"",""total"":22.31}",pod-2,node-2
+04:24,1732249461191134839,front-end,POST /orders 201 - ms - -,pod-2,node-2
+04:24,1732249461516730736,front-end,"Posting Address: {""number"":""123"",""street"":""[redacted]"",""city"":""[redacted]"",""postcode"":""[redacted]"",""country"":""[redacted]"",""userID"":""[identity-6]""}",pod-2,node-2
+04:24,1732249461521703961,user,ts=2024-11-22T04:24:21.5214807Z caller=middlewares.go:88 method=PostAddress street=123 number=123 user=[identity-6] took=1.800498ms,pod-1,node-1
+04:24,1732249461525912850,front-end,POST /addresses 200 - ms - -,pod-2,node-2
+04:24,1732249461527268045,front-end,"Posting Customer: {""username"":""[redacted]"",""password"":""[redacted]"",""email"":""[redacted]"",""firstName"":""[redacted]"",""lastName"":""[redacted]""}",pod-2,node-2
+04:24,1732249461531113622,front-end,"Posting Card: {""longNum"":""[redacted]"",""expires"":""[redacted]"",""ccv"":""[redacted]"",""userID"":""[identity-6]""}",pod-2,node-2
+04:24,1732249461531361234,user,ts=2024-11-22T04:24:21.531153497Z caller=middlewares.go:46 method=Register username=Gznly email=[email] took=889.604µs,pod-1,node-1
+04:24,1732249461533420038,front-end,{ id: '[identity-7]' },pod-2,node-2
+04:24,1732249461533427779,front-end,[identity-7],pod-2,node-2
+04:24,1732249461533431394,front-end,Merging carts for customer id: [identity-7] and session id: [redacted],pod-2,node-2
+04:24,1732249461534596214,user,ts=2024-11-22T04:24:21.534418521Z caller=middlewares.go:118 method=PostCard card=*****3321 user=[identity-6] took=1.474164ms,pod-1,node-1
+04:24,1732249461536508047,carts,"2024-11-22 04:24:21.536  INFO [carts,4d73459386da82b4,033ca89b80c700a7,false] 7 --- [-nio-80-exec-26] w.w.s.cart.controllers.CartsController   : Merge carts request received for ids: [identity-7] and [identity-8]",pod-7,node-3
+04:24,1732249461539349034,front-end,POST /cards 200 - ms - -,pod-2,node-2
+04:24,1732249461558144231,front-end,Carts merged.,pod-2,node-2
+04:24,1732249461558163695,front-end,set cookie[redacted],pod-2,node-2
+04:24,1732249461558165546,front-end,Sent cookies.,pod-2,node-2
+04:24,1732249461560120320,front-end,POST /register 200 31.080 ms - 33,pod-2,node-2
+04:24,1732249461579233654,catalogue,ts=2024-11-22T04:24:21Z caller=logging.go:36 method=List tags= order=id pageNum=1 pageSize=10 result=9 err=null took=3.806562ms,pod-8,node-2
+04:24,1732249461581860425,front-end,GET /catalogue 200 - ms - -,pod-2,node-2
+04:24,1732249461583507684,front-end,Attempting to delete cart for user: [identity-6],pod-2,node-2
+04:24,1732249461603197043,front-end,User cart deleted with status: 202,pod-2,node-2
+04:24,1732249461605309539,front-end,DELETE /cart 202 - ms - -,pod-2,node-2
+04:24,1732249461610846791,front-end,"Attempting to add to cart: {""id"":""zzz4f044-b040-410d-8ead-4de0446aec7e"",""quantity"":1}",pod-2,node-2
+04:24,1732249461617706552,catalogue,ts=2024-11-22T04:24:21Z caller=logging.go:62 method=Get id=zzz4f044-b040-410d-8ead-4de0446aec7e sock=zzz4f044-b040-410d-8ead-4de0446aec7e err=null took=4.629936ms,pod-8,node-2
+04:24,1732249461618857588,front-end,"{""id"":""zzz4f044-b040-410d-8ead-4de0446aec7e"",""name"":""Classic"",""description"":""Keep it simple."",""imageUrl"":[""/catalogue/images/classic.jpg"",""/catalogue/images/classic2.jpg""],""price"":12,""count"":127,""tag"":[""brown"",""green""]}
+",pod-2,node-2
+04:24,1732249461618873036,front-end,"POST to carts: http://carts/carts/[identity-6]/items body: {""itemId"":""zzz4f044-b040-410d-8ead-4de0446aec7e"",""unitPrice"":12}",pod-2,node-2
+04:24,1732249461643128542,carts,"2024-11-22 04:24:21.642  INFO [carts,8d390bdd67eff306,df6f641ea576e106,false] 7 --- [-nio-80-exec-15] w.w.s.cart.controllers.ItemsController   : Did not find item. Creating item for user: [identity-6], Item{id='[identity-9]', itemId='zzz4f044-b040-410d-8ead-4de0446aec7e', quantity=1, unitPrice=12.0}",pod-7,node-3
+04:24,1732249461650131999,carts,"2024-11-22 04:24:21.649  INFO [carts,8d390bdd67eff306,df6f641ea576e106,false] 7 --- [-nio-80-exec-15] w.w.s.cart.cart.CartContentsResource     : Adding for user: Cart{id='[identity-10]', customerId='[identity-6]', items=[]}, Item{id='[identity-9]', itemId='zzz4f044-b040-410d-8ead-4de0446aec7e', quantity=1, unitPrice=12.0}",pod-7,node-3
+04:24,1732249461664812709,front-end,POST /cart 201 - ms - -,pod-2,node-2
+04:24,1732249461687101920,catalogue,ts=2024-11-22T04:24:21Z caller=logging.go:36 method=List tags= order=id pageNum=1 pageSize=10 result=9 err=null took=4.313229ms,pod-8,node-2
+04:24,1732249461690333540,front-end,GET /catalogue 200 - ms - -,pod-2,node-2
+04:24,1732249462222530516,catalogue,ts=2024-11-22T04:24:22Z caller=logging.go:36 method=List tags= order=id pageNum=1 pageSize=10 result=9 err=null took=6.115454ms,pod-8,node-2
+04:24,1732249462226843083,front-end,GET /catalogue 200 - ms - -,pod-2,node-2
+04:24,1732249462352526393,catalogue,ts=2024-11-22T04:24:22Z caller=logging.go:85 method=Health result=2 took=35.761µs,pod-8,node-2
+04:24,1732249462352830854,catalogue,ts=2024-11-22T04:24:22Z caller=logging.go:85 method=Health result=2 took=21.083µs,pod-8,node-2
+04:24,1732249462843898043,payment,ts=2024-11-22T04:24:22Z caller=logging.go:40 method=Health result=1 took=7.32µs,pod-4,node-3
+04:24,1732249462843951952,payment,ts=2024-11-22T04:24:22Z caller=logging.go:40 method=Health result=1 took=4.658µs,pod-4,node-3
+04:24,1732249463034590220,front-end,npm timing command:run-script Completed in 819427ms,pod-2,node-2
+04:24,1732249463034929768,front-end,npm timing command:start Completed in 819430ms,pod-2,node-2
+04:24,1732249463035976644,front-end,npm notice,pod-2,node-2
+04:24,1732249463035982199,front-end,npm notice New major version of npm available! 8.19.4 -> 10.9.1,pod-2,node-2
+04:24,1732249463035984123,front-end,npm notice Changelog: <https://github.com/npm/cli/releases/tag/v10.9.1>,pod-2,node-2
+04:24,1732249463035985676,front-end,npm notice Run `npm install -g npm@10.9.1` to update!,pod-2,node-2
+04:24,1732249463035987121,front-end,npm notice,pod-2,node-2
+04:24,1732249463036531725,front-end,npm verb stack Error: command failed,pod-2,node-2
+04:24,1732249463036538218,front-end,npm verb stack     at ChildProcess.<anonymous> (/usr/local/lib/node_modules/npm/node_modules/@npmcli/promise-spawn/lib/index.js:63:27),pod-2,node-2
+04:24,1732249463036544966,front-end,npm verb stack     at ChildProcess.emit (node:events:513:28),pod-2,node-2
+04:24,1732249463036547025,front-end,npm verb stack     at maybeClose (node:internal/child_process:1100:16),pod-2,node-2
+04:24,1732249463036548718,front-end,npm verb stack     at Process.ChildProcess._handle.onexit (node:internal/child_process:304:5),pod-2,node-2
+04:24,1732249463036615431,front-end,npm verb pkgid microservices-demo-front-end@0.0.1,pod-2,node-2
+04:24,1732249463036707938,front-end,npm verb cwd /usr/src/app,pod-2,node-2
+04:24,1732249463036767817,front-end,npm verb Linux 5.10.227-219.884.amzn2.x86_64,pod-2,node-2
+04:24,1732249463040795872,front-end,npm verb node v16.20.2,pod-2,node-2
+04:24,1732249463040805471,front-end,npm verb npm  v8.19.4,pod-2,node-2
+04:24,1732249463040807234,front-end,npm ERR! path /usr/src/app,pod-2,node-2
+04:24,1732249463040808802,front-end,npm ERR! command failed,pod-2,node-2
+04:24,1732249463040810111,front-end,npm ERR! signal SIGTERM,pod-2,node-2
+04:24,1732249463040811821,front-end,npm ERR! command sh -c -- node server.js,pod-2,node-2
+04:24,1732249463040813306,front-end,npm verb exit 1,pod-2,node-2
+04:24,1732249463040815026,front-end,npm timing npm Completed in 819631ms,pod-2,node-2
+04:24,1732249463040816535,front-end,"npm verb code 1
+",pod-2,node-2
+04:24,1732249463040819465,front-end,npm ERR! A complete log of this run can be found in:,pod-2,node-2
+04:24,1732249463040821427,front-end,npm ERR!     /home/myuser/.npm/_logs/[identity-11].log,pod-2,node-2
+04:24,1732249464094015345,user,ts=2024-11-22T04:24:24.093814638Z caller=middlewares.go:157 method=Health result=2 took=750.057µs,pod-1,node-1
+04:24,1732249464094046842,user,ts=2024-11-22T04:24:24.093813602Z caller=middlewares.go:157 method=Health result=2 took=748.541µs,pod-1,node-1
+04:24,1732249465364564838,catalogue,ts=2024-11-22T04:24:25Z caller=logging.go:85 method=Health result=2 took=29.252µs,pod-8,node-2
+04:24,1732249465365386605,catalogue,ts=2024-11-22T04:24:25Z caller=logging.go:85 method=Health result=2 took=17.147µs,pod-8,node-2
+04:24,1732249465843815917,payment,ts=2024-11-22T04:24:25Z caller=logging.go:40 method=Health result=1 took=6.557µs,pod-4,node-3
+04:24,1732249465843841529,payment,ts=2024-11-22T04:24:25Z caller=logging.go:40 method=Health result=1 took=2.331µs,pod-4,node-3
+04:24,1732249466699834655,front-end,npm verb cli /usr/local/bin/node /usr/local/bin/npm,pod-9,node-2
+04:24,1732249466700065021,front-end,npm info using npm@8.19.4,pod-9,node-2
+04:24,1732249466700168895,front-end,npm info using node@v16.20.2,pod-9,node-2
+04:24,1732249466700788479,front-end,npm timing npm:load:whichnode Completed in 0ms,pod-9,node-2
+04:24,1732249466700848932,front-end,npm timing config:load:defaults Completed in 2ms,pod-9,node-2
+04:24,1732249466700875120,front-end,npm timing config:load:file:/usr/local/lib/node_modules/npm/npmrc Completed in 1ms,pod-9,node-2
+04:24,1732249466700930282,front-end,npm timing config:load:builtin Completed in 2ms,pod-9,node-2
+04:24,1732249466700935849,front-end,npm timing config:load:cli Completed in 1ms,pod-9,node-2
+04:24,1732249466701007090,front-end,npm timing config:load:env Completed in 0ms,pod-9,node-2
+04:24,1732249466701035636,front-end,npm timing config:load:file:/usr/src/app/.npmrc Completed in 1ms,pod-9,node-2
+04:24,1732249466701037383,front-end,npm timing config:load:project Completed in 88ms,pod-9,node-2
+04:24,1732249466701047823,front-end,npm timing config:load:file:/home/myuser/.npmrc Completed in 1ms,pod-9,node-2
+04:24,1732249466701064635,front-end,npm timing config:load:user Completed in 1ms,pod-9,node-2
+04:24,1732249466701087719,front-end,npm timing config:load:file:/usr/local/etc/npmrc Completed in 1ms,pod-9,node-2
+04:24,1732249466701095592,front-end,npm timing config:load:global Completed in 1ms,pod-9,node-2
+04:24,1732249466701111923,front-end,npm timing config:load:validate Completed in 0ms,pod-9,node-2
+04:24,1732249466701137529,front-end,npm timing config:load:credentials Completed in 1ms,pod-9,node-2
+04:24,1732249466701142403,front-end,npm timing config:load:setEnvs Completed in 0ms,pod-9,node-2
+04:24,1732249466701162308,front-end,npm timing config:load Completed in 97ms,pod-9,node-2
+04:24,1732249466701172267,front-end,npm timing npm:load:configload Completed in 97ms,pod-9,node-2
+04:24,1732249466701189461,front-end,npm timing npm:load:mkdirpcache Completed in 3ms,pod-9,node-2
+04:24,1732249466701204532,front-end,npm timing npm:load:mkdirplogs Completed in 0ms,pod-9,node-2
+04:24,1732249466701258627,front-end,npm verb title npm start,pod-9,node-2
+04:24,1732249466701260465,front-end,"npm verb argv ""start"" ""--loglevel"" ""verbose""",pod-9,node-2
+04:24,1732249466701268035,front-end,npm timing npm:load:setTitle Completed in 1ms,pod-9,node-2
+04:24,1732249466701283799,front-end,npm timing config:load:flatten Completed in 3ms,pod-9,node-2
+04:24,1732249466701571955,front-end,npm timing npm:load:display Completed in 87ms,pod-9,node-2
+04:24,1732249466701740048,front-end,npm verb logfile logs-max:10 dir:/home/myuser/.npm/_logs,pod-9,node-2
+04:24,1732249466706373498,front-end,npm verb logfile /home/myuser/.npm/_logs/[identity-12].log,pod-9,node-2
+04:24,1732249466706390783,front-end,npm timing npm:load:logFile Completed in 5ms,pod-9,node-2
+04:24,1732249466706520772,front-end,npm timing npm:load:timers Completed in 0ms,pod-9,node-2
+04:24,1732249466706584992,front-end,npm timing npm:load:configScope Completed in 0ms,pod-9,node-2
+04:24,1732249466706752730,front-end,"npm timing npm:load Completed in 193ms
+",pod-9,node-2
+04:24,1732249466820601907,front-end,> microservices-demo-front-end@0.0.1 start,pod-9,node-2
+04:24,1732249466820605275,front-end,"> node server.js
+",pod-9,node-2
+04:24,1732249467094153010,user,ts=2024-11-22T04:24:27.093737875Z caller=middlewares.go:157 method=Health result=2 took=841.572µs,pod-1,node-1
+04:24,1732249467096146354,user,ts=2024-11-22T04:24:27.095972242Z caller=middlewares.go:157 method=Health result=2 took=671.008µs,pod-1,node-1
+04:24,1732249467710049340,front-end,npm http fetch GET 200 https://registry.npmjs.org/npm 992ms (cache miss),pod-9,node-2
+04:24,1732249468002268142,front-end,npm http fetch GET 200 https://registry.npmjs.org/npm 1279ms (cache miss),pod-9,node-2
+04:24,1732249468352208511,catalogue,ts=2024-11-22T04:24:28Z caller=logging.go:85 method=Health result=2 took=32.131µs,pod-8,node-2
+04:24,1732249468352689069,catalogue,ts=2024-11-22T04:24:28Z caller=logging.go:85 method=Health result=2 took=19.411µs,pod-8,node-2
+04:24,1732249468715788910,front-end,Using the redis based session manager,pod-9,node-2
+04:24,1732249468753831071,front-end,Request received with body: {},pod-10,node-3
+04:24,1732249468769767200,user,ts=2024-11-22T04:24:28.769540863Z caller=middlewares.go:75 method=GetUsers id=[identity-13] result=1 took=919.333µs,pod-1,node-1
+04:24,1732249468778558855,front-end,"Received response: ""{\""firstName\"":\""[redacted]\"",\""lastName\"":\""[redacted]\"",\""username\"":\""[redacted]\"",\""id\"":\""[identity-13]\"",\""_links\"":{\""addresses\"":{\""href\"":\""http://user/customers/[identity-13]/addresses\""},\""cards\"":{\""href\"":\""http://user/customers/[identity-13]/cards\""},\""customer\"":{\""href\"":\""http://user/customers/[identity-13]\""},\""self\"":{\""href\"":\""http://user/customers/[identity-13]\""}}}\n""",pod-10,node-3
+04:24,1732249468779065078,front-end,GET Request to: http://user/customers/[identity-13]/addresses,pod-10,node-3
+04:24,1732249468779956769,front-end,GET Request to: http://user/customers/[identity-13]/cards,pod-10,node-3
+04:24,1732249468788933740,user,ts=2024-11-22T04:24:28.788660978Z caller=middlewares.go:75 method=GetUsers id=[identity-13] result=1 took=927.067µs,pod-1,node-1
+04:24,1732249468790702011,user,ts=2024-11-22T04:24:28.790548723Z caller=middlewares.go:75 method=GetUsers id=[identity-13] result=1 took=728.623µs,pod-1,node-1
+04:24,1732249468796281587,front-end,"Received response: ""{\""_embedded\"":{\""address\"":[{\""street\"":\""[redacted]\"",\""number\"":\""123\"",\""country\"":\""[redacted]\"",\""city\"":\""[redacted]\"",\""postcode\"":\""[redacted]\"",\""id\"":\""[identity-14]\"",\""_links\"":{\""address\"":{\""href\"":\""http://user/addresses/[identity-14]\""},\""self\"":{\""href\"":\""http://user/addresses/[identity-14]\""}}}]}}\n""",pod-10,node-3
+04:24,1732249468797213094,front-end,"Received response: ""{\""_embedded\"":{\""card\"":[{\""longNum\"":\""[redacted]\"",\""expires\"":\""[redacted]\"",\""ccv\"":\""[redacted]\"",\""id\"":\""[identity-15]\"",\""_links\"":{\""card\"":{\""href\"":\""http://user/cards/[identity-15]\""},\""self\"":{\""href\"":\""http://user/cards/[identity-15]\""}}}]}}\n""",pod-10,node-3
+04:24,1732249468798922435,front-end,"[ undefined, undefined ]",pod-10,node-3
+04:24,1732249468799164717,front-end,"Posting Order: {""customer"":""http://user/customers/[identity-13]"",""address"":""http://user/addresses/[identity-14]"",""card"":""http://user/cards/[identity-15]"",""items"":""http://carts/carts/[identity-13]/items""}",pod-10,node-3
+04:24,1732249468799337203,front-end,App now running in production mode on port 8079,pod-9,node-2
+04:24,1732249468815702090,user,ts=2024-11-22T04:24:28.815517988Z caller=middlewares.go:75 method=GetUsers id=[identity-13] result=1 took=910.846µs,pod-1,node-1
+04:24,1732249468815734041,user,ts=2024-11-22T04:24:28.815580705Z caller=middlewares.go:134 method=GetCards id=[identity-15] result=1 took=785.014µs,pod-1,node-1
+04:24,1732249468815970727,user,ts=2024-11-22T04:24:28.815838085Z caller=middlewares.go:104 method=GetAddresses id=[identity-14] result=1 took=971.159µs,pod-1,node-1
+04:24,1732249468825874508,orders,"2024-11-22 04:24:28.825  INFO [orders,6dbd893bbaccb1ce,24b11d987c8ce155,false] 6 --- [p-nio-80-exec-2] w.w.s.o.controllers.OrdersController     : Sending payment request: PaymentRequest{address=Address{id=null, number='123', street='123', city='123', country='123', postcode='123'}, card=Card{id=null, longNum='123123321', expires='1232', ccv='123'}, customer=Customer{id=null, firstName='WAxfnJTEjPYL', lastName='WAxfnJTEjPYL', username='WAxfnJTEjPYL', addresses=[], cards=[]}}",pod-3,node-1
+04:24,1732249468829846394,payment,ts=2024-11-22T04:24:28Z caller=logging.go:29 method=Authorise result=false took=6.594µs,pod-4,node-3
+04:24,1732249468831176573,orders,"2024-11-22 04:24:28.830  INFO [orders,6dbd893bbaccb1ce,24b11d987c8ce155,false] 6 --- [p-nio-80-exec-2] w.w.s.o.controllers.OrdersController     : Received payment response: PaymentResponse{authorised=false, message=Payment declined: amount exceeds 100.00}",pod-3,node-1
+04:24,1732249468838518528,front-end,"Order response: {""statusCode"":406,""body"":{""timestamp"":1732249468831,""status"":406,""error"":""Not Acceptable"",""exception"":""works.weave.socks.orders.controllers.OrdersController$PaymentDeclinedException"",""message"":""Payment declined: amount exceeds 100.00"",""path"":""/orders""},""headers"":{""x-application-context"":""orders:80"",""content-type"":""application/json;charset=UTF-8"",""date"":""Fri, 22 Nov 2024 04:24:28 GMT"",""x-envoy-upstream-service-time"":""29"",""server"":""envoy"",""connection"":""close"",""transfer-encoding"":""chunked""},""request"":{""uri"":{""protocol"":""http:"",""slashes"":true,""auth"":null,""host"":""orders"",""port"":80,""hostname"":""orders"",""hash"":null,""search"":null,""query"":null,""pathname"":""/orders"",""path"":""/orders"",""href"":""http://orders/orders""},""method"":""POST"",""headers"":{""accept"":""application/json"",""content-type"":""application/json"",""content-length"":232}}}",pod-10,node-3
+04:24,1732249468838533904,front-end,"Order response: {""timestamp"":1732249468831,""status"":406,""error"":""Not Acceptable"",""exception"":""works.weave.socks.orders.controllers.OrdersController$PaymentDeclinedException"",""message"":""Payment declined: amount exceeds 100.00"",""path"":""/orders""}",pod-10,node-3
+04:24,1732249468842120937,front-end,POST /orders 406 - ms - -,pod-10,node-3
+04:24,1732249468843886612,payment,ts=2024-11-22T04:24:28Z caller=logging.go:40 method=Health result=1 took=7.335µs,pod-4,node-3
+04:24,1732249468843959103,payment,ts=2024-11-22T04:24:28Z caller=logging.go:40 method=Health result=1 took=2.902µs,pod-4,node-3
+04:24,1732249468875560976,front-end,"Posting Address: {""number"":""123"",""street"":""[redacted]"",""city"":""[redacted]"",""postcode"":""[redacted]"",""country"":""[redacted]"",""userID"":""[identity-16]""}",pod-10,node-3
+04:24,1732249468882496166,user,ts=2024-11-22T04:24:28.882280358Z caller=middlewares.go:88 method=PostAddress street=123 number=123 user=[identity-16] took=1.652953ms,pod-1,node-1
+04:24,1732249468885689364,front-end,POST /addresses 200 - ms - -,pod-10,node-3
+04:24,1732249468938453048,front-end,"Posting Card: {""longNum"":""[redacted]"",""expires"":""[redacted]"",""ccv"":""[redacted]"",""userID"":""[identity-16]""}",pod-10,node-3
+04:24,1732249468944555763,user,ts=2024-11-22T04:24:28.94432342Z caller=middlewares.go:118 method=PostCard card=*****3321 user=[identity-16] took=1.678899ms,pod-1,node-1
+04:24,1732249468947670596,front-end,POST /cards 200 - ms - -,pod-10,node-3
+04:24,1732249468992486868,front-end,Attempting to delete cart for user: [identity-16],pod-10,node-3
+04:24,1732249469006813460,catalogue,ts=2024-11-22T04:24:29Z caller=logging.go:36 method=List tags= order=id pageNum=1 pageSize=10 result=9 err=null took=3.605626ms,pod-8,node-2
+04:24,1732249469014521455,front-end,GET /catalogue 200 - ms - -,pod-10,node-3
+04:24,1732249469022393303,front-end,User cart deleted with status: 202,pod-10,node-3
+04:24,1732249469024344160,front-end,DELETE /cart 202 - ms - -,pod-10,node-3
+04:24,1732249469034884283,front-end,"Attempting to add to cart: {""id"":""d3588630-ad8e-49df-bbd7-3167f7efb246"",""quantity"":1}",pod-10,node-3
+04:24,1732249469048688400,catalogue,ts=2024-11-22T04:24:29Z caller=logging.go:62 method=Get id=d3588630-ad8e-49df-bbd7-3167f7efb246 sock=d3588630-ad8e-49df-bbd7-3167f7efb246 err=null took=4.251225ms,pod-8,node-2
+04:24,1732249469054829656,front-end,"{""id"":""d3588630-ad8e-49df-bbd7-3167f7efb246"",""name"":""YouTube.sock"",""description"":""We were not paid to sell this sock. It's just a bit geeky."",""imageUrl"":[""/catalogue/images/youtube_1.jpeg"",""/catalogue/images/youtube_2.jpeg""],""price"":10.99,""count"":801,""tag"":[""geek"",""formal""]}
+",pod-10,node-3
+04:24,1732249469054854975,front-end,"POST to carts: http://carts/carts/[identity-16]/items body: {""itemId"":""d3588630-ad8e-49df-bbd7-3167f7efb246"",""unitPrice"":10.99}",pod-10,node-3
+04:24,1732249469081751309,carts,"2024-11-22 04:24:29.081  INFO [carts,edfe96ef99f93391,6d513bf2879dc402,false] 7 --- [-nio-80-exec-13] w.w.s.cart.controllers.ItemsController   : Did not find item. Creating item for user: [identity-16], Item{id='[identity-17]', itemId='d3588630-ad8e-49df-bbd7-3167f7efb246', quantity=1, unitPrice=10.99}",pod-7,node-3
+04:24,1732249469089244680,carts,"2024-11-22 04:24:29.089  INFO [carts,edfe96ef99f93391,6d513bf2879dc402,false] 7 --- [-nio-80-exec-13] w.w.s.cart.cart.CartContentsResource     : Adding for user: Cart{id='[identity-18]', customerId='[identity-16]', items=[]}, Item{id='[identity-17]', itemId='d3588630-ad8e-49df-bbd7-3167f7efb246', quantity=1, unitPrice=10.99}",pod-7,node-3
+04:24,1732249469108847787,front-end,POST /cart 500 72.969 ms - 70,pod-10,node-3
+04:24,1732249469227650345,front-end,Request received with body: {},pod-10,node-3
+04:24,1732249469233606965,user,ts=2024-11-22T04:24:29.233333947Z caller=middlewares.go:75 method=GetUsers id=[identity-19] result=1 took=995.125µs,pod-1,node-1
+04:24,1732249469236529204,front-end,"Received response: ""{\""firstName\"":\""[redacted]\"",\""lastName\"":\""[redacted]\"",\""username\"":\""[redacted]\"",\""id\"":\""[identity-19]\"",\""_links\"":{\""addresses\"":{\""href\"":\""http://user/customers/[identity-19]/addresses\""},\""cards\"":{\""href\"":\""http://user/customers/[identity-19]/cards\""},\""customer\"":{\""href\"":\""http://user/customers/[identity-19]\""},\""self\"":{\""href\"":\""http://user/customers/[identity-19]\""}}}\n""",pod-10,node-3
+04:24,1732249469236545175,front-end,GET Request to: http://user/customers/[identity-19]/addresses,pod-10,node-3
+04:24,1732249469236753929,front-end,GET Request to: http://user/customers/[identity-19]/cards,pod-10,node-3
+04:24,1732249469238448188,catalogue,ts=2024-11-22T04:24:29Z caller=logging.go:36 method=List tags= order=id pageNum=1 pageSize=10 result=9 err=null took=4.474329ms,pod-8,node-2
+04:24,1732249469241355636,front-end,GET /catalogue 200 - ms - -,pod-10,node-3
+04:24,1732249469241936318,user,ts=2024-11-22T04:24:29.241690446Z caller=middlewares.go:75 method=GetUsers id=[identity-19] result=1 took=1.027466ms,pod-1,node-1
+04:24,1732249469241980994,user,ts=2024-11-22T04:24:29.241777183Z caller=middlewares.go:75 method=GetUsers id=[identity-19] result=1 took=948.8µs,pod-1,node-1
+04:24,1732249469245114251,front-end,"Received response: ""{\""_embedded\"":{\""address\"":[{\""street\"":\""[redacted]\"",\""number\"":\""123\"",\""country\"":\""[redacted]\"",\""city\"":\""[redacted]\"",\""postcode\"":\""[redacted]\"",\""id\"":\""[identity-20]\"",\""_links\"":{\""address\"":{\""href\"":\""http://user/addresses/[identity-20]\""},\""self\"":{\""href\"":\""http://user/addresses/[identity-20]\""}}}]}}\n""",pod-10,node-3
+04:24,1732249469245496098,front-end,"Received response: ""{\""_embedded\"":{\""card\"":[{\""longNum\"":\""[redacted]\"",\""expires\"":\""[redacted]\"",\""ccv\"":\""[redacted]\"",\""id\"":\""[identity-21]\"",\""_links\"":{\""card\"":{\""href\"":\""http://user/cards/[identity-21]\""},\""self\"":{\""href\"":\""http://user/cards/[identity-21]\""}}}]}}\n""",pod-10,node-3
+04:24,1732249469245624159,front-end,"[ undefined, undefined ]",pod-10,node-3
+04:24,1732249469245700270,front-end,"Posting Order: {""customer"":""http://user/customers/[identity-19]"",""address"":""http://user/addresses/[identity-20]"",""card"":""http://user/cards/[identity-21]"",""items"":""http://carts/carts/[identity-19]/items""}",pod-10,node-3
+04:24,1732249469259023405,user,ts=2024-11-22T04:24:29.258805285Z caller=middlewares.go:75 method=GetUsers id=[identity-19] result=1 took=908.68µs,pod-1,node-1
+04:24,1732249469259056343,user,ts=2024-11-22T04:24:29.258852344Z caller=middlewares.go:104 method=GetAddresses id=[identity-20] result=1 took=794.816µs,pod-1,node-1
+04:24,1732249469259922468,user,ts=2024-11-22T04:24:29.259792561Z caller=middlewares.go:134 method=GetCards id=[identity-21] result=1 took=875.93µs,pod-1,node-1
+04:24,1732249469271800035,orders,"2024-11-22 04:24:29.271  INFO [orders,651e59d514798ab7,6aded34c3dcf8542,false] 6 --- [p-nio-80-exec-4] w.w.s.o.controllers.OrdersController     : Sending payment request: PaymentRequest{address=Address{id=null, number='123', street='123', city='123', country='123', postcode='123'}, card=Card{id=null, longNum='123123321', expires='1232', ccv='123'}, customer=Customer{id=null, firstName='ZfOpkpabiMn', lastName='ZfOpkpabiMn', username='ZfOpkpabiMn', addresses=[], cards=[]}}",pod-3,node-1
+04:24,1732249469275879458,payment,ts=2024-11-22T04:24:29Z caller=logging.go:29 method=Authorise result=true took=829ns,pod-4,node-3
+04:24,1732249469277179006,orders,"2024-11-22 04:24:29.276  INFO [orders,651e59d514798ab7,6aded34c3dcf8542,false] 6 --- [p-nio-80-exec-4] w.w.s.o.controllers.OrdersController     : Received payment response: PaymentResponse{authorised=true, message=Payment authorised}",pod-3,node-1
+04:24,1732249469279956089,shipping,Adding shipment to queue...,pod-5,node-3
+04:24,1732249469282593227,queue-master,Received shipment task: [identity-19],pod-6,node-1
+04:24,1732249469282650037,queue-master,2024-11-22 04:24:29.282  INFO 6 --- [ool-6-thread-37] w.weave.socks.queuemaster.DockerSpawner  : Spawning new container,pod-6,node-1
+04:24,1732249469283392752,queue-master,2024-11-22 04:24:29.283  INFO 6 --- [ool-6-thread-37] o.apache.http.impl.execchain.RetryExec   : I/O exception (org.newsclub.net.unix.AFUNIXSocketException) caught when processing request to {}->unix://localhost:80: No such file or directory,pod-6,node-1
+04:24,1732249469283411926,queue-master,2024-11-22 04:24:29.283  INFO 6 --- [ool-6-thread-37] o.apache.http.impl.execchain.RetryExec   : Retrying request to {}->unix://localhost:80,pod-6,node-1
+04:24,1732249469283601765,queue-master,2024-11-22 04:24:29.283  INFO 6 --- [ool-6-thread-37] o.apache.http.impl.execchain.RetryExec   : I/O exception (org.newsclub.net.unix.AFUNIXSocketException) caught when processing request to {}->unix://localhost:80: No such file or directory,pod-6,node-1
+04:24,1732249469283612523,queue-master,2024-11-22 04:24:29.283  INFO 6 --- [ool-6-thread-37] o.apache.http.impl.execchain.RetryExec   : Retrying request to {}->unix://localhost:80,pod-6,node-1
+04:24,1732249469283615768,queue-master,2024-11-22 04:24:29.283  INFO 6 --- [ool-6-thread-37] o.apache.http.impl.execchain.RetryExec   : I/O exception (org.newsclub.net.unix.AFUNIXSocketException) caught when processing request to {}->unix://localhost:80: No such file or directory,pod-6,node-1
+04:24,1732249469283622067,queue-master,2024-11-22 04:24:29.283  INFO 6 --- [ool-6-thread-37] o.apache.http.impl.execchain.RetryExec   : Retrying request to {}->unix://localhost:80,pod-6,node-1
+04:24,1732249469283765112,queue-master,2024-11-22 04:24:29.283 ERROR 6 --- [ool-6-thread-37] w.weave.socks.queuemaster.DockerSpawner  : Exception trying to launch/remove worker container. javax.ws.rs.ProcessingException: org.newsclub.net.unix.AFUNIXSocketException: No such file or directory (socket: /var/run/docker.sock),pod-6,node-1
+04:24,1732249469289649805,front-end,"Order response: {""statusCode"":201,""body"":{""id"":""[identity-22]"",""customerId"":""[identity-19]"",""customer"":{""id"":null,""firstName"":""[redacted]"",""lastName"":""[redacted]"",""username"":""[redacted]"",""addresses"":[],""cards"":[]},""address"":{""id"":null,""number"":""123"",""street"":""[redacted]"",""city"":""[redacted]"",""postcode"":""[redacted]"",""country"":""[redacted]""},""card"":{""id"":null,""longNum"":""[redacted]"",""expires"":""[redacted]"",""ccv"":""[redacted]""},""items"":[{""id"":""[identity-23]"",""itemId"":""837ab141-399e-4c1f-9abc-bace40296bac"",""quantity"":1,""unitPrice"":15}],""shipment"":{""id"":""e31843ae-941d-4361-ab26-15fd9a79b112"",""name"":""[identity-19]""},""date"":""2024-11-22T04:24:29.281+0000"",""total"":19.99},""headers"":{""x-application-context"":""orders:80"",""content-type"":""application/json;charset=UTF-8"",""date"":""Fri, 22 Nov 2024 04:24:28 GMT"",""x-envoy-upstream-service-time"":""35"",""server"":""envoy"",""connection"":""close"",""transfer-encoding"":""chunked""},""request"":{""uri"":{""protocol"":""http:"",""slashes"":true,""auth"":null,""host"":""orders"",""port"":80,""hostname"":""orders"",""hash"":null,""search"":null,""query"":null,""pathname"":""/orders"",""path"":""/orders"",""href"":""http://orders/orders""},""method"":""POST"",""headers"":{""accept"":""application/json"",""content-type"":""application/json"",""content-length"":232}}}",pod-10,node-3
+04:24,1732249469289666798,front-end,"Order response: {""id"":""[identity-22]"",""customerId"":""[identity-19]"",""customer"":{""id"":null,""firstName"":""[redacted]"",""lastName"":""[redacted]"",""username"":""[redacted]"",""addresses"":[],""cards"":[]},""address"":{""id"":null,""number"":""123"",""street"":""[redacted]"",""city"":""[redacted]"",""postcode"":""[redacted]"",""country"":""[redacted]""},""card"":{""id"":null,""longNum"":""[redacted]"",""expires"":""[redacted]"",""ccv"":""[redacted]""},""items"":[{""id"":""[identity-23]"",""itemId"":""837ab141-399e-4c1f-9abc-bace40296bac"",""quantity"":1,""unitPrice"":15}],""shipment"":{""id"":""e31843ae-941d-4361-ab26-15fd9a79b112"",""name"":""[identity-19]""},""date"":""2024-11-22T04:24:29.281+0000"",""total"":19.99}",pod-10,node-3
+04:24,1732249469291037430,front-end,POST /orders 201 - ms - -,pod-10,node-3
+04:24,1732249469326356323,catalogue,ts=2024-11-22T04:24:29Z caller=logging.go:36 method=List tags= order=id pageNum=1 pageSize=10 result=9 err=null took=4.574227ms,pod-8,node-2
+04:24,1732249469329678420,front-end,GET /catalogue 200 - ms - -,pod-10,node-3
+04:24,1732249469568813924,front-end,"Posting Address: {""number"":""123"",""street"":""[redacted]"",""city"":""[redacted]"",""postcode"":""[redacted]"",""country"":""[redacted]"",""userID"":""[identity-7]""}",pod-10,node-3
+04:24,1732249469574924535,user,ts=2024-11-22T04:24:29.574698765Z caller=middlewares.go:88 method=PostAddress street=123 number=123 user=[identity-7] took=1.693838ms,pod-1,node-1
+04:24,1732249469577869850,front-end,POST /addresses 200 - ms - -,pod-10,node-3
+04:24,1732249469585191921,front-end,"Posting Card: {""longNum"":""[redacted]"",""expires"":""[redacted]"",""ccv"":""[redacted]"",""userID"":""[identity-7]""}",pod-10,node-3
+04:24,1732249469591487506,user,ts=2024-11-22T04:24:29.591258266Z caller=middlewares.go:118 method=PostCard card=*****3321 user=[identity-7] took=1.699509ms,pod-1,node-1
+04:24,1732249469594022580,front-end,POST /cards 200 - ms - -,pod-10,node-3
+04:24,1732249469644109553,front-end,"Posting Customer: {""username"":""[redacted]"",""password"":""[redacted]"",""email"":""[redacted]"",""firstName"":""[redacted]"",""lastName"":""[redacted]""}",pod-10,node-3
+04:24,1732249469646311190,front-end,Attempting to delete cart for user: [identity-7],pod-10,node-3
+04:24,1732249469648170463,orders-db,"{""t"":{""$date"":""2024-11-22T04:24:29.647+00:00""},""s"":""I"",  ""c"":""STORAGE"",  ""id"":22430,   ""ctx"":""Checkpointer"",""msg"":""WiredTiger message"",""attr"":{""message"":""[1732249469:647868][1:0x7f60b63a4700], WT_SESSION.checkpoint: [WT_VERB_CHECKPOINT_PROGRESS] saving checkpoint snapshot min: 6033, snapshot max: 6033 snapshot count: 0, oldest timestamp: (0, 0) , meta checkpoint timestamp: (0, 0) base write gen: 1""}}",pod-11,node-2
+04:24,1732249469649970848,user,ts=2024-11-22T04:24:29.649781602Z caller=middlewares.go:46 method=Register username=kLTWCw email=[email] took=1.07601ms,pod-1,node-1
+04:24,1732249469652116449,front-end,{ id: '[identity-24]' },pod-10,node-3
+04:24,1732249469652128924,front-end,[identity-24],pod-10,node-3
+04:24,1732249469652290965,front-end,Merging carts for customer id: [identity-24] and session id: [redacted],pod-10,node-3
+04:24,1732249469656400161,carts,"2024-11-22 04:24:29.656  INFO [carts,870711c54c01f3fb,e7d7e003303edd3b,false] 7 --- [-nio-80-exec-24] w.w.s.cart.controllers.CartsController   : Merge carts request received for ids: [identity-24] and [identity-25]",pod-7,node-3
+04:24,1732249469671427643,front-end,User cart deleted with status: 202,pod-10,node-3
+04:24,1732249469672745511,front-end,DELETE /cart 202 - ms - -,pod-10,node-3
+04:24,1732249469675119209,front-end,Carts merged.,pod-10,node-3
+04:24,1732249469675228764,front-end,set cookie[redacted],pod-10,node-3
+04:24,1732249469676663261,front-end,Sent cookies.,pod-10,node-3
+04:24,1732249469678021944,front-end,POST /register 200 33.130 ms - 33,pod-10,node-3
+04:24,1732249469679011625,front-end,"Attempting to add to cart: {""id"":""819e1fbf-8b7e-4f6d-811f-693534916a8b"",""quantity"":1}",pod-10,node-3
+04:24,1732249469688233764,catalogue,ts=2024-11-22T04:24:29Z caller=logging.go:62 method=Get id=819e1fbf-8b7e-4f6d-811f-693534916a8b sock=819e1fbf-8b7e-4f6d-811f-693534916a8b err=null took=4.188864ms,pod-8,node-2
+04:24,1732249469689370307,front-end,"{""id"":""819e1fbf-8b7e-4f6d-811f-693534916a8b"",""name"":""Figueroa"",""description"":""enim officia aliqua excepteur esse deserunt quis aliquip nostrud anim"",""imageUrl"":[""/catalogue/images/WAT.jpg"",""/catalogue/images/WAT2.jpg""],""price"":14,""count"":808,""tag"":[""formal"",""green"",""blue""]}
+",pod-10,node-3
+04:24,1732249469689385593,front-end,"POST to carts: http://carts/carts/[identity-7]/items body: {""itemId"":""819e1fbf-8b7e-4f6d-811f-693534916a8b"",""unitPrice"":14}",pod-10,node-3
+04:24,1732249469713175157,carts,"2024-11-22 04:24:29.712  INFO [carts,6ab46dbb299605d3,7a338c35a0ca6d52,false] 7 --- [-nio-80-exec-12] w.w.s.cart.controllers.ItemsController   : Did not find item. Creating item for user: [identity-7], Item{id='[identity-26]', itemId='819e1fbf-8b7e-4f6d-811f-693534916a8b', quantity=1, unitPrice=14.0}",pod-7,node-3
+04:24,1732249469720271816,carts,"2024-11-22 04:24:29.720  INFO [carts,6ab46dbb299605d3,7a338c35a0ca6d52,false] 7 --- [-nio-80-exec-12] w.w.s.cart.cart.CartContentsResource     : Adding for user: Cart{id='[identity-27]', customerId='[identity-7]', items=[]}, Item{id='[identity-26]', itemId='819e1fbf-8b7e-4f6d-811f-693534916a8b', quantity=1, unitPrice=14.0}",pod-7,node-3
+04:24,1732249469734567014,front-end,POST /cart 500 52.620 ms - 70,pod-10,node-3
+04:24,1732249469753357630,front-end,"Posting Address: {""number"":""123"",""street"":""[redacted]"",""city"":""[redacted]"",""postcode"":""[redacted]"",""country"":""[redacted]"",""userID"":""[identity-28]""}",pod-10,node-3
+04:24,1732249469759633653,user,ts=2024-11-22T04:24:29.759404679Z caller=middlewares.go:88 method=PostAddress street=123 number=123 user=[identity-28] took=1.748638ms,pod-1,node-1
+04:24,1732249469762123572,front-end,POST /addresses 200 - ms - -,pod-10,node-3
+04:24,1732249469801637836,front-end,Request received with body: {},pod-10,node-3
+04:24,1732249469807062404,user,ts=2024-11-22T04:24:29.806899306Z caller=middlewares.go:75 method=GetUsers id=[identity-29] result=1 took=987.063µs,pod-1,node-1
+04:24,1732249469808945417,front-end,"Posting Card: {""longNum"":""[redacted]"",""expires"":""[redacted]"",""ccv"":""[redacted]"",""userID"":""[identity-28]""}",pod-10,node-3
+04:24,1732249469810045863,front-end,"Received response: ""{\""firstName\"":\""[redacted]\"",\""lastName\"":\""[redacted]\"",\""username\"":\""[redacted]\"",\""id\"":\""[identity-29]\"",\""_links\"":{\""addresses\"":{\""href\"":\""http://user/customers/[identity-29]/addresses\""},\""cards\"":{\""href\"":\""http://user/customers/[identity-29]/cards\""},\""customer\"":{\""href\"":\""http://user/customers/[identity-29]\""},\""self\"":{\""href\"":\""http://user/customers/[identity-29]\""}}}\n""",pod-10,node-3
+04:24,1732249469810084692,front-end,GET Request to: http://user/customers/[identity-29]/addresses,pod-10,node-3
+04:24,1732249469810534115,front-end,GET Request to: http://user/customers/[identity-29]/cards,pod-10,node-3
+04:24,1732249469814492263,user,ts=2024-11-22T04:24:29.814322866Z caller=middlewares.go:118 method=PostCard card=*****3321 user=[identity-28] took=1.339271ms,pod-1,node-1
+04:24,1732249469829387752,front-end,POST /cards 200 - ms - -,pod-10,node-3
+04:24,1732249469829409012,user,ts=2024-11-22T04:24:29.829261893Z caller=middlewares.go:75 method=GetUsers id=[identity-29] result=1 took=807.739µs,pod-1,node-1
+04:24,1732249469829424207,user,ts=2024-11-22T04:24:29.829261978Z caller=middlewares.go:75 method=GetUsers id=[identity-29] result=1 took=796.547µs,pod-1,node-1
+04:24,1732249469832393335,front-end,"Received response: ""{\""_embedded\"":{\""address\"":[{\""street\"":\""[redacted]\"",\""number\"":\""123\"",\""country\"":\""[redacted]\"",\""city\"":\""[redacted]\"",\""postcode\"":\""[redacted]\"",\""id\"":\""[identity-30]\"",\""_links\"":{\""address\"":{\""href\"":\""http://user/addresses/[identity-30]\""},\""self\"":{\""href\"":\""http://user/addresses/[identity-30]\""}}}]}}\n""",pod-10,node-3
+04:24,1732249469832865780,front-end,"Received response: ""{\""_embedded\"":{\""card\"":[{\""longNum\"":\""[redacted]\"",\""expires\"":\""[redacted]\"",\""ccv\"":\""[redacted]\"",\""id\"":\""[identity-31]\"",\""_links\"":{\""card\"":{\""href\"":\""http://user/cards/[identity-31]\""},\""self\"":{\""href\"":\""http://user/cards/[identity-31]\""}}}]}}\n""",pod-10,node-3
+04:24,1732249469832937213,front-end,"[ undefined, undefined ]",pod-10,node-3
+04:24,1732249469833020936,front-end,"Posting Order: {""customer"":""http://user/customers/[identity-29]"",""address"":""http://user/addresses/[identity-30]"",""card"":""http://user/cards/[identity-31]"",""items"":""http://carts/carts/[identity-29]/items""}",pod-10,node-3
+04:24,1732249469844399325,user,ts=2024-11-22T04:24:29.844245295Z caller=middlewares.go:104 method=GetAddresses id=[identity-30] result=1 took=850.972µs,pod-1,node-1
+04:24,1732249469844419198,user,ts=2024-11-22T04:24:29.844280551Z caller=middlewares.go:134 method=GetCards id=[identity-31] result=1 took=755.383µs,pod-1,node-1
+04:24,1732249469845085322,user,ts=2024-11-22T04:24:29.844940356Z caller=middlewares.go:75 method=GetUsers id=[identity-29] result=1 took=1.033069ms,pod-1,node-1
+04:24,1732249469853444361,orders,"2024-11-22 04:24:29.853  INFO [orders,05fd9f01d758afdf,f24e9c6fac55d973,false] 6 --- [p-nio-80-exec-3] w.w.s.o.controllers.OrdersController     : Sending payment request: PaymentRequest{address=Address{id=null, number='123', street='123', city='123', country='123', postcode='123'}, card=Card{id=null, longNum='123123321', expires='1232', ccv='123'}, customer=Customer{id=null, firstName='qgZQYFIrKITVjHt', lastName='qgZQYFIrKITVjHt', username='qgZQYFIrKITVjHt', addresses=[], cards=[]}}",pod-3,node-1
+04:24,1732249469856648486,payment,ts=2024-11-22T04:24:29Z caller=logging.go:29 method=Authorise result=true took=1.274µs,pod-4,node-3
+04:24,1732249469857854871,orders,"2024-11-22 04:24:29.857  INFO [orders,05fd9f01d758afdf,f24e9c6fac55d973,false] 6 --- [p-nio-80-exec-3] w.w.s.o.controllers.OrdersController     : Received payment response: PaymentResponse{authorised=true, message=Payment authorised}",pod-3,node-1
+04:24,1732249469861532456,shipping,Adding shipment to queue...,pod-5,node-3
+04:24,1732249469865054713,queue-master,Received shipment task: [identity-29],pod-6,node-1
+04:24,1732249469865084425,queue-master,2024-11-22 04:24:29.864  INFO 6 --- [ool-6-thread-38] w.weave.socks.queuemaster.DockerSpawner  : Spawning new container,pod-6,node-1
+04:24,1732249469865668420,queue-master,2024-11-22 04:24:29.865  INFO 6 --- [ool-6-thread-38] o.apache.http.impl.execchain.RetryExec   : I/O exception (org.newsclub.net.unix.AFUNIXSocketException) caught when processing request to {}->unix://localhost:80: No such file or directory,pod-6,node-1
+04:24,1732249469865680487,queue-master,2024-11-22 04:24:29.865  INFO 6 --- [ool-6-thread-38] o.apache.http.impl.execchain.RetryExec   : Retrying request to {}->unix://localhost:80,pod-6,node-1
+04:24,1732249469865727426,queue-master,2024-11-22 04:24:29.865  INFO 6 --- [ool-6-thread-38] o.apache.http.impl.execchain.RetryExec   : I/O exception (org.newsclub.net.unix.AFUNIXSocketException) caught when processing request to {}->unix://localhost:80: No such file or directory,pod-6,node-1
+04:24,1732249469865732593,queue-master,2024-11-22 04:24:29.865  INFO 6 --- [ool-6-thread-38] o.apache.http.impl.execchain.RetryExec   : Retrying request to {}->unix://localhost:80,pod-6,node-1
+04:24,1732249469865864550,queue-master,2024-11-22 04:24:29.865  INFO 6 --- [ool-6-thread-38] o.apache.http.impl.execchain.RetryExec   : I/O exception (org.newsclub.net.unix.AFUNIXSocketException) caught when processing request to {}->unix://localhost:80: No such file or directory,pod-6,node-1
+04:24,1732249469865872181,queue-master,2024-11-22 04:24:29.865  INFO 6 --- [ool-6-thread-38] o.apache.http.impl.execchain.RetryExec   : Retrying request to {}->unix://localhost:80,pod-6,node-1
+04:24,1732249469866075214,queue-master,2024-11-22 04:24:29.865 ERROR 6 --- [ool-6-thread-38] w.weave.socks.queuemaster.DockerSpawner  : Exception trying to launch/remove worker container. javax.ws.rs.ProcessingException: org.newsclub.net.unix.AFUNIXSocketException: No such file or directory (socket: /var/run/docker.sock),pod-6,node-1
+04:24,1732249469872073616,front-end,"Order response: {""statusCode"":201,""body"":{""id"":""[identity-32]"",""customerId"":""[identity-29]"",""customer"":{""id"":null,""firstName"":""[redacted]"",""lastName"":""[redacted]"",""username"":""[redacted]"",""addresses"":[],""cards"":[]},""address"":{""id"":null,""number"":""123"",""street"":""[redacted]"",""city"":""[redacted]"",""postcode"":""[redacted]"",""country"":""[redacted]""},""card"":{""id"":null,""longNum"":""[redacted]"",""expires"":""[redacted]"",""ccv"":""[redacted]""},""items"":[{""id"":""[identity-33]"",""itemId"":""3395a43e-2d88-40de-b95f-e00e1502085b"",""quantity"":1,""unitPrice"":18}],""shipment"":{""id"":""9000eba7-6a74-43d3-848a-bff69f766c1f"",""name"":""[identity-29]""},""date"":""2024-11-22T04:24:29.862+0000"",""total"":22.99},""headers"":{""x-application-context"":""orders:80"",""content-type"":""application/json;charset=UTF-8"",""date"":""Fri, 22 Nov 2024 04:24:29 GMT"",""x-envoy-upstream-service-time"":""29"",""server"":""envoy"",""connection"":""close"",""transfer-encoding"":""chunked""},""request"":{""uri"":{""protocol"":""http:"",""slashes"":true,""auth"":null,""host"":""orders"",""port"":80,""hostname"":""orders"",""hash"":null,""search"":null,""query"":null,""pathname"":""/orders"",""path"":""/orders"",""href"":""http://orders/orders""},""method"":""POST"",""headers"":{""accept"":""application/json"",""content-type"":""application/json"",""content-length"":232}}}",pod-10,node-3
+04:24,1732249469872095095,front-end,"Order response: {""id"":""[identity-32]"",""customerId"":""[identity-29]"",""customer"":{""id"":null,""firstName"":""[redacted]"",""lastName"":""[redacted]"",""username"":""[redacted]"",""addresses"":[],""cards"":[]},""address"":{""id"":null,""number"":""123"",""street"":""[redacted]"",""city"":""[redacted]"",""postcode"":""[redacted]"",""country"":""[redacted]""},""card"":{""id"":null,""longNum"":""[redacted]"",""expires"":""[redacted]"",""ccv"":""[redacted]""},""items"":[{""id"":""[identity-33]"",""itemId"":""3395a43e-2d88-40de-b95f-e00e1502085b"",""quantity"":1,""unitPrice"":18}],""shipment"":{""id"":""9000eba7-6a74-43d3-848a-bff69f766c1f"",""name"":""[identity-29]""},""date"":""2024-11-22T04:24:29.862+0000"",""total"":22.99}",pod-10,node-3
+04:24,1732249469873281931,front-end,POST /orders 201 - ms - -,pod-10,node-3
+04:24,1732249469876954286,front-end,Attempting to delete cart for user: [identity-28],pod-10,node-3
+04:24,1732249469891286036,front-end,User cart deleted with status: 202,pod-10,node-3
+04:24,1732249469892482441,front-end,DELETE /cart 202 - ms - -,pod-10,node-3
+04:24,1732249469899913071,front-end,"Attempting to add to cart: {""id"":""a0a4f044-b040-410d-8ead-4de0446aec7e"",""quantity"":1}",pod-10,node-3
+04:24,1732249469910056708,catalogue,ts=2024-11-22T04:24:29Z caller=logging.go:62 method=Get id=a0a4f044-b040-410d-8ead-4de0446aec7e sock=a0a4f044-b040-410d-8ead-4de0446aec7e err=null took=4.850037ms,pod-8,node-2
+04:24,1732249469911824144,front-end,"{""id"":""a0a4f044-b040-410d-8ead-4de0446aec7e"",""name"":""Nerd leg"",""description"":""For all those leg lovers out there. A perfect example of a swivel chair trained calf. Meticulously trained on a diet of sitting and Pina Coladas. Phwarr..."",""imageUrl"":[""/catalogue/images/bit_of_leg_1.jpeg"",""/catalogue/images/bit_of_leg_2.jpeg""],""price"":7.99,""count"":115,""tag"":[""blue"",""skin""]}
+",pod-10,node-3
+04:24,1732249469911842945,front-end,"POST to carts: http://carts/carts/[identity-28]/items body: {""itemId"":""a0a4f044-b040-410d-8ead-4de0446aec7e"",""unitPrice"":7.99}",pod-10,node-3
+04:24,1732249469935035494,carts,"2024-11-22 04:24:29.934  INFO [carts,a21aab053577a2ad,9760962faf52f3bf,false] 7 --- [p-nio-80-exec-7] w.w.s.cart.controllers.ItemsController   : Did not find item. Creating item for user: [identity-28], Item{id='[identity-34]', itemId='a0a4f044-b040-410d-8ead-4de0446aec7e', quantity=1, unitPrice=7.99}",pod-7,node-3
+04:24,1732249469943719390,carts,"2024-11-22 04:24:29.943  INFO [carts,a21aab053577a2ad,9760962faf52f3bf,false] 7 --- [p-nio-80-exec-7] w.w.s.cart.cart.CartContentsResource     : Adding for user: Cart{id='[identity-35]', customerId='[identity-28]', items=[]}, Item{id='[identity-34]', itemId='a0a4f044-b040-410d-8ead-4de0446aec7e', quantity=1, unitPrice=7.99}",pod-7,node-3
+04:24,1732249469960487502,front-end,POST /cart 500 59.884 ms - 70,pod-10,node-3
+04:24,1732249470093115304,user,ts=2024-11-22T04:24:30.092926141Z caller=middlewares.go:157 method=Health result=2 took=699.676µs,pod-1,node-1
+04:24,1732249470093151021,user,ts=2024-11-22T04:24:30.09292364Z caller=middlewares.go:157 method=Health result=2 took=674.801µs,pod-1,node-1
+04:24,1732249470132114481,front-end,Request received with body: {},pod-10,node-3
+04:24,1732249470136768592,user,ts=2024-11-22T04:24:30.136561036Z caller=middlewares.go:75 method=GetUsers id=[identity-36] result=1 took=871.881µs,pod-1,node-1
+04:24,1732249470139477039,front-end,"Received response: ""{\""firstName\"":\""[redacted]\"",\""lastName\"":\""[redacted]\"",\""username\"":\""[redacted]\"",\""id\"":\""[identity-36]\"",\""_links\"":{\""addresses\"":{\""href\"":\""http://user/customers/[identity-36]/addresses\""},\""cards\"":{\""href\"":\""http://user/customers/[identity-36]/cards\""},\""customer\"":{\""href\"":\""http://user/customers/[identity-36]\""},\""self\"":{\""href\"":\""http://user/customers/[identity-36]\""}}}\n""",pod-10,node-3
+04:24,1732249470139517076,front-end,GET Request to: http://user/customers/[identity-36]/addresses,pod-10,node-3
+04:24,1732249470139737156,front-end,GET Request to: http://user/customers/[identity-36]/cards,pod-10,node-3
+04:24,1732249470143971689,user,ts=2024-11-22T04:24:30.143802914Z caller=middlewares.go:75 method=GetUsers id=[identity-36] result=1 took=729.395µs,pod-1,node-1
+04:24,1732249470144123567,user,ts=2024-11-22T04:24:30.143993426Z caller=middlewares.go:75 method=GetUsers id=[identity-36] result=1 took=797.74µs,pod-1,node-1
+04:24,1732249470147856502,front-end,"Received response: ""{\""_embedded\"":{\""address\"":[{\""street\"":\""[redacted]\"",\""number\"":\""123\"",\""country\"":\""[redacted]\"",\""city\"":\""[redacted]\"",\""postcode\"":\""[redacted]\"",\""id\"":\""[identity-37]\"",\""_links\"":{\""address\"":{\""href\"":\""http://user/addresses/[identity-37]\""},\""self\"":{\""href\"":\""http://user/addresses/[identity-37]\""}}}]}}\n""",pod-10,node-3
+04:24,1732249470148380860,front-end,"Received response: ""{\""_embedded\"":{\""card\"":[{\""longNum\"":\""[redacted]\"",\""expires\"":\""[redacted]\"",\""ccv\"":\""[redacted]\"",\""id\"":\""[identity-38]\"",\""_links\"":{\""card\"":{\""href\"":\""http://user/cards/[identity-38]\""},\""self\"":{\""href\"":\""http://user/cards/[identity-38]\""}}}]}}\n""",pod-10,node-3
+04:24,1732249470148477393,front-end,"[ undefined, undefined ]",pod-10,node-3
+04:24,1732249470148592577,front-end,"Posting Order: {""customer"":""http://user/customers/[identity-36]"",""address"":""http://user/addresses/[identity-37]"",""card"":""http://user/cards/[identity-38]"",""items"":""http://carts/carts/[identity-36]/items""}",pod-10,node-3
+04:24,1732249470154947598,front-end,npm timing command:run-script Completed in 3444ms,pod-9,node-2
+04:24,1732249470154961460,front-end,npm timing command:start Completed in 3446ms,pod-9,node-2
+04:24,1732249470155144758,front-end,npm notice,pod-9,node-2
+04:24,1732249470155151717,front-end,npm notice New major version of npm available! 8.19.4 -> 10.9.1,pod-9,node-2
+04:24,1732249470155153879,front-end,npm notice Changelog: <https://github.com/npm/cli/releases/tag/v10.9.1>,pod-9,node-2
+04:24,1732249470155188280,front-end,npm notice Run `npm install -g npm@10.9.1` to update!,pod-9,node-2
+04:24,1732249470155194027,front-end,npm notice,pod-9,node-2
+04:24,1732249470155882516,user,ts=2024-11-22T04:24:30.15569986Z caller=middlewares.go:134 method=GetCards id=[identity-38] result=1 took=667.179µs,pod-1,node-1
+04:24,1732249470155967668,user,ts=2024-11-22T04:24:30.155890693Z caller=middlewares.go:104 method=GetAddresses id=[identity-37] result=1 took=819.016µs,pod-1,node-1
+04:24,1732249470156065981,front-end,npm verb stack Error: command failed,pod-9,node-2
+04:24,1732249470156073033,front-end,npm verb stack     at ChildProcess.<anonymous> (/usr/local/lib/node_modules/npm/node_modules/@npmcli/promise-spawn/lib/index.js:63:27),pod-9,node-2
+04:24,1732249470156077575,front-end,npm verb stack     at ChildProcess.emit (node:events:513:28),pod-9,node-2
+04:24,1732249470156092911,front-end,npm verb stack     at maybeClose (node:internal/child_process:1100:16),pod-9,node-2
+04:24,1732249470156098848,user,ts=2024-11-22T04:24:30.155969398Z caller=middlewares.go:75 method=GetUsers id=[identity-36] result=1 took=1.13127ms,pod-1,node-1
+04:24,1732249470156123768,front-end,npm verb stack     at Process.ChildProcess._handle.onexit (node:internal/child_process:304:5),pod-9,node-2
+04:24,1732249470156610533,front-end,npm verb pkgid microservices-demo-front-end@0.0.1,pod-9,node-2
+04:24,1732249470156787018,front-end,npm verb cwd /usr/src/app,pod-9,node-2
+04:24,1732249470156836683,front-end,npm verb Linux 5.10.227-219.884.amzn2.x86_64,pod-9,node-2
+04:24,1732249470156913852,front-end,npm verb node v16.20.2,pod-9,node-2
+04:24,1732249470156916017,front-end,npm verb npm  v8.19.4,pod-9,node-2
+04:24,1732249470156919827,front-end,npm ERR! path /usr/src/app,pod-9,node-2
+04:24,1732249470158078725,front-end,npm ERR! command failed,pod-9,node-2
+04:24,1732249470158096060,front-end,npm ERR! signal SIGTERM,pod-9,node-2
+04:24,1732249470158140599,front-end,npm ERR! command sh -c -- node server.js,pod-9,node-2
+04:24,1732249470158568182,front-end,npm verb exit 1,pod-9,node-2
+04:24,1732249470158955363,front-end,npm timing npm Completed in 3647ms,pod-9,node-2
+04:24,1732249470158960886,front-end,"npm verb code 1
+",pod-9,node-2
+04:24,1732249470159661340,front-end,npm ERR! A complete log of this run can be found in:,pod-9,node-2
+04:24,1732249470159663266,front-end,npm ERR!     /home/myuser/.npm/_logs/[identity-12].log,pod-9,node-2
+04:24,1732249470164858776,orders,"2024-11-22 04:24:30.164  INFO [orders,3077cb603ec8ec9f,fe098dc814e5a30d,false] 6 --- [-nio-80-exec-14] w.w.s.o.controllers.OrdersController     : Sending payment request: PaymentRequest{address=Address{id=null, number='123', street='123', city='123', country='123', postcode='123'}, card=Card{id=null, longNum='123123321', expires='1232', ccv='123'}, customer=Customer{id=null, firstName='EIpRThblsmyZAT', lastName='EIpRThblsmyZAT', username='EIpRThblsmyZAT', addresses=[], cards=[]}}",pod-3,node-1
+04:24,1732249470167925518,payment,ts=2024-11-22T04:24:30Z caller=logging.go:29 method=Authorise result=true took=1.013µs,pod-4,node-3
+04:24,1732249470169162743,orders,"2024-11-22 04:24:30.168  INFO [orders,3077cb603ec8ec9f,fe098dc814e5a30d,false] 6 --- [-nio-80-exec-14] w.w.s.o.controllers.OrdersController     : Received payment response: PaymentResponse{authorised=true, message=Payment authorised}",pod-3,node-1
+04:24,1732249470169289379,carts-db,"{""t"":{""$date"":""2024-11-22T04:24:30.169+00:00""},""s"":""I"",  ""c"":""STORAGE"",  ""id"":22430,   ""ctx"":""Checkpointer"",""msg"":""WiredTiger message"",""attr"":{""message"":""[1732249470:169207][1:0x7f4a40802700], WT_SESSION.checkpoint: [WT_VERB_CHECKPOINT_PROGRESS] saving checkpoint snapshot min: 51487, snapshot max: 51487 snapshot count: 0, oldest timestamp: (0, 0) , meta checkpoint timestamp: (0, 0) base write gen: 1""}}",pod-12,node-2
+04:24,1732249470172753389,shipping,Adding shipment to queue...,pod-5,node-3
+04:24,1732249470175441758,queue-master,Received shipment task: [identity-36],pod-6,node-1
+04:24,1732249470175537240,queue-master,2024-11-22 04:24:30.175  INFO 6 --- [ool-6-thread-39] w.weave.socks.queuemaster.DockerSpawner  : Spawning new container,pod-6,node-1
+04:24,1732249470176104929,queue-master,2024-11-22 04:24:30.175  INFO 6 --- [ool-6-thread-39] o.apache.http.impl.execchain.RetryExec   : I/O exception (org.newsclub.net.unix.AFUNIXSocketException) caught when processing request to {}->unix://localhost:80: No such file or directory,pod-6,node-1
+04:24,1732249470176115434,queue-master,2024-11-22 04:24:30.176  INFO 6 --- [ool-6-thread-39] o.apache.http.impl.execchain.RetryExec   : Retrying request to {}->unix://localhost:80,pod-6,node-1
+04:24,1732249470176270785,queue-master,2024-11-22 04:24:30.176  INFO 6 --- [ool-6-thread-39] o.apache.http.impl.execchain.RetryExec   : I/O exception (org.newsclub.net.unix.AFUNIXSocketException) caught when processing request to {}->unix://localhost:80: No such file or directory,pod-6,node-1
+04:24,1732249470176283533,queue-master,2024-11-22 04:24:30.176  INFO 6 --- [ool-6-thread-39] o.apache.http.impl.execchain.RetryExec   : Retrying request to {}->unix://localhost:80,pod-6,node-1
+04:24,1732249470176338591,queue-master,2024-11-22 04:24:30.176  INFO 6 --- [ool-6-thread-39] o.apache.http.impl.execchain.RetryExec   : I/O exception (org.newsclub.net.unix.AFUNIXSocketException) caught when processing request to {}->unix://localhost:80: No such file or directory,pod-6,node-1
+04:24,1732249470176344155,queue-master,2024-11-22 04:24:30.176  INFO 6 --- [ool-6-thread-39] o.apache.http.impl.execchain.RetryExec   : Retrying request to {}->unix://localhost:80,pod-6,node-1
+04:24,1732249470176891051,queue-master,2024-11-22 04:24:30.176 ERROR 6 --- [ool-6-thread-39] w.weave.socks.queuemaster.DockerSpawner  : Exception trying to launch/remove worker container. javax.ws.rs.ProcessingException: org.newsclub.net.unix.AFUNIXSocketException: No such file or directory (socket: /var/run/docker.sock),pod-6,node-1
+04:24,1732249470178714061,front-end,"Order response: {""statusCode"":201,""body"":{""id"":""[identity-39]"",""customerId"":""[identity-36]"",""customer"":{""id"":null,""firstName"":""[redacted]"",""lastName"":""[redacted]"",""username"":""[redacted]"",""addresses"":[],""cards"":[]},""address"":{""id"":null,""number"":""123"",""street"":""[redacted]"",""city"":""[redacted]"",""postcode"":""[redacted]"",""country"":""[redacted]""},""card"":{""id"":null,""longNum"":""[redacted]"",""expires"":""[redacted]"",""ccv"":""[redacted]""},""items"":[{""id"":""[identity-40]"",""itemId"":""837ab141-399e-4c1f-9abc-bace40296bac"",""quantity"":1,""unitPrice"":15}],""shipment"":{""id"":""ebac1743-c348-457c-9f27-9f3702773c1e"",""name"":""[identity-36]""},""date"":""2024-11-22T04:24:30.173+0000"",""total"":19.99},""headers"":{""x-application-context"":""orders:80"",""content-type"":""application/json;charset=UTF-8"",""date"":""Fri, 22 Nov 2024 04:24:29 GMT"",""x-envoy-upstream-service-time"":""26"",""server"":""envoy"",""connection"":""close"",""transfer-encoding"":""chunked""},""request"":{""uri"":{""protocol"":""http:"",""slashes"":true,""auth"":null,""host"":""orders"",""port"":80,""hostname"":""orders"",""hash"":null,""search"":null,""query"":null,""pathname"":""/orders"",""path"":""/orders"",""href"":""http://orders/orders""},""method"":""POST"",""headers"":{""accept"":""application/json"",""content-type"":""application/json"",""content-length"":232}}}",pod-10,node-3
+04:24,1732249470178730442,front-end,"Order response: {""id"":""[identity-39]"",""customerId"":""[identity-36]"",""customer"":{""id"":null,""firstName"":""[redacted]"",""lastName"":""[redacted]"",""username"":""[redacted]"",""addresses"":[],""cards"":[]},""address"":{""id"":null,""number"":""123"",""street"":""[redacted]"",""city"":""[redacted]"",""postcode"":""[redacted]"",""country"":""[redacted]""},""card"":{""id"":null,""longNum"":""[redacted]"",""expires"":""[redacted]"",""ccv"":""[redacted]""},""items"":[{""id"":""[identity-40]"",""itemId"":""837ab141-399e-4c1f-9abc-bace40296bac"",""quantity"":1,""unitPrice"":15}],""shipment"":{""id"":""ebac1743-c348-457c-9f27-9f3702773c1e"",""name"":""[identity-36]""},""date"":""2024-11-22T04:24:30.173+0000"",""total"":19.99}",pod-10,node-3
+04:24,1732249470180120053,front-end,POST /orders 201 - ms - -,pod-10,node-3
+04:24,1732249470749821440,front-end,"Posting Customer: {""username"":""[redacted]"",""password"":""[redacted]"",""email"":""[redacted]"",""firstName"":""[redacted]"",""lastName"":""[redacted]""}",pod-10,node-3
+04:24,1732249470755910052,user,ts=2024-11-22T04:24:30.755634564Z caller=middlewares.go:46 method=Register username=vfIOSwCNYPQcOz email=[email] took=1.095807ms,pod-1,node-1
+04:24,1732249470757543380,front-end,{ id: '[identity-41]' },pod-10,node-3

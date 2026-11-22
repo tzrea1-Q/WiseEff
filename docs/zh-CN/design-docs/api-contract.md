@@ -483,12 +483,13 @@ Worker 仅对匹配文件应用技能信号、抽取器及解码；抽取器自�
 | `POST` | `/api/v1/log-files` | 创建上传凭证或直接上传 |
 | `POST` | `/api/v1/logs` | 创建日志分析记录 |
 | `GET` | `/api/v1/logs` | 日志列表 |
-| `GET` | `/api/v1/logs/:logId` | 日志详情 |
-| `GET` | `/api/v1/logs/:logId/runs` | 分析 run 列表 |
+| `GET` | `/api/v1/logs/:logId` | 日志详情。用户会话中，报告可能包含 `historicalRunIds`，记录实际返回的同组织、同技能历史运行 ID。检索跨技能修订，并遵守关联参数的项目范围。历史线索不能建立证据锚点。 |
+| `GET` | `/api/v1/logs/:logId/runs` | 分析 run 列表，可能包含去重的 `historicalRunIds` |
 | `POST` | `/api/v1/logs/:logId/rerun` | 重新分析 |
 | `POST` | `/api/v1/logs/:logId/archive` | 归档 |
 | `POST` | `/api/v1/logs/:logId/unarchive` | 取消归档 |
 | `POST` | `/api/v1/logs/:logId/feedback` | 用户反馈 |
+| `POST` | `/api/v1/logs/:logId/reports/:reportId/eval-case-draft` | 管理员确认将当前已完成的技能报告导出为评测草稿。要求本组织 `logs:view` 和 `logs:admin-domains`，返回 `{ ok: true }`。报告已变更或未钉住技能修订时返回 `409`。确认绑定到该次运行。 |
 | `GET` | `/api/v1/logs/feedback-insights` | P3：反馈质量聚合（`logs:view`；可选 `timeWindow=today\|7d\|30d`） |
 | `GET` | `/api/v1/log-domains` | 业务域列表（`logs:view`；`includeArchived=true` 含已归档） |
 | `POST` | `/api/v1/log-domains` | 创建业务域（`logs:admin-domains`；组织内重名 `409`；画像 JSON 非法 `400`；画像中的模式使用线性时间引擎上的 RE2 语法，不支持环视与反向引用，长度 ≤ 4,096 字符，超过 65,536 字符的行不参与匹配，不支持的模式返回 `400` 并给出字段路径） |
@@ -520,11 +521,19 @@ Worker 仅对匹配文件应用技能信号、抽取器及解码；抽取器自�
 
 工作区「集成」统一编辑 key、展示上传示例、配置和测试 Webhook、查看投递记录、编辑模型及预算。「概览」保留指引，旧管理页提供工作区链接，不再重复编辑。`spec.stepBudget`、`spec.tokenBudget` 为可选正整数，随版本发布，省略时使用全局默认。服务端拒绝超过 `LOG_ANALYSIS_MAX_STEPS` / `LOG_ANALYSIS_TOKEN_BUDGET` 的值，返回 `VALIDATION_FAILED` 字段错误；技能详情提供 `budgetCaps`。旧版本在平台上限降低后仍受运行时上限约束。Webhook 和 key 继续属于即时生效的身份设置。
 
-保存及发布还校验 `stepBudget >= 1`、`tokenBudget >= min(4096, LOG_ANALYSIS_TOKEN_BUDGET)`，错误指向具体字段路径。显式版本 token 预算约束模型服务报告的累计用量，每次模型调用前检查，包含收敛调用，不做 token 估算。单次完成可能超过剩余预算；已报告用量达到预算后，不再发起后续调用。没有得到已接地最终报告时，耗尽运行返回 `rules-fallback` 及 `degradedReason: "token-budget-exhausted"`。没有版本 `tokenBudget` 时，既有平台全局预算计量及提前收敛行为不变。
+保存及发布还校验 `stepBudget >= 1`、`tokenBudget >= min(4096, LOG_ANALYSIS_TOKEN_BUDGET)`，错误指向具体字段路径。显式版本 token 预算约束模型服务报告的累计用量，每次模型调用前检查，包含收敛调用，不做 token 估算。单次完成可能超过剩余预算。已报告用量达到预算后，循环不再发起后续调用。没有版本 `tokenBudget` 时，保留既有平台全局预算计量及提前收敛行为。
+
+可选字段 `spec.protocolOverride` 接受 `auto`、`tools` 或 `json`，可在「概览」→「运行设置」中编辑，并随技能包的 `SKILL.md` 前置信息导入导出。日志循环在平台 `LOG_ANALYSIS_PROTOCOL` 的约束内使用钉住修订的覆盖值。`model-turn` 轨迹步骤可通过 `protocol` 记录实际协议 `tools` 或 `json`。自动探测被拒绝时，先记录 `reason: "protocol-unsupported"`，再用 JSON 重试同一步。
 
 结果 Webhook 在保留 `logDomainId`、`skillRevisionId`、`skillRevisionNumber` 及其他旧字段的基础上增加 `skill: { id, key, revisionId, revisionNumber }`、`degraded: boolean`。旧未钉住运行的版本字段可为 null；规则回退或存在降级原因时 `degraded` 为 true，有原因时保留 `degradedReason`。终态入队快照保存 key 和钉住版本，重试保持相同载荷；同步测试事件维持原格式。参见[集成指南](../api/log-analysis-integration.md)。
 
-上传、创建与 rerun 接受可选 `logDomainId`，作为 `skillId` 的别名：必须属于本组织且为 `active`，否则 `400`。新上传未提供选择字段时使用下述推荐路由；rerun 保持原有版本策略。日志 DTO 新增 additive 来源字段：`logDomainId?`、`logDomainName?`、`analysisSource?: "agent" | "rules-fallback"`、`degradedReason?: "provider-unavailable" | "token-budget-exhausted"`；`rules-fallback` 表示降级分析，客户端必须保持其可见，其余输出契约不变。
+上传、创建与 rerun 接受可选 `logDomainId` 作为 `skillId` 的别名，所选技能必须属于本组织且为 `active`，否则返回 `400`。新上传未提供选择字段时使用下述推荐路由，rerun 保持原有版本策略。日志 DTO 提供可选溯源字段 `logDomainId`、`logDomainName`、`analysisSource`（`agent`、`single-shot-fallback` 或 `rules-fallback`）和 `degradedReason`。记录响应与结果 Webhook 的 `degradedReason` 可取 `provider-unavailable`、`invalid-model-output`、`step-budget-exhausted` 或 `token-budget-exhausted`。设置 `LOG_ANALYSIS_SINGLE_SHOT_FALLBACK=true` 后，只有以 `invalid-model-output` 结束的循环内核会使用同一已固定技能修订和模型做一次 JSON 重试。重试得到有依据的证据时来源为 `single-shot-fallback`，置信度封顶 0.5。重试失败时来源为 `rules-fallback`。两种结果的 Webhook `degraded` 均为 true。剩余累计预算不足以重试时，直接返回 `rules-fallback`，原因是 `token-budget-exhausted`。步数耗尽时，提前收敛成功的报告来源为 `agent`，否则为 `rules-fallback`。历史报告保留已存储的值。
+
+设置 `LOG_ANALYSIS_HYPOTHESIS_LEDGER=true` 后，已完成的循环分析可通过记录 API 和完成结果 Webhook 返回 `alternativeHypotheses: [{ statement, reason, anchors }]`。日志锚点为 `{ file, line }`，源码锚点为 `{ snapshotId, path, line }`。行号从 1 开始，每个排除原因至少引用一个此前由工具返回的锚点。该字段最多包含 8 个排除原因，每项最多 4 个锚点，陈述与理由各最多 240 个字符。关联参数快照的运行会在结果 Webhook 中省略此字段。循环轨迹步骤可带 `hypotheses: [{ id, status, anchors }]`，ID 为序号，状态为 `open`、`supported`、`refuted` 或 `inconclusive`。每个快照的 JSON 序列化大小上限为 4 KiB。读取旧轨迹时删除陈述，并使用序号替换 ID。
+
+设置 `LOG_ANALYSIS_PROCEDURE_CHECKLIST=true` 后，固定修订含检查清单且已接地的循环报告可返回 `checks: [{ id, description, required, status, reason?, anchors }]`。记录 API、试运行和分析用例报告按流程顺序返回各项。`status` 支持 `done`（已完成）、`skipped`（已跳过）和 `pending`（模型未更新）。每项最多包含 4 个此前已见的日志或源码锚点。运行未关联参数快照时，完成结果 Webhook 也会携带 `checks`。保存修订时从 `spec.procedure` 解析 `spec.procedureChecks`，随修订返回。
+
+设置 `LOG_ANALYSIS_VERIFY_CONCLUSION=true` 后，已接地的循环分析可通过记录 API 和完成结果 Webhook 返回 `verification: { status, checkedClaims, unsupportedClaims, model }`。验证器独立检查结论和每项已接地推断，调用不带工具。内核最多尝试一次修订，修订报告通过接地与复验后才交付。`passed` 表示保留原报告，`revised` 表示接受通过复验的修订。结论或推断与证据矛盾，或修订后仍无法确认有证据支持时，返回 `failed` 并提示人工复核。内核删除不被支持的证据，并以不确定性说明替换不被支持的结论。计数基于原报告，矛盾项计入 `unsupportedClaims`。删减证据或发现矛盾时，置信度封顶为 0.5。预算不足或验证失败时返回 `skipped`，两项计数均为零，并保留原报告。旧记录和未启用结论验证的运行省略此字段。
 
 ### 技能推荐与上传路由（#1247）
 

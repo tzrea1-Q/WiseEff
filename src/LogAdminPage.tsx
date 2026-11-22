@@ -26,7 +26,7 @@ import { cn } from "@/lib/utils";
 import { applyTableFilters, applyTimeWindow, deriveInsight, deriveMetrics } from "@/logAdminAnalytics";
 import { formatPercent } from "@/domain/format/formatPercent";
 import type { LogRecord, LogStatus, PrototypeState, TimeWindow } from "@/domain/prototype/types";
-import type { LogDomain, LogFeedbackInsight } from "@/domain/logs/types";
+import type { LogAnalysisSource, LogDomain, LogFeedbackInsight } from "@/domain/logs/types";
 import { logRuntimeFailureNotification, type LogRuntimeActions } from "@/application/logs/logRuntime";
 import type { KnowledgeRepository } from "@/application/ports/KnowledgeRepository";
 import type { LogAnalysisRepository } from "@/application/ports/LogAnalysisRepository";
@@ -310,8 +310,9 @@ function LogDomainGovernanceSection({
   );
 }
 
-const feedbackAnalysisSourceLabels: Record<"agent" | "rules-fallback" | "none", string> = {
+const feedbackAnalysisSourceLabels: Record<LogAnalysisSource | "none", string> = {
   agent: "AI 分析",
+  "single-shot-fallback": "降级 · 单次模型回退",
   "rules-fallback": "降级 · 规则回退",
   none: "未标注来源"
 };
@@ -605,7 +606,7 @@ export function LogAdminPage({ state, dispatch, onNavigate, search: _search, log
         ) : (
           <span className="inline-flex items-center justify-end gap-1 text-xs">
             <span className="font-mono">{formatPercent(record.confidence)}</span>
-            <span className="rounded border border-border px-1 text-muted-foreground">{record.analysisSource === "agent" ? "AI" : "规则"}</span>
+            <span className="rounded border border-border px-1 text-muted-foreground">{record.analysisSource === "single-shot-fallback" ? "单次模型" : record.analysisSource === "agent" ? "AI" : "规则"}</span>
           </span>
         ),
       sortAccessor: (record) => record.confidence,
@@ -878,6 +879,7 @@ export function LogAdminPage({ state, dispatch, onNavigate, search: _search, log
           });
         }}
         canAct={canAct}
+        canConfirmEvalCaseDraft={apiMode && sessionPermissions?.includes("logs:admin-domains") === true}
         reanalyzePending={selectedRecordReanalyzePending}
         archivePending={selectedRecordArchivePending}
         feedbackPending={selectedRecordFeedbackPending}

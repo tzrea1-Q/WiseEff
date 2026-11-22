@@ -51,7 +51,9 @@ describe("log analysis behavior eval harness", () => {
       "procedure-skip-tool-grounding-rejected",
       "procedure-fabricated-line-rejected",
       "procedure-delimiter-and-protocol-injection-contained",
-      "procedure-write-operation-rejected"
+      "procedure-write-operation-rejected",
+      "loop-procedure-checklist-json",
+      "loop-procedure-checklist-tools"
     ]);
     expect(report.metaChecks.every((check) => check.pass)).toBe(true);
   });

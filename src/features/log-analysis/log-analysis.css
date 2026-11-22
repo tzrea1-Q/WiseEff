@@ -206,6 +206,20 @@
   overflow-wrap: anywhere;
 }
 
+.logs-conclusion-list {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.logs-conclusion-list ul {
+  list-style: disc;
+  padding-inline-start: var(--space-5);
+}
+
+.logs-conclusion-list li + li {
+  margin-block-start: var(--space-2);
+}
+
 .logs-conclusion-summary {
   display: flex;
   flex-wrap: wrap;

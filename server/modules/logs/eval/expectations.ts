@@ -11,6 +11,8 @@ export type LogEvalRunResult = {
   parsedLineNumbers: number[];
   /** Prompt messages the analyzer sent to the (fake) model, captured by the harness. */
   promptMessages: LogAnalysisChatMessage[];
+  /** Last invocation only, for testing changes to the model's visible history. */
+  finalPromptMessages?: LogAnalysisChatMessage[];
   /** Number of model invocations the kernel made (loop scenarios: budget adherence). */
   modelCallCount?: number;
   /** System prompt captured from the same kernel/input with no skill procedure. */
@@ -26,13 +28,18 @@ export type LogEvalExpectation =
   | { type: "expectsAnalysisSource"; source: LogAnalysisSource }
   | { type: "expectsDegradedReason"; reason: LogAnalysisDegradedReason }
   | { type: "expectsNoDegradation" }
+  | { type: "expectsAlternativeHypotheses"; alternatives?: AnalyzeLogOutput["alternativeHypotheses"] }
+  | { type: "expectsChecks"; checks: AnalyzeLogOutput["checks"] }
+  | { type: "expectsVerification"; verification: AnalyzeLogOutput["verification"] }
   | { type: "expectsGroundedEvidence" }
+  | { type: "expectsHistoricalRunIds"; runIds: string[] }
   | { type: "expectsSourceLocations"; locations: SourceLocation[] }
   | { type: "expectsSourceToolBounds"; tool: "search_source" | "read_source_range"; maxBytes: number;
       maxItems?: number; expectedItems?: number; maxExcerptChars?: number; expectedLines?: number; endLine?: number; truncated: boolean }
   | { type: "expectsEvidenceNotCitingLines"; lineNumbers: number[] }
   | { type: "expectsPromptVersionRecorded"; promptVersion: string }
   | { type: "expectsPromptContains"; substrings: string[] }
+  | { type: "expectsFinalPrompt"; contains: string[]; excludes: string[] }
   | { type: "expectsProcedurePrompt"; procedure: string }
   | { type: "requiresSubstringsInConclusion"; substrings: string[] }
   | { type: "expectsConfidenceAtMost"; value: number }
@@ -49,6 +56,20 @@ export function evaluateLogEvalExpectation(
   result: LogEvalRunResult
 ): LogEvalExpectationResult {
   switch (expectation.type) {
+    case "expectsVerification": {
+      const recorded = result.output.verification;
+      const pass = recorded?.status === expectation.verification?.status
+        && recorded?.checkedClaims === expectation.verification?.checkedClaims
+        && recorded?.unsupportedClaims === expectation.verification?.unsupportedClaims
+        && recorded?.model === expectation.verification?.model;
+      return pass ? { pass: true } : { pass: false, message: "Unexpected conclusion verification result" };
+    }
+    case "expectsAlternativeHypotheses":
+      return JSON.stringify(result.output.alternativeHypotheses) === JSON.stringify(expectation.alternatives)
+        ? { pass: true } : { pass: false, message: "Expected only the scripted, grounded alternative hypotheses" };
+    case "expectsChecks":
+      return JSON.stringify(result.output.checks) === JSON.stringify(expectation.checks)
+        ? { pass: true } : { pass: false, message: "Expected the scripted checklist status with only seen anchors" };
     case "expectsTrace": {
       const trace = result.trace ?? [];
       const pass = trace.length > 0 && trace.length <= 200 && trace.every((step, index) => step.index === index + 1)
@@ -87,13 +108,18 @@ export function evaluateLogEvalExpectation(
           };
     }
     case "expectsNoDegradation": {
-      const pass = result.output.degradedReason === undefined && result.output.analysisSource !== "rules-fallback";
+      const pass = result.output.degradedReason === undefined
+        && result.output.analysisSource !== "rules-fallback" && result.output.analysisSource !== "single-shot-fallback";
       return pass
         ? { pass: true }
         : {
             pass: false,
             message: `Expected a non-degraded analysis, got source=${result.output.analysisSource ?? "none"} reason=${result.output.degradedReason ?? "none"}`
           };
+    }
+    case "expectsHistoricalRunIds": {
+      const pass = JSON.stringify(result.output.historicalRunIds) === JSON.stringify(expectation.runIds);
+      return pass ? { pass: true } : { pass: false, message: "Expected provenance from returned historical hints." };
     }
     case "expectsGroundedEvidence": {
       if (result.output.evidence.length === 0) {
@@ -151,6 +177,14 @@ export function evaluateLogEvalExpectation(
       return missing.length === 0
         ? { pass: true }
         : { pass: false, message: `Prompt is missing: ${missing.join(" | ")}` };
+    }
+    case "expectsFinalPrompt": {
+      const promptText = result.finalPromptMessages?.map((message) => message.content).join("\n") ?? "";
+      const missing = expectation.contains.filter((substring) => !promptText.includes(substring));
+      const unexpected = expectation.excludes.filter((substring) => promptText.includes(substring));
+      return missing.length === 0 && unexpected.length === 0
+        ? { pass: true }
+        : { pass: false, message: `Final prompt missing ${JSON.stringify(missing)}, unexpectedly includes ${JSON.stringify(unexpected)}` };
     }
     case "expectsProcedurePrompt": {
       const firstSystem = result.promptMessages.findIndex((message) => message.role === "system");

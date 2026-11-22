@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { processNextKnowledgeIndexJob } from "../knowledge/indexing/worker";
 import { createEphemeralTestDatabase, isTestDatabaseAvailable } from "../../testing/testDatabase";
@@ -15,6 +15,7 @@ import { registerLogRoutes } from "./routes";
 import { processLogAnalysisJobById } from "./worker";
 import { createRuleBasedLogAnalyzer } from "./analyzer";
 import { createAgentLoopLogAnalyzer } from "./analyzer/agentLoop";
+import { createLogAnalyzerFromEnv } from "./analyzer/analyzerFromEnv";
 import { createScriptedLogAnalysisModel } from "./analyzer/scriptedModel";
 import { createWorkerLogAnalysisToolBackends } from "./analyzer/tools/workerToolBackends";
 import type { getLogSkill } from "./skillsService";
@@ -22,6 +23,7 @@ import type { LogSkillRevisionDto } from "./skillsRepository";
 import type { LogRecordDto } from "./types";
 import type { LogRunDto } from "./repository";
 import { logRecordDtoSchema, logRunDtoSchema } from "../contracts/dtoSchemas/logs";
+import { hasPastConclusions, searchPastConclusions } from "./pastConclusionsRepository";
 
 const available = await isTestDatabaseAvailable();
 const organizationId = "org-skill-knowledge";
@@ -34,7 +36,7 @@ async function createFixture() {
     organization: { id }, users: [{ id: `${id}-admin` }]
   });
   const admin = makeTestAuthContext({ organizationId, userId: `${organizationId}-admin`, permissions: [
-    "logs:view", "logs:upload", "logs:analyze", "logs:admin-domains", "knowledge:view", "knowledge:edit"
+    "logs:view", "logs:upload", "logs:analyze", "logs:admin-domains", "logs:feedback", "knowledge:view", "knowledge:edit"
   ] });
   let auth = admin;
   const router = createRouter();
@@ -66,6 +68,102 @@ async function createFixture() {
 }
 
 describe.skipIf(!available)("skill knowledge runs over PostgreSQL", () => {
+  it("retrieves only confirmed, same-tenant and same-skill history across revisions, and persists only the returned run IDs", async () => {
+    const fixture = await createFixture();
+    const { db, objectStore, request, setAuth, admin } = fixture;
+    try {
+      const createSkill = async (name: string) => {
+        const result = await request<{ item: Skill }>("/api/v1/log-skills", "POST", { name });
+        expect(result.status).toBe(201);
+        return result.body.item;
+      };
+      const createRun = async (skillId: string, summary: string) => {
+        const uploaded = await request<{ log: { id: string }; job: { id: string; runId: string } }>("/api/v1/log-files", "POST", {
+          fileName: "history.log", contentType: "text/plain", skillId,
+          contentBase64: Buffer.from("ERROR private-raw-line-1568\n").toString("base64")
+        });
+        expect(uploaded.status).toBe(201);
+        const { log, job } = uploaded.body;
+        expect(await processLogAnalysisJobById({ db, objectStore, jobId: job.id, analyzer: {
+          async analyze(input) {
+            return { ...await createRuleBasedLogAnalyzer().analyze(input), conclusion: summary, evidence: [
+              { stageId: "rootcause", lineNumbers: [1], inference: "ERROR private-raw-line-1568", suggestedAction: "Inspect." }
+            ] };
+          }
+        } })).toEqual({ status: "processed" });
+        const path = `/api/v1/logs/${log.id}`;
+        return { path, runId: job.runId, reportId: `report-${job.runId}` };
+      };
+      const skill = await createSkill("History skill");
+      const prior = await createRun(skill.id, "Thermal foldback after vent obstruction");
+      expect((await request(`${prior.path}/feedback`, "POST", { rating: "helpful" })).status).toBe(200);
+      const skillPath = `/api/v1/log-skills/${skill.id}`;
+      const draft = await request<{ item: LogSkillRevisionDto }>(`${skillPath}/draft`, "PUT", {
+        spec: { schemaVersion: "skill/v1", procedure: "Check the fan." },
+        baseDraftRevisionId: null, basePublishedRevisionId: skill.currentRevision.id
+      });
+      expect(draft.status).toBe(200);
+      expect((await request(`${skillPath}/publish`, "POST", { draftRevisionId: draft.body.item.id })).status).toBe(200);
+      const exported = await createRun(skill.id, "Thermal foldback after fan stall");
+      const exportPath = (reportId: string) => `${exported.path}/reports/${reportId}/eval-case-draft`;
+      const unreviewed = await createRun(skill.id, "Thermal foldback unreviewed");
+      expect((await request(`${unreviewed.path}/feedback`, "POST", { rating: "not_helpful" })).status).toBe(200);
+      expect((await request(exportPath(prior.reportId), "POST")).status).toBe(409);
+      setAuth({ ...admin, permissions: ["logs:view"] });
+      expect((await request(exportPath(exported.reportId), "POST")).status).toBe(403);
+      setAuth(admin);
+      expect((await request(exportPath(exported.reportId), "POST")).status).toBe(200);
+      const saved = await createRun(skill.id, "Thermal foldback after coolant loss");
+      expect((await request(`${skillPath}/analysis-cases`, "POST", {
+        name: "Reviewed cooling case", sourceRecordId: saved.path.split("/").at(-1), expectations: {
+          domain: "generic", summary: "Reviewed cooling incident", realLog: false, rootCauseCategory: "thermal-protection",
+          rootCausePoints: ["Loss of coolant"], keyEvidenceLines: [1], expectedActions: ["Inspect coolant."], expectRefusal: false
+        }
+      })).status).toBe(201);
+      const otherSkill = await createSkill("Other history skill");
+      const wrongSkill = await createRun(otherSkill.id, "Thermal foldback wrong skill");
+      expect((await request(`${wrongSkill.path}/feedback`, "POST", { rating: "helpful" })).status).toBe(200);
+      setAuth(makeTestAuthContext({ organizationId: "org-other-knowledge", userId: "org-other-knowledge-admin",
+        permissions: ["logs:view", "logs:upload", "logs:analyze", "logs:admin-domains", "logs:feedback"] }));
+      expect((await request(exportPath(exported.reportId), "POST")).status).toBe(404);
+      const foreign = await createRun((await createSkill("Foreign history skill")).id, "Thermal foldback wrong tenant");
+      expect((await request(`${foreign.path}/feedback`, "POST", { rating: "helpful" })).status).toBe(200);
+      setAuth(admin);
+
+      const scope = { organizationId, skillId: skill.id, runId: "new-run", projectId: null };
+      await expect(hasPastConclusions(db, scope)).resolves.toBe(true);
+      await expect(hasPastConclusions(db, { ...scope, organizationId: "org-other-knowledge" })).resolves.toBe(false);
+      await expect(searchPastConclusions(db, scope, { query: "coolant loss", offset: 0, limit: 5 })).resolves.toMatchObject({ items: [] });
+      expect((await request(`${saved.path}/reports/${saved.reportId}/eval-case-draft`, "POST")).status).toBe(200);
+      const page = await searchPastConclusions(db, scope, { query: "thermal foldback", offset: 0, limit: 2 });
+      expect(page).toMatchObject({ retrievalMode: "fts_only", hasMore: true });
+      expect(page.items.map((item) => item.runId)).toEqual([saved.runId, exported.runId]);
+      expect(page.items[0]).toMatchObject({ rootCauseCategory: "thermal-protection", evidenceTemplates: ["rootcause evidence: 1 log anchors"] });
+      expect(JSON.stringify(page)).not.toContain("private-raw-line-1568");
+      await expect(searchPastConclusions(db, scope, { query: "thermal foldback", offset: 2, limit: 5 }))
+        .resolves.toMatchObject({ hasMore: false, items: [{ runId: prior.runId }] });
+      const rerun = await request<{ job: { id: string; runId: string } }>(`${unreviewed.path}/rerun`, "POST", { revisionPolicy: "pinned" });
+      expect(rerun.status).toBe(200);
+      const final = { action: "final", conclusion: "Current incident", confidence: 0.9, impact: "Reduced output",
+        severity: "Warning", suggestedActions: ["Inspect"], evidence: [{ lineNumbers: [1], inference: "Current error", suggestedAction: "Inspect" }] };
+      const embed = vi.fn(async (texts: string[]) => texts.map(() => [1, 0]));
+      const analyzer = createLogAnalyzerFromEnv({ LOG_ANALYSIS_MODEL: "history-fixture", LOG_ANALYSIS_TOKEN_BUDGET: 100_000,
+        LOG_ANALYSIS_MAX_STEPS: 4, LOG_ANALYSIS_PROTOCOL: "tools", LOG_ANALYSIS_KERNEL: "loop", LOG_ANALYSIS_PAST_CONCLUSIONS: true,
+        LOG_ANALYSIS_API_TIMEOUT_MS: 1000, LOG_ANALYSIS_DETERMINISTIC: false }, {
+        db, embeddingClient: { model: "fixture-embedding", embed },
+        model: createScriptedLogAnalysisModel([
+          { content: { action: "tool", tool: "search_past_conclusions", args: { query: "thermal foldback", limit: 1 } } },
+          { content: { action: "tool", tool: "read_line_range", args: { startLine: 1, endLine: 1 } } }, { content: final }
+        ])
+      });
+      expect(await processLogAnalysisJobById({ db, objectStore, jobId: rerun.body.job.id, analyzer })).toEqual({ status: "processed" });
+      expect(embed).not.toHaveBeenCalled();
+      const report = await request<{ item: LogRecordDto }>(unreviewed.path);
+      expect(logRecordDtoSchema.parse(report.body.item)).toMatchObject({ historicalRunIds: [saved.runId] });
+      const runs = await request<{ items: LogRunDto[] }>(`${unreviewed.path}/runs`);
+      expect(runs.body.items.map((run) => logRunDtoSchema.parse(run).historicalRunIds)).toEqual([[saved.runId], undefined]);
+    } finally { await fixture.close(); }
+  }, 120_000);
   it("unions pages across retrievals per revision without replacing earlier retrievals", async () => {
     const fixture = await createFixture();
     const { db, request, objectStore, createMarkdown } = fixture;
