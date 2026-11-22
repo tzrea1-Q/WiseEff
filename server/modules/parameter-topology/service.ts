@@ -22,6 +22,7 @@ import type { TrustedSensitiveNodeWriteContext } from "../parameter-kernel/sensi
 import { getRootPostgresPool, type Database, type Queryable } from "../../shared/database/client";
 import { ApiError, pinnedSourceGraphConflict } from "../../shared/http/errors";
 import { readCanonicalBindingChangeHistory } from "../parameter-bindings/catalogProjectValueSync";
+import { disableBindingReadJit } from "../parameter-bindings/readTransaction";
 import {
   countBlockingIdentityMappingTasksForRevision,
   listCanonicalBindingCompareRows,
@@ -495,6 +496,7 @@ export async function getBindingCompare(
 
   const rows = await db.transaction(async (tx) => {
     await tx.query("set transaction isolation level repeatable read read only");
+    await disableBindingReadJit(tx);
     return listCanonicalBindingCompareRows(tx, {
       organizationId: parameterOrganizationId(auth),
       projectId: input.projectId,
