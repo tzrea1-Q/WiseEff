@@ -464,6 +464,21 @@ describe("R2-SCOPE actual role bindings → root HTTP → PostgreSQL usage", () 
         .toEqual({ configuredProjectCount: retired ? 0 : 2, configuredInstanceCount: retired ? 0 : 3 });
       expect(catalogProjectConfigurationsResponseSchema.parse(summaryB.body).summary)
         .toEqual({ configuredProjectCount: 1, configuredInstanceCount: 4 });
+      for (const [headers, projectCount, currentValueCount, configuredProjects, configuredInstances] of [
+        [a, 2, 3, retired ? 0 : 2, retired ? 0 : 3],
+        [b, 1, 4, 1, 4],
+      ] as const) {
+        const list = await read("/api/v2/catalog/definitions?limit=50", headers);
+        const detail = await read(`/api/v2/catalog/definitions/${definitionId}`, headers);
+        const item = catalogDefinitionListResponseSchema.parse(list.body).items.find((entry) => entry.id === definitionId);
+        const single = catalogDefinitionResponseSchema.parse(detail.body).item;
+        expect(item?.usageSummary).toEqual(single.usageSummary);
+        expect(single.usageSummary).toEqual({ policyCount: null, projectCount, currentValueCount });
+        expect(item?.configurationSummary).toEqual(single.configurationSummary);
+        expect(single.configurationSummary).toEqual({
+          configuredProjectCount: configuredProjects, configuredInstanceCount: configuredInstances,
+        });
+      }
       expect((await read(compare, a)).status).toBe(retired ? 404 : 200);
     };
     await check(false);

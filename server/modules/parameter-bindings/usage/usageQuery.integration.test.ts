@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import pg from "pg";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { compileCatalogRelease } from "../../catalog-kernel/compiler/index";
 import { validCatalogReleaseBundle } from "../../catalog-kernel/compiler/__fixtures__/catalogReleaseBundle";
@@ -262,5 +262,31 @@ describe("CATFIX-QUERY usage summaries", () => {
       projectCount: 0,
       currentValueCount: 0,
     });
+
+    const client = await pool.connect();
+    const sql = vi.spyOn(client, "query");
+    try {
+      const usage = createUsageQueries(client);
+      const scope = {
+        organizationId: ORG,
+        projectScope: { kind: "all" } as const,
+        authScope: { organizationId: ORG, principalId: "user-org-admin" },
+      };
+      const missing = ParameterDefinitionId("pdef_unused");
+      const single = await usage.summarize({ ...scope, definitionIds: [missing] });
+      expect(single.ok).toBe(true);
+      if (!single.ok) throw new Error("single usage query failed");
+      expect(sql).toHaveBeenCalledTimes(1);
+      sql.mockClear();
+      const page = await usage.summarize({ ...scope, definitionIds: [DEFINITION_ID, missing] });
+      expect(page).toEqual({
+        ok: true,
+        value: { ...summarized.value, summaries: [...summarized.value.summaries, ...single.value.summaries] },
+      });
+      expect(sql).toHaveBeenCalledTimes(1);
+    } finally {
+      sql.mockRestore();
+      client.release();
+    }
   });
 });
