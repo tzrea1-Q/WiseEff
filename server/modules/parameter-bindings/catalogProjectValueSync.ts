@@ -1,3 +1,4 @@
+import { disableBindingReadJit } from "./readTransaction";
 import { parameterOrganizationId, parameterInvocation } from "../parameters/operatingScope";
 /**
  * Consumer of Catalog Kernel + Binding/ProjectValue owners.
@@ -1146,9 +1147,7 @@ export async function listCatalogBindingRowsForProject(
   let destroy = false;
   try {
     await client.query("begin isolation level repeatable read read only");
-    // The current-binding view expands to many visibility checks. Compiling
-    // them for every list costs more than interpreting them at request scale.
-    await client.query("set local jit = off");
+    await disableBindingReadJit(client);
     const rows = await listCatalogBindingRowsInSnapshot(catalogReadTransaction(client, pool), auth, input);
     await client.query("commit");
     return rows;

@@ -1,3 +1,4 @@
+import { disableBindingReadJit } from "./readTransaction";
 import type { Database, Queryable } from "../../shared/database/client";
 import type { HotspotDimension } from "../../../src/domain/parameters/dashboardTypes";
 import { currentManagedSourceBindingPredicate } from "./queries/currentManagedBindings";
@@ -147,30 +148,33 @@ export async function readBindingDashboardKpis(
   db: Database,
   input: BindingDashboardScope & { windowStart: string; windowEnd: string }
 ): Promise<BindingDashboardKpis> {
-  const rows = await db.query<{
-    total_bindings: string;
-    total_definitions: string;
-    change_frequency: string;
-    active_contributors: string;
-  }>(
-    `with active_bindings as materialized (${activeSourceBackedBindings(scopeSql("b"))}),
-     inventory as (
-       select count(distinct b.id) as total_bindings, count(distinct b.definition_id) as total_definitions
-       from active_bindings b ${DASHBOARD_INVENTORY_JOINS}
-     ), activity as (
-       select count(distinct history.id) as change_frequency,
-              count(distinct audit.actor_user_id) as active_contributors
-         from parameter_catalog.binding_history_events history
-         join parameter_catalog.project_parameter_bindings b on b.id = history.binding_id
-         join public.audit_events audit
-           on audit.id = history.success_audit_ref
-          and audit.organization_id = b.organization_id
-          and audit.project_id = b.project_id
-        where history.created_at >= $4 and history.created_at < $5 ${scopeSql("b")}
-     )
-     select inventory.*, activity.* from inventory cross join activity`,
-    [...scopeValues(input), input.windowStart, input.windowEnd]
-  );
+  const rows = await db.transaction(async tx => {
+    await disableBindingReadJit(tx);
+    return tx.query<{
+      total_bindings: string;
+      total_definitions: string;
+      change_frequency: string;
+      active_contributors: string;
+    }>(
+      `with active_bindings as materialized (${activeSourceBackedBindings(scopeSql("b"))}),
+       inventory as (
+         select count(distinct b.id) as total_bindings, count(distinct b.definition_id) as total_definitions
+         from active_bindings b ${DASHBOARD_INVENTORY_JOINS}
+       ), activity as (
+         select count(distinct history.id) as change_frequency,
+                count(distinct audit.actor_user_id) as active_contributors
+           from parameter_catalog.binding_history_events history
+           join parameter_catalog.project_parameter_bindings b on b.id = history.binding_id
+           join public.audit_events audit
+             on audit.id = history.success_audit_ref
+            and audit.organization_id = b.organization_id
+            and audit.project_id = b.project_id
+          where history.created_at >= $4 and history.created_at < $5 ${scopeSql("b")}
+       )
+       select inventory.*, activity.* from inventory cross join activity`,
+      [...scopeValues(input), input.windowStart, input.windowEnd]
+    );
+  });
   const row = rows.rows[0];
   return {
     totalBindings: Number(row?.total_bindings ?? 0),
@@ -298,14 +302,17 @@ export async function readUserBindingTrend(
 }
 
 export async function listProjectsWithSourceBackedBindings(db: Database, input: BindingDashboardScope) {
-  const rows = await db.query<{ project_id: string; project_code: string; project_name: string }>(
-    `with active_bindings as materialized (${activeSourceBackedBindings(scopeSql("b"))})
-     select p.id as project_id, p.code as project_code, p.name as project_name
-       from active_bindings b ${DASHBOARD_INVENTORY_JOINS}
-      group by p.id, p.code, p.name
-      order by p.code asc`,
-    scopeValues(input)
-  );
+  const rows = await db.transaction(async tx => {
+    await disableBindingReadJit(tx);
+    return tx.query<{ project_id: string; project_code: string; project_name: string }>(
+      `with active_bindings as materialized (${activeSourceBackedBindings(scopeSql("b"))})
+       select p.id as project_id, p.code as project_code, p.name as project_name
+         from active_bindings b ${DASHBOARD_INVENTORY_JOINS}
+        group by p.id, p.code, p.name
+        order by p.code asc`,
+      scopeValues(input)
+    );
+  });
   return rows.rows.map((row) => ({ projectId: row.project_id, projectCode: row.project_code, projectName: row.project_name }));
 }
 
@@ -347,73 +354,76 @@ export async function aggregateBindingDashboardHotspots(
     and ($5::text[] is null or b.project_id = any($5::text[]))`;
   // The array key keeps the null module group joinable without conflating it with a real module ID.
   // Count distinct actors at group grain so contributors shared by multiple bindings count once.
-  const rows = await db.query<RawHotspotRow>(
-    `with active_bindings as materialized (${activeSourceBackedBindings(scope)}),
-     ${needsModule ? `placements as materialized (
-       select registration_id, organization_id, module_id
-       from parameter_catalog.registration_effective_module
-       where organization_id = $1
-     ),` : ""}
-     scoped_bindings as (
-       select b.id, b.definition_id, b.organization_id, b.project_id, p.code as project_code,
-              ${needsModule ? "coalesce(module.name, '未分组')" : "'项目参数'"} as module,
-              coalesce(nullif(revision.content->>'displayName', ''), definition.property_key) as parameter_title,
-              array[${grouping.key}] as group_key
-       from active_bindings b ${DASHBOARD_INVENTORY_JOINS}
-       ${needsModule ? `left join placements placement
-         on placement.registration_id = b.registration_id and placement.organization_id = b.organization_id
-       left join public.parameter_modules module
-         on module.id = placement.module_id and module.organization_id = b.organization_id` : ""}
-     ), inventory as (
-       select group_key, ${grouping.select}
-       from scoped_bindings
-       group by group_key, ${grouping.groupBy}
-     ), activity as materialized (
-       select b.group_key,
-              count(distinct history.id) filter (where history.created_at >= $2 and history.created_at < $3) as history_events_in_window,
-              count(distinct b.id) filter (where old_value.id is not null) as modified_param_count,
-              count(distinct audit.actor_user_id) filter (where history.created_at >= $2 and history.created_at < $3) as contributors_in_window,
-              count(distinct audit.actor_user_id) as contributors_all_time,
-              max(history.created_at) filter (where history.created_at >= $2 and history.created_at < $3) as last_changed_at
-       from scoped_bindings b
-       join parameter_catalog.binding_history_events history on history.binding_id = b.id
-       left join parameter_catalog.project_parameter_values old_value
-         on old_value.id = history.old_current_value_id
-        and old_value.binding_id = b.id
-        and old_value.source_ref <> 'canonical-binding-identity'
-       left join public.audit_events audit
-         on audit.id = history.success_audit_ref
-        and audit.organization_id = b.organization_id and audit.project_id = b.project_id
-       group by b.group_key
-     ), workflow as materialized (
-       select b.group_key,
-              count(distinct request.id) filter (where request.created_at >= $2 and request.created_at < $3) as related_request_count,
-              count(distinct request.id) filter (where request.status = 'pending') as open_request_count,
-              count(distinct request.id) filter (
-                where request.status = 'rejected' and request.updated_at >= $2 and request.updated_at < $3
-              ) as returned_in_window
-       from scoped_bindings b
-       join public.project_parameter_value_change_requests request
-         on request.organization_id = b.organization_id and request.project_id = b.project_id and request.binding_id = b.id
-       group by b.group_key
-     )
-     select coalesce(inventory.group_key[1], 'unassigned') as group_id,
-            inventory.title, inventory.project_id, inventory.project_code, inventory.module,
-            inventory.parameter_count, inventory.definition_count,
-            coalesce(workflow.related_request_count, 0) as related_request_count,
-            coalesce(workflow.open_request_count, 0) as open_request_count,
-            coalesce(workflow.returned_in_window, 0) as returned_in_window,
-            coalesce(activity.history_events_in_window, 0) as history_events_in_window,
-            coalesce(activity.modified_param_count, 0) as modified_param_count,
-            coalesce(activity.contributors_in_window, 0) as contributors_in_window,
-            coalesce(activity.contributors_all_time, 0) as contributors_all_time,
-            activity.last_changed_at
-     from inventory
-     left join activity using (group_key)
-     left join workflow using (group_key)
-     order by inventory.title asc`,
-    [input.organizationId, input.windowStart, input.windowEnd, input.projectId, input.authorizedProjectIds ?? null]
-  );
+  const rows = await db.transaction(async tx => {
+    await disableBindingReadJit(tx);
+    return tx.query<RawHotspotRow>(
+      `with active_bindings as materialized (${activeSourceBackedBindings(scope)}),
+       ${needsModule ? `placements as materialized (
+         select registration_id, organization_id, module_id
+         from parameter_catalog.registration_effective_module
+         where organization_id = $1
+       ),` : ""}
+       scoped_bindings as materialized (
+         select b.id, b.definition_id, b.organization_id, b.project_id, p.code as project_code,
+                ${needsModule ? "coalesce(module.name, '未分组')" : "'项目参数'"} as module,
+                coalesce(nullif(revision.content->>'displayName', ''), definition.property_key) as parameter_title,
+                array[${grouping.key}] as group_key
+         from active_bindings b ${DASHBOARD_INVENTORY_JOINS}
+         ${needsModule ? `left join placements placement
+           on placement.registration_id = b.registration_id and placement.organization_id = b.organization_id
+         left join public.parameter_modules module
+           on module.id = placement.module_id and module.organization_id = b.organization_id` : ""}
+       ), inventory as (
+         select group_key, ${grouping.select}
+         from scoped_bindings
+         group by group_key, ${grouping.groupBy}
+       ), activity as materialized (
+         select b.group_key,
+                count(distinct history.id) filter (where history.created_at >= $2 and history.created_at < $3) as history_events_in_window,
+                count(distinct b.id) filter (where old_value.id is not null) as modified_param_count,
+                count(distinct audit.actor_user_id) filter (where history.created_at >= $2 and history.created_at < $3) as contributors_in_window,
+                count(distinct audit.actor_user_id) as contributors_all_time,
+                max(history.created_at) filter (where history.created_at >= $2 and history.created_at < $3) as last_changed_at
+         from scoped_bindings b
+         join parameter_catalog.binding_history_events history on history.binding_id = b.id
+         left join parameter_catalog.project_parameter_values old_value
+           on old_value.id = history.old_current_value_id
+          and old_value.binding_id = b.id
+          and old_value.source_ref <> 'canonical-binding-identity'
+         left join public.audit_events audit
+           on audit.id = history.success_audit_ref
+          and audit.organization_id = b.organization_id and audit.project_id = b.project_id
+         group by b.group_key
+       ), workflow as materialized (
+         select b.group_key,
+                count(distinct request.id) filter (where request.created_at >= $2 and request.created_at < $3) as related_request_count,
+                count(distinct request.id) filter (where request.status = 'pending') as open_request_count,
+                count(distinct request.id) filter (
+                  where request.status = 'rejected' and request.updated_at >= $2 and request.updated_at < $3
+                ) as returned_in_window
+         from scoped_bindings b
+         join public.project_parameter_value_change_requests request
+           on request.organization_id = b.organization_id and request.project_id = b.project_id and request.binding_id = b.id
+         group by b.group_key
+       )
+       select coalesce(inventory.group_key[1], 'unassigned') as group_id,
+              inventory.title, inventory.project_id, inventory.project_code, inventory.module,
+              inventory.parameter_count, inventory.definition_count,
+              coalesce(workflow.related_request_count, 0) as related_request_count,
+              coalesce(workflow.open_request_count, 0) as open_request_count,
+              coalesce(workflow.returned_in_window, 0) as returned_in_window,
+              coalesce(activity.history_events_in_window, 0) as history_events_in_window,
+              coalesce(activity.modified_param_count, 0) as modified_param_count,
+              coalesce(activity.contributors_in_window, 0) as contributors_in_window,
+              coalesce(activity.contributors_all_time, 0) as contributors_all_time,
+              activity.last_changed_at
+       from inventory
+       left join activity using (group_key)
+       left join workflow using (group_key)
+       order by inventory.title asc`,
+      [input.organizationId, input.windowStart, input.windowEnd, input.projectId, input.authorizedProjectIds ?? null]
+    );
+  });
   return rows.rows.map((row) => ({
     groupId: row.group_id,
     kind: input.dimension,

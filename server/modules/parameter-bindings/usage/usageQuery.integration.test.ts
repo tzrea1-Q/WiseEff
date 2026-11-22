@@ -194,7 +194,8 @@ describe("CATFIX-QUERY usage summaries", () => {
       if (!binding.ok) throw new Error("binding failed");
       let expectedTip = binding.value.binding.currentValueId;
       expect((await pool.query(`select source_ref from parameter_catalog.${VALUES_RELATION}
-        where binding_id=$1 and source_ref=$2`, [binding.value.binding.id, IDENTITY_PLACEHOLDER_SOURCE])).rows)
+        where binding_id=$1 and source_ref=$2 and id=$3`,
+        [binding.value.binding.id, IDENTITY_PLACEHOLDER_SOURCE, expectedTip])).rows)
         .toEqual([{ source_ref: IDENTITY_PLACEHOLDER_SOURCE }]);
       await expectEligibleBindingsToMatch(pool, ORG);
       for (const magnitude of [1, 2]) {

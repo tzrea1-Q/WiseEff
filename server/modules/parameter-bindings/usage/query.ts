@@ -1,3 +1,4 @@
+import { disableBindingReadJit } from "../readTransaction";
 import pg from "pg";
 
 import { ParameterDefinitionId } from "../../parameter-catalog-contract/index";
@@ -44,9 +45,7 @@ const withReadTransaction = async <T>(
   const client = await source.connect();
   try {
     await client.query("begin read only");
-    // The structural Binding view expands several provenance branches. These
-    // short reads do less work interpreting them than compiling them.
-    await client.query("set local jit = off");
+    await disableBindingReadJit(client);
     const result = await work(asQueryable(client));
     await client.query("commit");
     return result;
