@@ -20,6 +20,7 @@ export function definitionDocumentationExcerpt(documentation: string | null | un
     .split("\n")
     .filter((line) => !/^\s*`{3,}/.test(line) && !/^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)*\|?\s*$/.test(line))
     .map((line) => line
+      .replace(/<br\s*\/?>/gi, " ")
       .replace(/^\s*(?:#{1,6}\s+|>\s?|[-*]\s+|\d+\.\s+)/, "")
       .replace(/\*\*([^*]+)\*\*|\*([^*]+)\*|`([^`]+)`/g, (_match, bold, italic, code) => bold ?? italic ?? code)
       .replace(/\[([^\]]+)\]\([^)\s]+\)/g, "$1")

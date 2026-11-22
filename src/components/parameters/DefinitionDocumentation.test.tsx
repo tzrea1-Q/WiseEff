@@ -23,6 +23,7 @@ describe("DefinitionDocumentation", () => {
   it("collapses Markdown into a plain-text excerpt for list previews", () => {
     expect(definitionDocumentationExcerpt("### 作用\n- **电流** 上限\n\n| 温度 | 电流 |\n| --- | --- |\n| 0 | 500 |\n```dts\nx = <1>;\n```"))
       .toBe("作用 电流 上限 温度 · 电流 0 · 500 x = <1>;");
+    expect(definitionDocumentationExcerpt("| 模式 | 说明 |\n| --- | --- |\n| 1 | 快充<br>限流<br/>保护 |")).toBe("模式 · 说明 1 · 快充 限流 保护");
     expect(definitionDocumentationExcerpt(null)).toBe("");
   });
 });
