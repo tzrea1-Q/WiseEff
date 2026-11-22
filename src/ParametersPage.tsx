@@ -1,7 +1,7 @@
 import { changeCenterHref } from "@/domain/parameters/changeCenterUrl";
 import { SelectControl } from "@/components/common/SelectControl";
 import { SectionEmpty } from "@/components/common/SectionState";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import type { Dispatch } from "react";
 import {
   Badge,
@@ -47,7 +47,7 @@ import type { ParameterTopologyRepository } from "@/application/ports/ParameterT
 import type { ParameterCatalogRepository } from "@/application/ports/ParameterCatalogRepository";
 import { useTopologyLayoutMode } from "@/components/parameter-topology/useTopologyLayoutMode";
 import { buildParameterModuleFilterNodes } from "@/application/parameters/buildModuleFilterNodes";
-import { createSearchIndex } from "@/lib/search";
+import { createSearchIndex, formatMatchHint } from "@/lib/search";
 import { parameterRecordSearchProfile } from "@/lib/search/profiles";
 
 type ParameterRiskFilter = "All" | "High" | "Medium" | "Low";
@@ -251,14 +251,23 @@ export function ParametersPage({
     () => buildParameterModuleTree(projectParameters, state.configDraft?.parameterModules ?? []),
     [projectParameters, state.configDraft?.parameterModules]
   );
+  const deferredSearchQuery = useDeferredValue(searchQuery);
   const parameterSearchIndex = useMemo(
-    () => createSearchIndex(projectParameters, parameterRecordSearchProfile),
-    [projectParameters]
+    () => isApiMode ? null : createSearchIndex(projectParameters, parameterRecordSearchProfile),
+    [isApiMode, projectParameters]
   );
-  const searchedParameters = useMemo(
-    () => parameterSearchIndex.search(searchQuery).map((hit) => hit.item),
-    [parameterSearchIndex, searchQuery]
-  );
+  const { searchedParameters, searchMatchHints } = useMemo(() => {
+    const hints = new Map<string, string>();
+    if (!deferredSearchQuery.trim() || !parameterSearchIndex) {
+      return { searchedParameters: projectParameters, searchMatchHints: hints };
+    }
+    const matches = parameterSearchIndex.search(deferredSearchQuery).map((hit) => {
+      const hint = formatMatchHint(hit.matchedFields, ["name", "description", "module"]);
+      if (hint) hints.set(hit.item.id, hint);
+      return hit.item;
+    });
+    return { searchedParameters: matches, searchMatchHints: hints };
+  }, [deferredSearchQuery, parameterSearchIndex, projectParameters]);
   const moduleFilterNodes = useMemo<TreeFilterNode[]>(
     () => {
       const scopedRows = searchedParameters
@@ -384,11 +393,11 @@ export function ParametersPage({
     return [focusedDraft, ...items.filter((item) => item.parameterId !== focusedId)];
   }, [stagingDrafts, parameterById, focusedId]);
   const modifiedParameters = useMemo(
-    () =>
-      pendingSubmissionItems.map((item) => ({
-        ...item.parameter,
-        recommendedValue: item.targetValue
-      })),
+    () => pendingSubmissionItems.map((item) => item.parameter),
+    [pendingSubmissionItems]
+  );
+  const targetValues = useMemo(
+    () => new Map(pendingSubmissionItems.map((item) => [item.parameterId, item.targetValue])),
     [pendingSubmissionItems]
   );
   const stashedIds = useMemo(
@@ -641,12 +650,12 @@ export function ParametersPage({
   }, [effectiveCanEdit, restoredDrafts]);
 
   useEffect(() => {
-    if (!selected) {
+    if (!selected || activeParameterById.has(contextQuery.parameterId)) {
       return;
     }
     setSelectedId(selected.id);
     setFocusedId(selected.id);
-  }, [selected?.id]);
+  }, [selected, activeParameterById, contextQuery.parameterId]);
 
   useEffect(() => {
     setSelectedIds((ids) => {
@@ -1076,11 +1085,13 @@ export function ParametersPage({
               <section className="modified-parameters-section" aria-label="本轮已修改参数区">
                 <ParametersTable
                   rows={modifiedParameters}
+                  targetValues={targetValues}
                   totalRows={modifiedParameters.length}
                   ariaLabel="本轮已修改参数表"
                   title="本轮已修改参数"
                   description="这些参数已从检索结果中移出，可在这里集中确认目标值并提交本轮。"
                   showToolbar={false}
+                  searchQuery=""
                   valueColumnLabel="当前 → 目标"
                   selectedIds={selectedIds}
                   onSelectedIdsChange={handleSelectedIdsChange}
@@ -1101,6 +1112,7 @@ export function ParametersPage({
               title="检索参数"
               description="按名称、模块或重要性筛选参数。点击编辑只会打开草稿，提交参数后才会移到上方的本轮已修改参数表。"
               searchQuery={searchQuery}
+              searchMatchHints={searchMatchHints}
               onSearchQueryChange={setSearchQuery}
               onClearFilters={clearFilters}
               filters={

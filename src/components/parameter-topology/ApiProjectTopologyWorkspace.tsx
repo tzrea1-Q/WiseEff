@@ -675,9 +675,12 @@ export function ApiProjectTopologyWorkspace({
   };
 
   const jsonState = protectedJson?.projectId === projectId ? protectedJson : null;
-  const jsonBindings = jsonState?.state === "ready" ? jsonState.bindings
-    : !canonicalRepository && loadState.kind === "ready"
-      ? loadState.bindings.filter((binding) => binding.effectiveValue.kind === "json") : [];
+  const legacyBindings = !canonicalRepository && loadState.kind === "ready" ? loadState.bindings : undefined;
+  const jsonBindings = useMemo(
+    () => jsonState?.state === "ready" ? jsonState.bindings
+      : legacyBindings?.filter((binding) => binding.effectiveValue.kind === "json") ?? [],
+    [jsonState, legacyBindings]
+  );
 
   useEffect(() => {
     if (!moduleRegistryRepo) {
@@ -1486,6 +1489,7 @@ export function ApiProjectTopologyWorkspace({
       key={projectId}
       organizationId={organizationId}
       bindings={jsonBindings}
+      configSetId={loadState.kind === "ready" ? loadState.configSetId : requestedConfigSetId}
       pendingDrafts={bindingDrafts}
       requestedEditBindingId={editRequest?.bindingId}
       editRequestToken={editRequest?.token}

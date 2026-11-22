@@ -1,3 +1,5 @@
+import { selectControlOption } from "@/test/selectControlOption";
+import { DtsParameterWorkbenchTable } from "./DtsParameterWorkbenchTable";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import axe from "axe-core";
@@ -257,6 +259,66 @@ beforeEach(() => {
   window.history.replaceState(null, "", "/parameters");
 });
 afterEach(() => window.history.replaceState(null, "", "/"));
+
+function paginationRows(count: number) {
+  return Array.from({ length: count }, (_, index) => ({
+    ...effectiveRows[0]!,
+    bindingId: `paged-${index + 1}`,
+    propertyKey: `paged-${String(index + 1).padStart(4, "0")}`
+  }));
+}
+
+it("bounds the 4000-binding DTS fixture to 100 DOM rows", () => {
+  const { container } = renderWorkbench({ effectiveRows: paginationRows(4000) });
+  expect(container.querySelectorAll("[data-binding-id]")).toHaveLength(100);
+});
+
+it("pages DTS rows, keeps bulk selection across pages, and resets on search and tree filter", async () => {
+  const rows = paginationRows(250);
+  const { container } = renderWorkbench({ effectiveRows: rows, draftBindingIds: new Set(rows.map((row) => row.bindingId)) });
+  const bindingRows = () => container.querySelectorAll<HTMLElement>("[data-binding-id]");
+  expect(bindingRows()).toHaveLength(100);
+  fireEvent.click(screen.getByRole("checkbox", { name: "全选已修改项" }));
+  fireEvent.click(screen.getByRole("button", { name: "下一页" }));
+  expect(screen.getByText("第 2 / 3 页")).toBeVisible();
+  expect(within(bindingRows()[0]!).getByRole("checkbox")).toBeChecked();
+  await selectControlOption(screen.getByRole("combobox", { name: "每页条数" }), "200");
+  expect(bindingRows()).toHaveLength(200);
+  fireEvent.click(screen.getByRole("button", { name: "下一页" }));
+  fireEvent.change(screen.getByRole("searchbox", { name: "搜索 DTS 参数" }), { target: { value: "paged" } });
+  expect(screen.getByText("第 1 / 2 页")).toBeVisible();
+  fireEvent.click(screen.getByRole("button", { name: "下一页" }));
+  fireEvent.click(screen.getByRole("treeitem", { name: /未分类 · sc8562/ }));
+  expect(screen.getByText("第 1 / 2 页")).toBeVisible();
+  fireEvent.click(screen.getByRole("button", { name: "下一页" }));
+  fireEvent.click(screen.getByRole("button", { name: "按参数名排序" }));
+  expect(screen.getByText("第 1 / 2 页")).toBeVisible();
+}, 20_000);
+
+it("lands a DTS binding request on page two and opens its details", () => {
+  const { container } = renderWorkbench({ effectiveRows: paginationRows(250), requestedBindingId: "paged-180" });
+  expect(container.querySelector('[data-binding-id="paged-180"]')).toHaveAttribute("aria-selected", "true");
+  expect(screen.getByText("第 2 / 3 页")).toBeInTheDocument();
+  expect(screen.getByRole("dialog", { name: "paged-0180 · 参数详情" })).toBeInTheDocument();
+});
+
+it("re-renders only the affected DTS rows when details selection or draft status changes", () => {
+  const rows = paginationRows(250);
+  const reads = rows.map((row) => {
+    const state = row.governanceState;
+    const read = vi.fn(() => state);
+    Object.defineProperty(row, "governanceState", { get: read });
+    return read;
+  });
+  const props = { rows, canEdit: true, draftBindingIds: new Set<string>(), onSelectBinding: vi.fn() };
+  const view = render(<DtsParameterWorkbenchTable {...props} selectedBindingId="paged-1" />);
+  reads.forEach((read) => read.mockClear());
+  view.rerender(<DtsParameterWorkbenchTable {...props} selectedBindingId="paged-2" />);
+  expect(reads.flatMap((read, index) => read.mock.calls.length ? [index] : [])).toEqual([0, 1]);
+  reads.forEach((read) => read.mockClear());
+  view.rerender(<DtsParameterWorkbenchTable {...props} selectedBindingId="paged-2" draftBindingIds={new Set(["paged-3"])} />);
+  expect(reads.flatMap((read, index) => read.mock.calls.length ? [index] : [])).toEqual([2]);
+});
 
 describe("DtsParameterWorkbench", () => {
   it("removes an acknowledged saved receipt when its server draft is removed", async () => {
