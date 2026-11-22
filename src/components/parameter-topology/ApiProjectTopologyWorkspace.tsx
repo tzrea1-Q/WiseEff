@@ -617,9 +617,11 @@ export function ApiProjectTopologyWorkspace({
       listConfigSetsRef.current ??
       ((id: string) => resolveDtsStructuredRepository(runtimeMode).listConfigSets(id));
 
-    loadWorkspace(projectId, repository, resolveConfigSets, preferredRevisionId, requestedConfigSetId)
+    // Strict Mode can dispose the first effect before the workspace starts.
+    void Promise.resolve().then(() => cancelled ? undefined
+      : loadWorkspace(projectId, repository, resolveConfigSets, preferredRevisionId, requestedConfigSetId))
       .then((next) => {
-        if (!cancelled) setLoadState(next);
+        if (!cancelled && next) setLoadState(next);
       })
       .catch((error: unknown) => {
         if (cancelled) return;
@@ -636,7 +638,12 @@ export function ApiProjectTopologyWorkspace({
     };
   }, [projectId, preferredRevisionId, repository, runtimeMode, reloadToken, requestedConfigSetId]);
 
+  const dtsBindingCount = loadState.kind === "ready" ? loadState.bindings.filter((b) => b.effectiveValue.kind !== "json").length : 0;
+  const needsProjectJson = Boolean(requestedBindingId) || protectedJson?.projectId === projectId ||
+    loadState.kind === "empty" || (loadState.kind === "ready" && (activeFormatTab === "json" || dtsBindingCount === 0));
+
   useEffect(() => {
+    if (!needsProjectJson) return;
     let cancelled = false;
     const generation = projectGenerationRef.current;
     setProtectedJson((current) => current?.projectId === projectId && current.state === "ready"
@@ -664,7 +671,7 @@ export function ApiProjectTopologyWorkspace({
         : { projectId, state: "error", bindings: [], message });
     });
     return () => { cancelled = true; };
-  }, [canonicalRepository, projectId, reloadToken, loadProjectParameters]);
+  }, [canonicalRepository, projectId, reloadToken, loadProjectParameters, needsProjectJson]);
 
   const refreshProjectParameters = (id: string) => {
     void loadProjectParameters?.(id, { force: true }).settled;
@@ -1440,7 +1447,6 @@ export function ApiProjectTopologyWorkspace({
       <button type="button" className="button subtle" onClick={() => setPartialSubmitError(null)}>关闭提交错误提示</button>
     </div> : null}{currentDraftTray}</> : null;
 
-  const dtsBindingCount = loadState.kind === "ready" ? loadState.bindings.filter((b) => b.effectiveValue.kind !== "json").length : 0;
   const jsonBindingCount = jsonBindings.length;
   useEffect(() => {
     if (!requestedBindingId && (loadState.kind === "ready" || loadState.kind === "empty") && dtsBindingCount === 0 && jsonBindingCount > 0) {
@@ -1448,7 +1454,7 @@ export function ApiProjectTopologyWorkspace({
     }
   }, [projectId, dtsBindingCount, jsonBindingCount, loadState.kind, requestedBindingId]);
 
-  const formatSwitcher = jsonBindingCount > 0 ? (
+  const formatSwitcher = jsonBindingCount > 0 || Boolean(canonicalRepository) ? (
     <div className="parameter-workspace-format-switch" role="tablist" aria-label="参数配置格式">
       <button
         type="button"
@@ -1474,7 +1480,8 @@ export function ApiProjectTopologyWorkspace({
       >
         <FileJson size={14} aria-hidden="true" />
         <span>JSON 参数</span>
-        <span className="parameter-workspace-format-switch__badge">{jsonBindingCount}</span>
+        {jsonState?.state === "ready" || !canonicalRepository
+          ? <span className="parameter-workspace-format-switch__badge">{jsonBindingCount}</span> : null}
       </button>
     </div>
   ) : null;
@@ -1509,14 +1516,16 @@ export function ApiProjectTopologyWorkspace({
       toolbarActions={activeFormatTab === "json" ? formatSwitcher : undefined}
       notice={notice}
     />
-  ) : jsonState?.state === "loading" || !jsonState ? <p role="status">正在加载项目 JSON 绑定…</p> : null;
+  ) : needsProjectJson && (!jsonState || jsonState.state === "loading") ? <p role="status">正在加载项目 JSON 绑定…</p>
+    : activeFormatTab === "json" ? <p role="status">该项目暂无 JSON 参数。</p> : null;
   const unavailableBinding = requestedBindingId && !requestedBinding && jsonState?.state === "ready" && loadState.kind !== "loading" && !refreshingWorkspace
     ? <p role="status">关联参数在当前项目中不可用。</p> : null;
-  const jsonFormatPanel = jsonBindingCount > 0 ? (
+  const jsonFormatPanel = jsonBindingCount > 0 || (loadState.kind === "ready" && activeFormatTab === "json") ? (
     <div key="json" id="format-panel-json" role="tabpanel"
       aria-labelledby={loadState.kind === "ready" ? "format-tab-json" : undefined}
       aria-label={loadState.kind === "ready" ? undefined : "JSON 参数"}
       hidden={loadState.kind === "ready" && activeFormatTab !== "json"}>
+      {activeFormatTab === "json" && jsonBindingCount === 0 ? formatSwitcher : null}
       {jsonContent}
     </div>
   ) : null;
@@ -1566,7 +1575,7 @@ export function ApiProjectTopologyWorkspace({
         <button type="button" className="button subtle" onClick={retryWorkspace}>重试 JSON 参数</button>
       </div> : null}
       {jsonFormatPanel}
-        <div id="format-panel-dts" role="tabpanel" aria-labelledby="format-tab-dts" hidden={activeFormatTab === "json" && jsonBindingCount > 0}>
+        <div id="format-panel-dts" role="tabpanel" aria-labelledby="format-tab-dts" hidden={activeFormatTab === "json"}>
           <DtsParameterWorkbench
             key={projectId}
             projectId={projectId}

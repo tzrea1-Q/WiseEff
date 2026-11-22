@@ -369,6 +369,22 @@ describe("createParameterRuntimeActions", () => {
     expect(dispatch).toHaveBeenCalledExactlyOnceWith({ type: "HYDRATE_PARAMETER_PROJECTS", projects: apiProjects });
   });
 
+  it("loads project drafts without starting the whole-project binding read", async () => {
+    const repository = createRepository();
+    const listProtectedProjectBindings = vi.fn().mockResolvedValue({ items: [apiBinding] });
+    const actions = createParameterRuntimeActions({
+      runtimeMode: "api", repository, canonicalRepository: { listProtectedProjectBindings }, dispatch: vi.fn()
+    });
+    const project = apiProjects[0].id;
+    const read = actions.loadProjectParameters(project);
+    await expect(read.drafts).resolves.toEqual([apiDraft]);
+    expect(listProtectedProjectBindings).not.toHaveBeenCalled();
+    await expect(read.bindings).resolves.toEqual({ items: [apiBinding] });
+    await read.settled;
+    expect(listProtectedProjectBindings).toHaveBeenCalledExactlyOnceWith(project);
+    expect(repository.listDrafts).toHaveBeenCalledExactlyOnceWith(project);
+  });
+
   it.each(["submit", "stash", "discard", "review", "withdraw", "apply"] as const)("%s refreshes only the affected project", async (mutation) => {
     let state = createApiInitialState();
     const secondProject = { id: "api-project-2", name: "API Project 2", code: "API2" };

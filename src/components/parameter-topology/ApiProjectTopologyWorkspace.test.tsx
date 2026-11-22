@@ -1,5 +1,5 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { useState, type ComponentProps } from "react";
+import { StrictMode, useState, type ComponentProps } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ParameterTopologyRepository } from "@/application/ports/ParameterTopologyRepository";
 import type { ParameterCatalogRepository } from "@/application/ports/ParameterCatalogRepository";
@@ -258,15 +258,14 @@ describe("ApiProjectTopologyWorkspace", () => {
   it("preserves early JSON search input and its open detail when the semantic workspace finishes loading", async () => {
     const binding = protectedJsonBinding();
     const configSets = createDeferred<Array<{ id: string; name: string }>>();
-    render(<ApiProjectTopologyWorkspace projectId="aurora" canEdit
+    render(<ApiProjectTopologyWorkspace projectId="aurora" requestedBindingId={binding.id} canEdit
       topologyRepository={createRepository({ listBindings: vi.fn().mockResolvedValue([binding]) })}
       listConfigSets={() => configSets.promise}
       canonicalRepository={protectedRepository(vi.fn().mockResolvedValue({ items: [binding] }))} />);
     const search = await screen.findByRole("searchbox", { name: "搜索 JSON 参数" });
     expect(screen.getByRole("tabpanel", { name: "JSON 参数" })).not.toHaveAttribute("aria-labelledby");
+    const dialog = await screen.findByRole("dialog");
     fireEvent.change(search, { target: { value: binding.propertyKey } });
-    fireEvent.click(screen.getByRole("button", { name: `参数详情 ${binding.propertyKey}` }));
-    const dialog = screen.getByRole("dialog");
     expect(within(dialog).getByRole("textbox", { name: "目标值" })).toBeDisabled();
     await act(async () => { configSets.resolve([{ id: "config", name: "default" }]); });
     await waitFor(() => expect(within(screen.getByRole("dialog")).getByRole("textbox", { name: "目标值" })).toBeEnabled());
@@ -299,6 +298,27 @@ describe("ApiProjectTopologyWorkspace", () => {
     expect(within(dialog).getByRole("button", { name: "保存草稿" })).toBeDisabled();
     expect(listProtectedProjectBindings).toHaveBeenCalledWith("aurora");
     expect(repository.createBindingDraft).not.toHaveBeenCalled();
+  });
+
+  it("requests only the resolved revision on DTS navigation and loads project JSON on demand", async () => {
+    const repository = createRepository();
+    const readProjectBindings = vi.fn().mockResolvedValue({ items: [protectedJsonBinding()] });
+    const loadProjectParameters = vi.fn((projectId: string) => ({
+      drafts: Promise.resolve([]),
+      get bindings() { return readProjectBindings(projectId); },
+      settled: Promise.resolve(),
+    }));
+    render(<StrictMode><ApiProjectTopologyWorkspace projectId="aurora"
+      topologyRepository={repository} listConfigSets={vi.fn().mockResolvedValue([{ id: "config", name: "default" }])}
+      canonicalRepository={protectedRepository(readProjectBindings)} loadProjectParameters={loadProjectParameters} /></StrictMode>);
+    const jsonTab = await screen.findByRole("tab", { name: /JSON 参数/ });
+    expect(repository.listBindings).toHaveBeenCalledExactlyOnceWith("aurora", "rev-real-1");
+    expect(loadProjectParameters).toHaveBeenCalledWith("aurora");
+    expect(readProjectBindings).not.toHaveBeenCalled();
+    fireEvent.click(jsonTab);
+    expect(await screen.findByRole("table", { name: "JSON 参数列表" })).toBeInTheDocument();
+    expect(readProjectBindings).toHaveBeenCalledExactlyOnceWith("aurora");
+    expect(repository.listBindings).toHaveBeenCalledTimes(1);
   });
 
   it("discovers an independent JSON source revision alongside ready DTS without inheriting DTS editing", async () => {

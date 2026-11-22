@@ -19,7 +19,8 @@ import {
 } from "../../parameter-catalog-contract";
 import type { Binding } from "../binding";
 import type { BindingRow } from "../binding/repositories";
-import { readProtectedReference } from "./readAdapter";
+import { readListedCurrentValues } from "../values";
+import { readListedProtectedReference } from "./readAdapter";
 import type { ProtectedReferenceDto } from "./dto";
 import { currentManagedSourceBindingPredicate } from "../queries/currentManagedBindings";
 
@@ -68,6 +69,7 @@ export async function readProjectProtectedParameters(
     [parameterOrganizationId(auth), projectId]
   );
   const kernel = createCatalogKernel(pool);
+  const currentValues = await readListedCurrentValues(pool, listed.rows.map((row) => row.current_value_id));
   const snapshots = new Map<string, PinnedCatalogSnapshot>();
   const items: ProjectProtectedParameter[] = [];
   for (const row of listed.rows) {
@@ -96,11 +98,11 @@ export async function readProjectProtectedParameters(
       currentValueId: ProjectValueId(row.current_value_id),
       catalogRelease: snapshot.release
     };
-    const protectedRead = await readProtectedReference(pool, {
+    const protectedRead = readListedProtectedReference({
       snapshot,
       binding,
       definitionRevisionId: binding.effectiveRevisionId
-    });
+    }, currentValues);
     if (!protectedRead.ok) {
       throw new ApiError("CONFLICT", "Configured parameter cannot be read at its exact pin.", {
         reason: protectedRead.error.reason

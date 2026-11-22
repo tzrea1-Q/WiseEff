@@ -788,6 +788,23 @@ export const appendProjectValue = async (
   }
 };
 
+// The list reader supplies current value IDs discovered from persisted bindings
+// in the same read snapshot. Historical values are irrelevant to an exact tip.
+export const readListedCurrentValues = async (
+  pool: ValueClient,
+  currentValueIds: readonly string[],
+): Promise<ReadonlyMap<string, ProjectValue>> => {
+  if (!currentValueIds.length) return new Map();
+  const result = await pool.query<ProjectValueRow>(
+    `select id, binding_id, definition_id, definition_revision_id,
+            source_ref, config_revision_id, value_digest, value_kind, value, value_state, created_at
+       from parameter_catalog.project_parameter_values
+      where id = any($1::text[])`,
+    [currentValueIds],
+  );
+  return new Map(result.rows.map((row) => [row.id, toProjectValue(row)]));
+};
+
 export const readProjectValueHistory = async (
   pool: ValueClient,
   query: ProjectValueHistoryQuery,

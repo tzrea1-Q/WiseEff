@@ -1373,7 +1373,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     expect(authClient.getCurrentAuthContext).toHaveBeenCalledTimes(1);
   });
 
-  it("reuses project parameters within a scope and reloads the visible project after a runtime reset", async () => {
+  it("reuses project drafts within a scope and opens DTS without prefetching whole-project bindings", async () => {
     const firstId = initialState.activeProjectId;
     const secondId = initialState.configDraft.projects.find((project) => project.id !== firstId)!.id;
     window.history.replaceState(null, "", `/parameters?project=${firstId}`);
@@ -1414,7 +1414,9 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     expect(screen.queryByLabelText("项目拓扑工作区")).not.toBeInTheDocument();
     expect(parameterRepository.listProjects).toHaveBeenCalled();
     expect(parameterRepository.listParameters).not.toHaveBeenCalled();
-    expect(parameterCatalogRepository.listProtectedProjectBindings).toHaveBeenCalledExactlyOnceWith(firstId);
+    expect(parameterCatalogRepository.listProtectedProjectBindings).not.toHaveBeenCalled();
+    expect(parameterTopologyRepository.listBindings).toHaveBeenCalledTimes(1);
+    expect(parameterTopologyRepository.listBindings).toHaveBeenCalledWith(firstId, expect.any(String));
     // Legacy history is no longer prefetched organization-wide; consumers load it through scoped calls.
     expect(parameterRepository.listChangeRequests).not.toHaveBeenCalled();
     expect(parameterRepository.listSubmissionRounds).not.toHaveBeenCalled();
@@ -1425,7 +1427,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     await changeSelectValue(screen.getByRole("combobox", { name: "项目" }), secondId);
     await waitFor(() => expect(listParameterConfigSets).toHaveBeenCalledWith(secondId));
     await changeSelectValue(screen.getByRole("combobox", { name: "项目" }), firstId);
-    expect(vi.mocked(parameterCatalogRepository.listProtectedProjectBindings!).mock.calls).toEqual([[firstId], [secondId]]);
+    expect(parameterCatalogRepository.listProtectedProjectBindings).not.toHaveBeenCalled();
     expect(vi.mocked(parameterRepository.listDrafts).mock.calls).toEqual([[firstId], [secondId]]);
 
     const replacementRepository = createTestParameterRepository();
@@ -1434,7 +1436,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
 
     expect(await screen.findAllByText("gpio_int")).not.toHaveLength(0);
     expect(replacementRepository.listProjects).toHaveBeenCalledTimes(1);
-    expect(replacementCatalog.listProtectedProjectBindings).toHaveBeenCalledExactlyOnceWith(firstId);
+    expect(replacementCatalog.listProtectedProjectBindings).not.toHaveBeenCalled();
     expect(replacementRepository.listDrafts).toHaveBeenCalledExactlyOnceWith(firstId);
   });
 
