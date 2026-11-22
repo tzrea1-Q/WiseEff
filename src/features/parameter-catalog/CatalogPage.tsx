@@ -1,6 +1,6 @@
 import { SelectControl } from "@/components/common/SelectControl";
 import { withOrganizationScope } from "@/infrastructure/http/organizationScope";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ArrowLeft, CircleX } from "lucide-react";
 import { SearchField } from "@/components/common/SearchField";
 import { NavigatorWorkbench } from "@/components/layout/NavigatorWorkbench";
@@ -25,17 +25,16 @@ import {
   parseCatalogPageSize,
   readLegacyCatalogBookmark,
   serializeCatalogUrlAnchor,
-  withCatalogReleasePin,
   type CatalogPageSize,
   type CatalogUrlAnchor
 } from "@/application/parameter-catalog/urlAnchor";
 import type { CatalogActorKind, CatalogAuthorizedAction } from "@/application/parameter-catalog/authority";
 import type { ParameterCatalogRepository } from "@/application/ports/ParameterCatalogRepository";
 import type { ParameterModuleRegistryRepository } from "@/application/ports/ParameterModuleRegistryRepository";
-import type { ParameterModule } from "@/domain/parameter-topology/moduleRegistry";
 import type { SettingsLeaveRequest } from "@/application/settingsFormNavigation";
 import { type Column } from "@/components/admin";
-import { listAllCanonicalPages } from "@/components/parameter-admin-next/CanonicalSubjectPlacementPanel";
+import { listAllCanonicalPages } from "@/application/parameter-catalog/listAllCanonicalPages";
+import { useCatalogNavigator, type CatalogNavigatorRead } from "./useCatalogNavigator";
 import { SectionEmpty, SectionError, SectionSkeleton } from "@/components/common/SectionState";
 import { ModalDialog } from "@/components/common/ModalDialog";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
@@ -48,7 +47,6 @@ import type {
   CatalogDefinitionResponse,
   CatalogDefinitionRevisionResponse,
   CatalogDefinitionTimelineResponse,
-  CatalogDocumentResponse,
   CatalogListQuery,
   CatalogReviewItemListResponse,
   CatalogSubjectListResponse,
@@ -121,6 +119,7 @@ export type CatalogPageProps = {
   refreshEpoch?: number;
   notice?: ReactNode;
   taskContent?: ReactNode;
+  navigatorRead?: CatalogNavigatorRead;
   repository: ParameterCatalogRepository;
   moduleRegistry?: Pick<ParameterModuleRegistryRepository, "getRegistry">;
   actor: CatalogActorKind;
@@ -135,8 +134,8 @@ export type CatalogPageProps = {
    * Editor body for the definition dialog. The page owns the dialog and the
    * loaded history; the organization surface owns the governed write command.
    */
-  /** Called when the editor dialog closes, so the host can refresh its evidence. */
-  onEditorClosed?: () => void;
+  /** Called on close with whether the editor completed a change. */
+  onEditorClosed?: (changed: boolean) => void;
   onDefinitionDeleted?: (definitionId: string) => void;
   renderDefinitionEditor?: (
     definition: DefinitionItem,
@@ -144,10 +143,10 @@ export type CatalogPageProps = {
       domainState: CatalogDomainState;
       revisions: RevisionItem[];
       timeline: CatalogDefinitionTimelineResponse | null;
-      /** Ask the page to load revisions and the timeline. */
-      onRequestHistory: () => void;
+      onHistoryOpenChange: (open: boolean) => void;
       /** Close the editor dialog and clear selection from URL. */
       onClose?: () => void;
+      onChanged?: () => void;
       onEditorStateChange?: (state: { dirty: boolean; pending: boolean }) => void;
       historyHasMore?: boolean;
       historyPending?: boolean;
@@ -193,22 +192,33 @@ export type CatalogPageProps = {
   ) => Promise<CatalogReviewItemListResponse>;
 };
 
-type CatalogSnapshot = {
-  document: Exclude<CatalogDocumentResponse, { item: null }>;
-  currentReleaseId: string | null;
-  subjects: CatalogSubjectListResponse;
-  modules: ParameterModule[];
-  definitions: CatalogDefinitionListResponse;
-  subject: SubjectItem | null;
-  definition: DefinitionItem | null;
-  latestRevision: RevisionItem | null;
+type HistoryData = {
   revisions: RevisionItem[];
-  timeline: CatalogDefinitionTimelineResponse | null;
+  timeline: CatalogDefinitionTimelineResponse;
   revisionCursor: string | null;
   timelineCursor: string | null;
-  review: CatalogReviewItemListResponse | null;
 };
 
+function useCatalogRead<T>(scope: object, load: ((isCurrent: () => boolean) => Promise<T>) | null) {
+  const [result, setResult] = useState<{ scope: object; load: typeof load; data?: T; error?: unknown }>();
+  useEffect(() => {
+    if (!load) return;
+    let current = true;
+    void Promise.resolve().then(async () => {
+      if (!current) return;
+      try {
+        const data = await load(() => current);
+        if (current) setResult({ scope, load, data });
+      } catch (error) {
+        if (current) setResult(previous => ({ scope, load, error, data: previous?.scope === scope ? previous.data : undefined }));
+      }
+    });
+    return () => { current = false; };
+  }, [load, scope]);
+  const matching = result?.scope === scope ? result : undefined;
+  const settled = Boolean(load && matching?.load === load);
+  return { data: matching?.data, pending: Boolean(load && !settled), error: settled ? matching?.error : undefined };
+}
 
 function searchFromHref(href: string): string {
   const queryIndex = href.indexOf("?");
@@ -265,6 +275,7 @@ export function CatalogPage({
   refreshEpoch = 0,
   notice,
   taskContent,
+  navigatorRead,
   repository,
   moduleRegistry,
   actor,
@@ -310,30 +321,6 @@ export function CatalogPage({
     }).catch(() => { if (active) setProjectOptionsError(true); });
     return () => { active = false; };
   }, [libraryMode, organizationId, projectRepository, projectOptionsRetry]);
-  const catalogReadSearch = useMemo(() => {
-    const params = new URLSearchParams(resolvedSearch);
-    params.delete("review");
-    params.delete("reviewItemId");
-    params.delete("tab");
-    params.delete("instance");
-    params.delete("instanceCursor");
-    params.delete("baseline");
-    params.delete("target");
-    params.delete("configProjectId");
-    params.delete("configSetId");
-    params.delete("configSearch");
-    params.delete("includeUnconfigured");
-    if (libraryMode) {
-      const current = libraryAnchor(parseCatalogUrlAnchor(params.toString()));
-      params.delete("catalogReleaseId");
-      params.delete("includeRetiredSubjects");
-      if (current.lifecycle) params.set("lifecycle", current.lifecycle); else params.delete("lifecycle");
-      if (current.registration) params.set("registration", current.registration); else params.delete("registration");
-      if (!current.cursor) params.delete("cursor");
-      if (!current.cursorTrail) params.delete("cursorTrail");
-    }
-    return params.toString();
-  }, [libraryMode, resolvedSearch]);
   const anchor = useMemo(() => {
     const value = parseCatalogUrlAnchor(resolvedSearch);
     return libraryMode ? libraryAnchor(value) : value;
@@ -349,21 +336,6 @@ export function CatalogPage({
   const [searchInput, setSearchInput] = useState(anchor.q ?? "");
   const searchPending = useRef(false);
   const [searchComposing, setSearchComposing] = useState(false);
-  const [snapshot, setSnapshot] = useState<CatalogSnapshot | null>(null);
-  const readingHeading = useRef<HTMLHeadingElement>(null);
-  useEffect(() => {
-    if (libraryMode && snapshot?.definition?.id === anchor.definitionId) readingHeading.current?.focus();
-  }, [libraryMode, anchor.definitionId, snapshot?.definition?.id]);
-  const [inFlight, setInFlight] = useState(true);
-  const [error, setError] = useState<unknown>();
-  const [unpublished, setUnpublished] = useState(false);
-  const [inspectorOpen, setInspectorOpen] = useState(false);
-  const [historyOpen, setHistoryOpen] = useState(false);
-  useEffect(() => {
-    if (libraryMode) setHistoryOpen(anchor.history === "true");
-  }, [libraryMode, anchor.history]);
-  const [historyPending, setHistoryPending] = useState(false);
-  const [historyError, setHistoryError] = useState<string | null>(null);
   const [editorState, setEditorState] = useState({ dirty: false, pending: false });
   const [leaveEditorOpen, setLeaveEditorOpen] = useState(false);
   const [deletingDefinition, setDeletingDefinition] = useState<DefinitionItem | null>(null);
@@ -371,13 +343,9 @@ export function CatalogPage({
   const [selectionError, setSelectionError] = useState("");
   const [selectingSubject, setSelectingSubject] = useState(false);
   const selectionGeneration = useRef(0);
-  useEffect(() => { setSelectedDefinitions([]); setSelectionError(""); }, [organizationId, refreshEpoch, snapshot?.document.item.catalogReleaseId]);
-  useEffect(() => {
-    setSelectingSubject(false);
-    return () => { selectionGeneration.current += 1; };
-  }, [organizationId, anchor.subjectId, snapshot?.document.item.catalogReleaseId]);
   useEffect(() => { if (!definitionPublishingAllowed || !onBatchDefinitionCommand) setSelectedDefinitions([]); }, [definitionPublishingAllowed, onBatchDefinitionCommand]);
   const closingEditor = useRef(false);
+  const changedDefinition = useRef<object | null>(null);
   const leaveDecision = useRef<{ promise: Promise<boolean>; resolve: (allowed: boolean) => void } | null>(null);
   const finishEditorLeave = (allowed: boolean) => {
     leaveDecision.current?.resolve(allowed);
@@ -414,10 +382,8 @@ export function CatalogPage({
     } catch { setCursorTrail([]); }
   }, [anchor.cursorTrail]);
   const listReviewItemsRef = useRef(listReviewItems);
-  listReviewItemsRef.current = listReviewItems;
+  useEffect(() => { listReviewItemsRef.current = listReviewItems; }, [listReviewItems]);
   const reviewItemsAvailable = Boolean(listReviewItems);
-  const repositoryRef = useRef(repository);
-  repositoryRef.current = repository;
   const onAnchorChangeRef = useRef(onAnchorChange);
   useEffect(() => { onAnchorChangeRef.current = onAnchorChange; }, [onAnchorChange]);
 
@@ -468,231 +434,179 @@ export function CatalogPage({
     return () => window.clearTimeout(timer);
   }, [searchInput, searchComposing, anchor, commitAnchor]);
 
-  const reviewItemCount = reviewCountOverride !== undefined ? reviewCountOverride
-    : snapshot?.review?.totalCount ?? (snapshot?.review?.nextCursor ? null : snapshot?.review?.items.length ?? 0);
+  const scope = useMemo(() => ({ repository, organizationId, libraryMode }), [repository, organizationId, libraryMode]);
+  const latestAnchor = useRef(anchor);
+  useEffect(() => { latestAnchor.current = anchor; }, [anchor]);
+  const legacy = !anchor.definitionId && !anchor.subjectId ? readLegacyCatalogBookmark(resolvedSearch) : null;
+  const legacyType = legacy?.legacyType;
+  const legacyId = legacy?.legacyId;
+  const [retryEpoch, setRetryEpoch] = useState(0);
+  const loadLegacy = useMemo(() => legacyType && legacyId ? async (isCurrent: () => boolean) => {
+    const { item: { target } } = await repository.getLegacyIdentifier(legacyType, legacyId);
+    if (isCurrent()) commitAnchor({
+      ...latestAnchor.current,
+      subjectId: target.kind === "catalog-subject" ? target.id : null,
+      definitionId: target.kind === "parameter-definition" ? target.id : null
+    }, "replace");
+  } : null, [legacyType, legacyId, repository, commitAnchor, retryEpoch]);
+  const legacyRead = useCatalogRead(scope, loadLegacy);
 
+  const localNavigator = useCatalogNavigator({
+    repository, moduleRegistry, organizationId, libraryMode, releaseId: anchor.catalogReleaseId,
+    refreshEpoch, enabled: !navigatorRead && !legacy
+  });
+  const navigator = navigatorRead ?? localNavigator;
+  const navigatorData = legacy ? undefined : navigator.data;
+  const document = navigatorData?.document;
+  const release = document?.item;
+  const unpublished = document?.item === null && !navigator.pending && navigator.error === undefined;
+  const subjects = navigatorData?.subjects?.items ?? [];
+  const modules = navigatorData?.modules ?? [];
+  const { definitionId, subjectId, q, lifecycle, moduleNodeId, cursor, type, registration, usageProjectId } = anchor;
+  const workspaceSubject = subjectId ? subjects.find(item => item.id === subjectId) : undefined;
+  const restoreRetiredBookmark = !anchor.includeRetiredSubjects && Boolean(workspaceSubject &&
+    (workspaceSubject.membership.status === "retired" || (!libraryMode && workspaceSubject.registration.status === "retired")));
+  const includesRetiredSubjects = anchor.includeRetiredSubjects || restoreRetiredBookmark;
+  const listCursor = restoreRetiredBookmark ? null : cursor;
 
-  const loadGeneration = useRef(0);
-  const snapshotOrganization = useRef(organizationId);
-  useLayoutEffect(() => {
-    if (snapshotOrganization.current === organizationId) return;
-    snapshotOrganization.current = organizationId;
-    loadGeneration.current += 1;
-    setSnapshot(null);
-    setError(undefined);
-  }, [organizationId]);
-  const load = useCallback(async () => {
-    const generation = ++loadGeneration.current;
-    setInFlight(true);
-    setUnpublished(false);
-    setHistoryPending(false);
-    setHistoryError(null);
+  useEffect(() => {
+    if (!release || navigator.pending || navigator.error !== undefined || libraryMode) return;
+    if (anchor.catalogReleaseId && !restoreRetiredBookmark) return;
+    commitAnchor({
+      ...anchor,
+      catalogReleaseId: release.catalogReleaseId,
+      ...(restoreRetiredBookmark ? { includeRetiredSubjects: true, cursor: null, cursorTrail: null } : {})
+    }, "replace");
+  }, [anchor, commitAnchor, libraryMode, navigator.pending, navigator.error, release, restoreRetiredBookmark]);
+
+  const releaseId = release?.catalogReleaseId;
+  // The initial URL pin and explicit pin for the same release use the same queries.
+  const pinnedReleaseId = ((!anchor.catalogReleaseId && !navigator.pending) || anchor.catalogReleaseId === releaseId)
+    ? releaseId : undefined;
+  const readPin = useMemo<(CatalogListQuery & { catalogReleaseId: string }) | null>(() => pinnedReleaseId
+    ? { catalogReleaseId: pinnedReleaseId, ...(libraryMode ? { view: "library" } : {}) } : null,
+  [pinnedReleaseId, libraryMode]);
+  const navigatorReady = !navigator.pending && navigator.error === undefined;
+  const listPin = navigatorReady ? readPin : null;
+  const noRegistrations = emptyCollectionReason(navigatorData?.subjects) === "no-registrations";
+  const libraryType = libraryMode && (type === "driver" || type === "node-type" || type === "configuration-schema") ? type : null;
+  const libraryRegistration = libraryMode ? registration : null;
+  const libraryUsageProjectId = libraryMode ? usageProjectId : null;
+  const loadList = useMemo(() => listPin ? async () => {
+    const query: CatalogListQuery = {
+      ...listPin,
+      ...(!includesRetiredSubjects ? { subjectLifecycle: "active", ...(!libraryMode ? { registration: "not-retired" } : {}) } : {}),
+      limit: pageSize,
+      ...(q ? { search: q } : {}),
+      ...(lifecycle ? { lifecycle } : {}),
+      ...(listCursor ? { cursor: listCursor } : {}),
+      ...(moduleNodeId ? { placementModuleId: moduleNodeId, ...(libraryMode ? { placementScope: "library" } : {}) } : {}),
+      ...(libraryType ? { type: libraryType } : {}),
+      ...(libraryRegistration ? { registration: libraryRegistration } : {}),
+      ...(libraryUsageProjectId ? { usageProjectId: libraryUsageProjectId } : {})
+    };
+    const result: CatalogDefinitionListResponse = subjectId
+      ? await repository.listSubjectDefinitions(subjectId, query)
+      : noRegistrations ? {
+        items: [], nextCursor: null, catalogReleaseId: listPin.catalogReleaseId, totalCount: 0,
+        hasMore: false, emptyReason: "no-registrations"
+      } : await repository.listDefinitions(query);
+    return { result, refreshEpoch, pin: listPin };
+  } : null, [listPin, includesRetiredSubjects, libraryMode, pageSize, q, lifecycle, listCursor, moduleNodeId,
+    libraryType, libraryRegistration, libraryUsageProjectId, subjectId, noRegistrations, repository, refreshEpoch, retryEpoch]);
+  const [deletionEpoch, setDeletionEpoch] = useState(0);
+  const listScope = useMemo(() => ({ scope, deletionEpoch }), [scope, deletionEpoch]);
+  const list = useCatalogRead(listScope, loadList);
+  const definitionList = unpublished ? undefined : list.data?.result;
+  const listPending = list.pending;
+  const detailScope = useMemo(() => ({ scope, definitionId }), [scope, definitionId]);
+  const [detailRetryEpoch, setDetailRetryEpoch] = useState(0);
+  const retryDetail = () => setDetailRetryEpoch(epoch => epoch + 1);
+  const loadDetail = useMemo(() => readPin && definitionId ? async (isCurrent: () => boolean) => {
+    const { item: definition } = await repository.getDefinition(definitionId, readPin);
+    const subject = isCurrent() ? (await repository.getSubject(definition.subject.id, readPin)).item : null;
+    return { definition, subject, pin: readPin, refreshEpoch };
+  } : null, [readPin, definitionId, repository, refreshEpoch, detailRetryEpoch]);
+  const detail = useCatalogRead(detailScope, loadDetail);
+  const definition = unpublished || !definitionId ? null : detail.data?.definition ?? null;
+  const subject = definition ? detail.data?.subject ?? null : workspaceSubject ?? null;
+  const readingHeading = useRef<HTMLHeadingElement>(null);
+  const readingDefinitionId = definition?.id;
+  useEffect(() => {
+    if (libraryMode && readingDefinitionId) readingHeading.current?.focus();
+  }, [libraryMode, readingDefinitionId]);
+
+  const [historySelection, setHistorySelection] = useState<typeof detailScope | null>(null);
+  const historyOpen = libraryMode ? anchor.history === "true" : historySelection === detailScope;
+  const [historyRetryEpoch, setHistoryRetryEpoch] = useState(0);
+  const detailIsCurrent = detail.data?.pin === readPin && detail.data?.refreshEpoch === refreshEpoch && !detail.pending && detail.error === undefined;
+  const historyPin = detailIsCurrent ? readPin : null;
+  const loadHistory = useMemo(() => historyOpen && historyPin && definitionId ? async (): Promise<HistoryData> => {
+    const query = { ...historyPin, limit: 50 };
+    const [revisionList, timeline] = await Promise.all([
+      repository.listDefinitionRevisions(definitionId, query),
+      repository.listDefinitionTimeline(definitionId, query)
+    ]);
+    return {
+      revisions: revisionList.items, timeline,
+      revisionCursor: revisionList.hasMore ? revisionList.nextCursor : null,
+      timelineCursor: timeline.hasMore ? timeline.nextCursor : null
+    };
+  } : null, [historyOpen, historyPin, definitionId, repository, historyRetryEpoch]);
+  const history = useCatalogRead(detailScope, loadHistory);
+  const [historyPage, setHistoryPage] = useState<{ source: HistoryData; data: HistoryData; pending?: boolean; error?: string }>();
+  const historyGeneration = useRef(0);
+  useEffect(() => () => { historyGeneration.current += 1; }, [loadHistory]);
+  const historySource = loadHistory && !history.pending && history.error === undefined ? history.data : undefined;
+  const currentHistoryPage = historyPage?.source === historySource ? historyPage : undefined;
+  const historyData = currentHistoryPage?.data ?? historySource;
+  const historyPending = historyOpen && (detail.pending || history.pending || Boolean(currentHistoryPage?.pending));
+  const historyError = history.error !== undefined ? "修订历史读取失败，请重试。" : currentHistoryPage?.error ?? null;
+  const retryHistory = () => setHistoryRetryEpoch(epoch => epoch + 1);
+
+  const loadReview = useMemo(() => readPin && organizationId && reviewItemsAvailable ? async () => {
     try {
-      const catalog = repositoryRef.current;
-      const parsedAnchor = parseCatalogUrlAnchor(catalogReadSearch);
-      const currentAnchor = libraryMode ? libraryAnchor(parsedAnchor) : parsedAnchor;
-      const legacyBookmark = readLegacyCatalogBookmark(catalogReadSearch);
-      if (legacyBookmark && !currentAnchor.definitionId && !currentAnchor.subjectId) {
-        const mapped = await catalog.getLegacyIdentifier(legacyBookmark.legacyType, legacyBookmark.legacyId);
-        if (generation !== loadGeneration.current) return;
-        const target = mapped.item.target;
-        commitAnchor(
-          {
-            ...currentAnchor,
-            subjectId: target.kind === "catalog-subject" ? target.id : currentAnchor.subjectId,
-            definitionId: target.kind === "parameter-definition" ? target.id : currentAnchor.definitionId
-          },
-          "replace"
-        );
-        return;
-      }
-      const requestedPin = libraryMode ? { view: "library" as const } : withCatalogReleasePin(undefined, currentAnchor.catalogReleaseId);
-      const document = await catalog.getCatalog(requestedPin);
-      if (generation !== loadGeneration.current) return;
-      if (document.item === null) {
-        setSnapshot(null);
-        setError(undefined);
-        setUnpublished(true);
-        return;
-      }
-      const currentReleaseId = document.item.catalogReleaseId;
-      const pin: CatalogListQuery = { catalogReleaseId: document.item.catalogReleaseId, ...(libraryMode ? { view: "library" } : {}) };
-      const listQuery: CatalogListQuery = {
-        ...pin,
-        ...(!currentAnchor.includeRetiredSubjects ? { subjectLifecycle: "active" as const, ...(!libraryMode ? { registration: "not-retired" } : {}) } : {}),
-        limit: currentAnchor.pageSize ?? CATALOG_DEFAULT_PAGE_SIZE
-      };
-      if (currentAnchor.q) {
-        listQuery.search = currentAnchor.q;
-      }
-      if (currentAnchor.lifecycle) {
-        listQuery.lifecycle = currentAnchor.lifecycle;
-      }
-      if (libraryMode && ["driver", "node-type", "configuration-schema"].includes(currentAnchor.type ?? "")) {
-        listQuery.type = currentAnchor.type as CatalogListQuery["type"];
-      }
-      if (libraryMode && currentAnchor.registration) listQuery.registration = currentAnchor.registration;
-      if (libraryMode && currentAnchor.usageProjectId) listQuery.usageProjectId = currentAnchor.usageProjectId;
-      if (currentAnchor.cursor) {
-        listQuery.cursor = currentAnchor.cursor;
-      }
-      if (currentAnchor.moduleNodeId) {
-        listQuery.placementModuleId = currentAnchor.moduleNodeId;
-        if (libraryMode) listQuery.placementScope = "library";
-      }
-      // Load the maintained taxonomy and every subject before publishing the navigator.
-      let firstSubjectPage: CatalogSubjectListResponse | undefined;
-      const [activeSubjects, retiredSubjects, registry] = await Promise.all([
-        listAllCanonicalPages(async (query) => {
-          const page = await catalog.listSubjects(query);
-          firstSubjectPage ??= page;
-          return page;
-        }, { ...pin, limit: 100 }),
-        libraryMode ? Promise.resolve([]) : listAllCanonicalPages((query) => catalog.listSubjects(query), { ...pin, lifecycle: "retired", limit: 100 }),
-        moduleRegistry?.getRegistry()
-      ]);
-      const subjectItems = [...new Map([...activeSubjects, ...retiredSubjects].map((item) => [item.id, item])).values()];
-      if (generation !== loadGeneration.current) return;
-      // Historical subject bookmarks opt into history without losing their scope.
-      if (!currentAnchor.includeRetiredSubjects && subjectItems.some((item) =>
-        item.id === currentAnchor.subjectId && (item.membership.status === "retired" || (!libraryMode && item.registration.status === "retired")))) {
-        delete listQuery.registration;
-        delete listQuery.subjectLifecycle;
-        commitAnchor({ ...currentAnchor, includeRetiredSubjects: true, cursor: null, cursorTrail: null }, "replace");
-      }
-      const subjects: CatalogSubjectListResponse = {
-        ...firstSubjectPage!, items: subjectItems, totalCount: subjectItems.length, hasMore: false, nextCursor: null
-      };
-      let subject: SubjectItem | null = null;
-      let definition: DefinitionItem | null = null;
-      let latestRevision: RevisionItem | null = null;
-      let revisions: RevisionItem[] = [];
-      let timeline: CatalogDefinitionTimelineResponse | null = null;
-      let revisionCursor: string | null = null;
-      let timelineCursor: string | null = null;
-
-      if (currentAnchor.definitionId) {
-        const definitionResponse = await catalog.getDefinition(currentAnchor.definitionId, pin);
-        definition = definitionResponse.item;
-        if (libraryMode) {
-          latestRevision = definition.currentRevision;
-        }
-        if (historyOpen) {
-          try {
-            const revisionList = await catalog.listDefinitionRevisions(currentAnchor.definitionId, { ...pin, limit: 50 });
-            revisions = revisionList.items;
-            revisionCursor = revisionList.hasMore ? revisionList.nextCursor : null;
-            timeline = await catalog.listDefinitionTimeline(currentAnchor.definitionId, { ...pin, limit: 50 });
-            timelineCursor = timeline.hasMore ? timeline.nextCursor : null;
-          } catch (historyLoadError) {
-            if (!libraryMode) throw historyLoadError;
-            if (generation === loadGeneration.current) setHistoryError("修订历史读取失败，请重试。");
-          }
-        }
-      }
-
-      const subjectsEmptyReason = emptyCollectionReason(subjects);
-      // Only an explicit navigator selection scopes the collection. Opening a
-      // definition keeps the surrounding list and navigation unchanged. The subject
-      // route is used rather than the `subjectIds` query so the scope is a
-      // scope, not a filter: an empty result reports "no-definitions" instead of
-      // "no-filter-match".
-      const scopedSubjectId = currentAnchor.subjectId ?? null;
-      let definitions: CatalogDefinitionListResponse;
-      if (subjectsEmptyReason === "no-registrations" && !currentAnchor.subjectId && !definition) {
-        definitions = {
-          items: [],
-          nextCursor: null,
-          catalogReleaseId: document.item.catalogReleaseId,
-          totalCount: 0,
-          hasMore: false,
-          emptyReason: "no-registrations"
-        };
-      } else if (scopedSubjectId) {
-        definitions = await catalog.listSubjectDefinitions(scopedSubjectId, listQuery);
-      } else {
-        definitions = await catalog.listDefinitions(listQuery);
-      }
-
-      const subjectId = definition?.subject.id ?? scopedSubjectId;
-      if (subjectId) {
-        const subjectResponse = await catalog.getSubject(subjectId, pin);
-        subject = subjectResponse.item;
-      }
-
-      let review: CatalogReviewItemListResponse | null = null;
-      const reviewLoader = listReviewItemsRef.current;
-      if (reviewLoader && organizationId) {
-        try {
-          review = await reviewLoader(organizationId, pin);
-        } catch {
-          review = null;
-        }
-      }
-
-      if (generation !== loadGeneration.current) return;
-      setSnapshot({
-        document,
-        currentReleaseId,
-        subjects,
-        modules: registry?.modules ?? [],
-        definitions,
-        subject,
-        definition,
-        latestRevision,
-        revisions,
-        timeline,
-        revisionCursor,
-        timelineCursor,
-        review
-      });
-      setError(undefined);
-    } catch (loadError) {
-      if (generation === loadGeneration.current) setError(loadError);
-    } finally {
-      if (generation === loadGeneration.current) setInFlight(false);
+      return await listReviewItemsRef.current?.(organizationId, readPin) ?? null;
+    } catch {
+      return null;
     }
-  }, [commitAnchor, historyOpen, organizationId, catalogReadSearch, moduleRegistry, libraryMode]);
+  } : null, [readPin, organizationId, reviewItemsAvailable]);
+  const reviewScope = useMemo(() => ({ scope, readPin, refreshEpoch }), [scope, readPin, refreshEpoch]);
+  const review = useCatalogRead(reviewScope, loadReview).data;
+  const reviewItemCount = reviewCountOverride !== undefined ? reviewCountOverride
+    : review?.totalCount ?? (review?.nextCursor ? null : review?.items.length ?? 0);
 
+  useEffect(() => { setSelectedDefinitions([]); setSelectionError(""); }, [organizationId, refreshEpoch, releaseId]);
   useEffect(() => {
-    void load();
-    return () => { loadGeneration.current += 1; };
-  }, [load, reviewItemsAvailable, refreshEpoch]);
+    setSelectingSubject(false);
+    return () => { selectionGeneration.current += 1; };
+  }, [organizationId, subjectId, releaseId, refreshEpoch]);
 
-  useEffect(() => {
-    if (!snapshot) {
-      return;
-    }
-    if (libraryMode || anchor.catalogReleaseId) {
-      return;
-    }
-    commitAnchor(
-      { ...anchor, catalogReleaseId: snapshot.document.item.catalogReleaseId },
-      "replace"
-    );
-  }, [anchor, commitAnchor, libraryMode, snapshot]);
-
-  const collection = snapshot ? pickCollection(snapshot.subjects, snapshot.definitions) : undefined;
-  const domainState: CatalogDomainState = deriveCatalogDomainState({
+  const retryWorkspace = () => {
+    if (!legacy && navigator.error !== undefined) void navigator.reload();
+    else setRetryEpoch(epoch => epoch + 1);
+  };
+  const collection = navigatorData?.subjects && definitionList ? pickCollection(navigatorData.subjects, definitionList) : undefined;
+  const workspaceError = legacy ? legacyRead.error : navigator.error ?? list.error;
+  const inFlight = legacy ? legacyRead.pending : navigator.pending ||
+    (listPending && (!definitionList || list.data?.refreshEpoch !== refreshEpoch || list.data.pin !== readPin));
+  const workspaceInput = {
     inFlight,
-    previousReleaseId: snapshot?.document.item.catalogReleaseId ?? null,
-    document: unpublished ? { item: null, publicationState: "unpublished" } : snapshot?.document,
-    subject: snapshot?.subject ?? undefined,
-    definition: snapshot?.definition ?? undefined,
-    collection: inFlight || error !== undefined ? undefined : collection,
+    previousReleaseId: releaseId ?? null,
+    document,
+    collection: listPending || workspaceError !== undefined ? undefined : collection,
+    error: workspaceError
+  };
+  const workspaceState = deriveCatalogDomainState({ ...workspaceInput, subject: workspaceSubject });
+  const error = detail.error ?? workspaceError;
+  const domainState = deriveCatalogDomainState({
+    ...workspaceInput,
+    inFlight: inFlight || detail.pending,
+    subject: subject ?? undefined,
+    definition: definition ?? undefined,
     error
   });
   const writesEnabled = catalogWritesEnabled(domainState);
-  const workspaceSubject = anchor.subjectId
-    ? snapshot?.subjects.items.find((item) => item.id === anchor.subjectId) : undefined;
-  const workspaceState = deriveCatalogDomainState({
-    inFlight,
-    previousReleaseId: snapshot?.document.item.catalogReleaseId ?? null,
-    document: unpublished ? { item: null, publicationState: "unpublished" } : snapshot?.document,
-    subject: workspaceSubject,
-    collection: inFlight || error !== undefined ? undefined : collection,
-    error
-  });
   /**
    * Actions that no longer have a surface on this page are not offered as toolbar
    * buttons: review work is processed through the single pending-work dialog, and
@@ -726,20 +640,16 @@ export function CatalogPage({
   const readOnlyLabel = domainState.kind !== "retired" ? null
     : domainState.target === "subject" ? "主体已退役 · 只读"
       : domainState.target === "registration" ? "登记已停用 · 只读"
-        : snapshot?.definition?.lifecycle === "deprecated" ? "定义已弃用 · 只读" : "定义已退役 · 只读";
-  const reviewEmptyReason = emptyCollectionReason(snapshot?.review ?? null);
-  const listEmptyReason = emptyCollectionReason(snapshot?.definitions ?? null);
-  const definitions = snapshot?.definitions.items ?? [];
-  const subjects = snapshot?.subjects.items ?? [];
-  const modules = snapshot?.modules ?? [];
-  const includesRetiredSubjects = Boolean(anchor.includeRetiredSubjects || subjects.some((item) =>
-    item.id === anchor.subjectId && (item.membership.status === "retired" || (!libraryMode && item.registration.status === "retired"))));
+        : definition?.lifecycle === "deprecated" ? "定义已弃用 · 只读" : "定义已退役 · 只读";
+  const reviewEmptyReason = emptyCollectionReason(review);
+  const listEmptyReason = emptyCollectionReason(definitionList);
+  const definitions = definitionList?.items ?? [];
   const navigationSubjects = useMemo(() => includesRetiredSubjects ? subjects
     : subjects.filter((item) => item.membership.status === "active" && (libraryMode || item.registration.status !== "retired")), [subjects, includesRetiredSubjects, libraryMode]);
   const subjectsById = useMemo(() => new Map([
     ...subjects.map((item) => [item.id, item] as const),
-    ...(snapshot?.subject ? [[snapshot.subject.id, snapshot.subject] as const] : [])
-  ]), [snapshot]);
+    ...(subject && detailIsCurrent ? [[subject.id, subject] as const] : [])
+  ]), [subjects, subject, detailIsCurrent]);
   const ownerWritable = (item: DefinitionItem) => {
     const owner = subjectsById.get(item.subject.id);
     return owner?.membership.status === "active" && owner.registration.status !== "retired" &&
@@ -747,11 +657,11 @@ export function CatalogPage({
   };
   const canPublishDefinitions = !libraryMode && definitionPublishingAllowed;
   const canEditDefinition = (item: DefinitionItem) => !libraryMode && definitionAuthoringAllowed &&
-    Boolean(renderDefinitionEditor) && !inFlight && error === undefined &&
+    Boolean(renderDefinitionEditor) && !inFlight && workspaceError === undefined &&
     (actor === "platform-admin"
       ? item.lifecycle !== "retired" && subjectsById.get(item.subject.id)?.membership.status === "active"
       : item.lifecycle === "active" && ownerWritable(item));
-  const definitionEditable = snapshot?.definition ? canEditDefinition(snapshot.definition) : false;
+  const definitionEditable = definition ? detailIsCurrent && canEditDefinition(definition) : false;
   const canDeleteDefinition = !libraryMode && definitionDeletionAllowed && Boolean(repository.previewDefinitionDeletion && repository.deleteDefinition);
   const definitionActionLabel = definitionEditable ? "编辑" : "查看";
   const ownerStatusLabel = (item: DefinitionItem) => subjectsById.get(item.subject.id)?.membership.status === "retired"
@@ -770,7 +680,7 @@ export function CatalogPage({
     },
     [navigationSubjects, describeSubject, modules, libraryMode]
   );
-  const totalCount = snapshot?.definitions.totalCount ?? null;
+  const totalCount = definitionList?.totalCount ?? null;
   const findModuleCount = (nodes: CatalogNavigatorNode[], id: string): number | undefined => {
     for (const node of nodes) {
       if (node.kind === "module" && node.id === id) return node.subjectCount;
@@ -827,7 +737,6 @@ export function CatalogPage({
   const selectSubject = (subjectId: string | null) => {
     // An exact subject replaces the module selection, including one in another branch.
     commitAnchor({ ...anchor, subjectId, moduleNodeId: null, definitionId: null, cursor: null, cursorTrail: null }, "push");
-    setInspectorOpen(false);
   };
 
   const selectDefinition = (item: DefinitionItem) => {
@@ -839,8 +748,7 @@ export function CatalogPage({
       },
       "push"
     );
-    setHistoryOpen(false);
-    setInspectorOpen(true);
+    setHistorySelection(null);
   };
 
   const submitSearch = () => {
@@ -879,7 +787,7 @@ export function CatalogPage({
   };
 
   const goToNextPage = () => {
-    const next = snapshot?.definitions.nextCursor ?? null;
+    const next = definitionList?.nextCursor ?? null;
     if (!next) return;
     setCursorTrail((trail) => [...trail, anchor.cursor ?? ""]);
     commitAnchor({ ...anchor, cursor: next, cursorTrail: JSON.stringify([...cursorTrail, anchor.cursor ?? ""]) }, "push");
@@ -962,11 +870,10 @@ export function CatalogPage({
     }
   ];
 
-  const definition = snapshot?.definition ?? null;
   const closeEditor = useCallback(() => {
     setLeaveEditorOpen(false);
     setEditorState({ dirty: false, pending: false });
-    setInspectorOpen(false);
+    setHistorySelection(null);
     // Clear only the detail selection; the host's data refresh must preserve
     // the surrounding collection and navigator state.
     closingEditor.current = true;
@@ -975,56 +882,43 @@ export function CatalogPage({
     } finally {
       closingEditor.current = false;
     }
-    onEditorClosed?.();
-  }, [anchor, commitAnchor, onEditorClosed]);
+    onEditorClosed?.(changedDefinition.current === detailScope);
+    changedDefinition.current = null;
+  }, [anchor, commitAnchor, detailScope, onEditorClosed]);
   const requestCloseEditor = () => {
     if (editorState.pending) return;
     if (editorState.dirty) setLeaveEditorOpen(true);
     else closeEditor();
   };
   const loadMoreHistory = async () => {
-    if (!snapshot?.definition || historyPending) return;
-    const source = snapshot;
-    const generation = loadGeneration.current;
-    const selectedId = source.definition!.id;
-    const pin: CatalogListQuery = { catalogReleaseId: source.document.item.catalogReleaseId, limit: 50,
-      ...(libraryMode ? { view: "library" } : {}) };
-    setHistoryPending(true);
-    setHistoryError(null);
+    if (!historySource || !historyData || !definitionId || !historyPin || historyPending) return;
+    const generation = historyGeneration.current;
+    const { revisionCursor, timelineCursor } = historyData;
+    const query = { ...historyPin, limit: 50 };
+    setHistoryPage({ source: historySource, data: historyData, pending: true });
     try {
       const [revisionPage, timelinePage] = await Promise.all([
-        source.revisionCursor ? repository.listDefinitionRevisions(selectedId, { ...pin, cursor: source.revisionCursor }) : null,
-        source.timelineCursor ? repository.listDefinitionTimeline(selectedId, { ...pin, cursor: source.timelineCursor }) : null
+        revisionCursor ? repository.listDefinitionRevisions(definitionId, { ...query, cursor: revisionCursor }) : null,
+        timelineCursor ? repository.listDefinitionTimeline(definitionId, { ...query, cursor: timelineCursor }) : null
       ]);
-      if (generation !== loadGeneration.current) return;
-      if ((revisionPage?.hasMore && (!revisionPage.nextCursor || revisionPage.nextCursor === source.revisionCursor)) ||
-          (timelinePage?.hasMore && (!timelinePage.nextCursor || timelinePage.nextCursor === source.timelineCursor))) {
+      if (generation !== historyGeneration.current) return;
+      if ((revisionPage?.hasMore && (!revisionPage.nextCursor || revisionPage.nextCursor === revisionCursor)) ||
+          (timelinePage?.hasMore && (!timelinePage.nextCursor || timelinePage.nextCursor === timelineCursor))) {
         throw new Error("Invalid history cursor");
       }
-      setSnapshot((current) => current?.definition?.id !== selectedId ||
-        current.document.item.catalogReleaseId !== source.document.item.catalogReleaseId ? current : {
-        ...current,
-        revisions: revisionPage ? [...current.revisions, ...revisionPage.items] : current.revisions,
+      setHistoryPage({ source: historySource, data: {
+        revisions: revisionPage ? [...historyData.revisions, ...revisionPage.items] : historyData.revisions,
         revisionCursor: revisionPage?.hasMore ? revisionPage.nextCursor : null,
-        timeline: timelinePage ? { ...timelinePage, items: [...(current.timeline?.items ?? []), ...timelinePage.items] } : current.timeline,
+        timeline: timelinePage ? { ...timelinePage, items: [...historyData.timeline.items, ...timelinePage.items] } : historyData.timeline,
         timelineCursor: timelinePage?.hasMore ? timelinePage.nextCursor : null
-      });
+      } });
     } catch {
-      if (generation === loadGeneration.current) setHistoryError("历史记录加载失败，已保留当前记录，请重试。");
-    } finally {
-      if (generation === loadGeneration.current) setHistoryPending(false);
+      if (generation === historyGeneration.current) {
+        setHistoryPage({ source: historySource, data: historyData, error: "历史记录加载失败，已保留当前记录，请重试。" });
+      }
     }
   };
-  /**
-   * A deep link (and Back/Forward onto one) opens the editor for the definition
-   * it names; closing it clears that selection from the URL.
-   */
-  const editorOpen =
-    definition !== null &&
-    (inspectorOpen ||
-      (Boolean(anchor.definitionId) && snapshot?.definition?.id === anchor.definitionId));
-  const subject = snapshot?.subject ?? null;
-  const release = snapshot?.document.item;
+  const editorOpen = Boolean(definition && definitionId);
   const showListEmptyState =
     pageEmptyReason !== null &&
     pageEmptyReason !== "no-review-work" &&
@@ -1034,9 +928,9 @@ export function CatalogPage({
     <CatalogDetailBody
       definition={definition}
       subject={subject}
-      revisions={snapshot?.revisions ?? []}
+      revisions={historyData?.revisions ?? []}
       historyOpen={historyOpen}
-      onToggleHistory={() => setHistoryOpen((value) => !value)}
+      onToggleHistory={() => setHistorySelection(historyOpen ? null : detailScope)}
     />
   );
 
@@ -1045,19 +939,20 @@ export function CatalogPage({
     const revision = reading?.currentRevision;
     const constraintLabels: Record<string, string> = { minimum: "最小值", maximum: "最大值", exclusiveMinimum: "大于", exclusiveMaximum: "小于", multipleOf: "倍数", enum: "可选值", minLength: "最短长度", maxLength: "最长长度", pattern: "格式", minItems: "最少项目", maxItems: "最多项目" };
     const constraints = Object.entries(revision?.valueShape.schema ?? {}).filter(([key]) => key in constraintLabels);
+    const detailPending = !reading && (navigator.pending || detail.pending);
+    const detailError = detail.error ?? navigator.error;
     const activeTab = anchor.tab === "configurations" || anchor.tab === "compare" ? anchor.tab : "definition";
     return <div className="parameter-catalog parameter-library-detail" role="region" aria-label="参数定义目录"
-      data-catalog-page="true" data-catalog-state={domainState.kind} data-catalog-release={snapshot?.document.item.catalogReleaseId ?? ""}
-      data-runtime-state={error && !reading ? "error" : inFlight && !reading ? "loading" : "ready"} aria-busy={inFlight && !reading}>
+      data-catalog-page="true" data-catalog-state={domainState.kind} data-catalog-release={releaseId ?? ""}
+      data-runtime-state={detailError && !reading ? "error" : detailPending ? "loading" : "ready"} aria-busy={detailPending}>
       <div className="parameter-library-detail__top"><button type="button" className="button subtle sm" onClick={() => {
-        setHistoryOpen(false);
         commitAnchor({ ...anchor, definitionId: null, history: null, tab: null, instance: null, instanceCursor: null, baseline: null, target: null }, "push");
       }}><ArrowLeft size={14} aria-hidden="true" />返回参数库</button>
       </div>
-      {inFlight ? <SectionSkeleton label={catalogLoadingLabel} />
-        : error ? (error instanceof WiseEffApiError && error.code === "NOT_FOUND"
+      {detailPending ? <SectionSkeleton label={catalogLoadingLabel} />
+        : detailError ? (detailError instanceof WiseEffApiError && detailError.code === "NOT_FOUND"
           ? <p role="status">该定义当前不可用。</p>
-          : <SectionError message="定义或修订历史读取失败，请重试。" onRetry={() => void load()} />)
+          : <SectionError message="定义或修订历史读取失败，请重试。" onRetry={navigator.error !== undefined ? retryWorkspace : retryDetail} />)
           : reading && revision ? <article role="region" aria-label="定义详情" className="parameter-library-detail__body">
             <header className="parameter-library-detail__header">
               <div className="parameter-library-detail__identity">
@@ -1069,9 +964,7 @@ export function CatalogPage({
                 <code className="parameter-library-detail__key">{reading.propertyKey}</code>
                 <p className="parameter-library-detail__subject"><span>{catalogSubjectTypeLabel(reading.subject.type)}</span><span>{reading.subject.canonicalName}</span></p>
               </div>
-              <p className="parameter-library-detail__release">{snapshot?.currentReleaseId
-                ? snapshot.currentReleaseId === snapshot.document.item.catalogReleaseId ? "当前发布" : "历史发布"
-                : "所选发布"} · 修订 #{revision.revisionNumber}</p>
+              <p className="parameter-library-detail__release">当前发布 · 修订 #{revision.revisionNumber}</p>
             </header>
             <div className="parameter-library-detail__tabs">
             <ViewSwitch variant="tabs" ariaLabel="参数详情" value={activeTab}
@@ -1086,7 +979,7 @@ export function CatalogPage({
             {activeTab === tab ? <>
               <div className="parameter-library-detail__section-heading">
                 <h2>{tab === "compare" ? "跨项目对比" : "当前项目配置"}</h2>
-                <span className="parameter-catalog__muted">{snapshot?.latestRevision ? `最新定义修订 #${snapshot.latestRevision.revisionNumber}` : "最新定义修订暂不可用"}</span>
+                <span className="parameter-catalog__muted">{`最新定义修订 #${revision.revisionNumber}`}</span>
               </div>
               {tab === "compare" ? <ProjectComparison key={`${organizationId ?? ""}:${reading.id}`} repository={repository} organizationId={organizationId} definitionId={reading.id}
                 baselineId={anchor.baseline} targetId={anchor.target}
@@ -1137,11 +1030,11 @@ export function CatalogPage({
             </button>
             </div>
             {historyOpen ? <div role="region" aria-label={catalogTimelineLabel}>
-              {inFlight ? <SectionSkeleton label="正在加载修订历史" /> : historyError ? <SectionError message={historyError} onRetry={() => void load()} /> : <CatalogHistoryBody timeline={snapshot?.timeline ?? null}
-                revisions={snapshot?.revisions ?? []} currentRevision={revision} hasMore={Boolean(snapshot?.revisionCursor || snapshot?.timelineCursor)}
+              {history.pending ? <SectionSkeleton label="正在加载修订历史" /> : history.error !== undefined && historyError ? <SectionError message={historyError} onRetry={retryHistory} /> : <CatalogHistoryBody timeline={historyData?.timeline ?? null}
+                revisions={historyData?.revisions ?? []} currentRevision={revision} hasMore={Boolean(historyData?.revisionCursor || historyData?.timelineCursor)}
                 pending={historyPending} error={historyError} onLoadMore={() => void loadMoreHistory()} />}
             </div> : null}</section></> : null}</TabPanel>
-          </article> : <SectionError message="定义不可用。" onRetry={() => void load()} />}
+          </article> : <SectionError message="定义不可用。" onRetry={retryDetail} />}
     </div>;
   }
 
@@ -1253,10 +1146,11 @@ export function CatalogPage({
               role={workspaceState.kind === "error" ? "alert" : "status"}
             >
               <p>{workspaceMessage}</p>
+              {workspaceState.kind === "error" && definitionList ? <button type="button" className="button subtle sm" onClick={retryWorkspace}>重试</button> : null}
             </div>
           ) : null}
         </> : undefined}
-        navigator={!unpublished && snapshot ? <>
+        navigator={!unpublished && navigatorData?.subjects ? <>
           <CatalogModuleNavigator
             searchLabel={libraryMode ? "搜索模块或主体" : undefined}
             defaultExpandDepth={libraryMode ? 1 : 0}
@@ -1272,17 +1166,18 @@ export function CatalogPage({
         </> : null}
       >
 
-        {(libraryMode ? null : taskContent) ?? (inFlight && !snapshot ? (
+        {(libraryMode ? null : taskContent) ?? (inFlight && !definitionList ? (
           <SectionSkeleton label={catalogLoadingLabel} />
-        ) : domainState.kind === "error" && !snapshot ? (
-          <><SectionError message={statusMessage ?? "目录加载失败，请稍后重试。"} onRetry={() => void load()} />
+        ) : workspaceState.kind === "error" && !definitionList ? (
+          <><SectionError message={statusMessage ?? "目录加载失败，请稍后重试。"} onRetry={retryWorkspace} />
             {libraryMode && anchor.usageProjectId ? <button type="button" className="button subtle sm" onClick={() => commitAnchor({ ...anchor, usageProjectId: null, cursor: null, cursorTrail: null }, "push")}>重置项目使用筛选</button> : null}</>
         ) : unpublished ? (
           <div
             data-catalog-unpublished-workspace="true"
           />
         ) : (
-          <div className="parameter-catalog__list">
+          <div className="parameter-catalog__list" aria-busy={listPending}>
+            {detail.error !== undefined ? <SectionError message="定义读取失败，请重试。" onRetry={retryDetail} /> : null}
             <header className="parameter-catalog__list-head">
               <h2 className="parameter-catalog__pane-title">{catalogListLabel}</h2>
               <p
@@ -1293,8 +1188,9 @@ export function CatalogPage({
               >
                 {totalCount === null
                   ? "结果计数不可用"
-                  : `共 ${totalCount} 项 · 第 ${cursorTrail.length + 1} 页`}
+                  : `共 ${totalCount} 项${listPending ? "" : ` · 第 ${cursorTrail.length + 1} 页`}`}
               </p>
+              {listPending && definitionList ? <span className="parameter-catalog__muted">{catalogLoadingLabel}</span> : null}
             </header>
             {libraryMode ? <div className="parameter-library-filters">
               <div className="parameter-library-filter"><span>项目使用</span><SelectControl ariaLabel="项目使用" size="filter" value={anchor.usageProjectId ?? ""} disabled={!projectOptions || projectOptions.organizationId !== organizationId} onValueChange={(value) => commitAnchor({ ...anchor, usageProjectId: value || null, cursor: null, cursorTrail: null }, "push")}
@@ -1347,14 +1243,14 @@ export function CatalogPage({
                     data-catalog-row-action={canEditDefinition(row) ? "edit" : "read"}
                     onClick={() => selectDefinition(row)}>{canEditDefinition(row) ? "编辑" : "查看"}</button> : null}
                   {canDeleteDefinition ? <button type="button" className="button subtle sm"
-                    aria-label={`彻底删除 ${row.propertyKey}`} disabled={inFlight || error !== undefined}
+                    aria-label={`彻底删除 ${row.propertyKey}`} disabled={inFlight || workspaceError !== undefined}
                     onClick={() => setDeletingDefinition(row)}>彻底删除</button> : null}
-                  {!compactList && canPublishDefinitions && onDefinitionCommand && !inFlight && error === undefined && ownerWritable(row) ? (
+                  {!compactList && canPublishDefinitions && onDefinitionCommand && !inFlight && workspaceError === undefined && ownerWritable(row) ? (
                     <button type="button" className="button subtle sm"
                       aria-label={`${row.lifecycle === "retired" ? "恢复" : "退役"} ${row.propertyKey}`}
                       data-catalog-row-action={row.lifecycle === "retired" ? "restore-definition" : "retire-definition"}
                       onClick={() => onDefinitionCommand(row.lifecycle === "retired" ? "restore-definition" : "retire-definition", row,
-                        deriveCatalogDomainState({ document: snapshot?.document, subject: subjectsById.get(row.subject.id), inFlight, error }))}>
+                        deriveCatalogDomainState({ document, subject: subjectsById.get(row.subject.id), inFlight, error: workspaceError }))}>
                       {row.lifecycle === "retired" ? "恢复" : "退役"}
                     </button>) : null}
                 </span>}
@@ -1382,7 +1278,7 @@ export function CatalogPage({
                   className="button subtle"
                   data-compact-control="pagination"
                   aria-label={catalogPreviousPageLabel}
-                  disabled={cursorTrail.length === 0 || inFlight}
+                  disabled={cursorTrail.length === 0 || listPending || inFlight || workspaceError !== undefined}
                   onClick={goToPreviousPage}
                 >
                   {catalogPreviousPageLabel}
@@ -1392,7 +1288,7 @@ export function CatalogPage({
                   className="button subtle"
                   data-compact-control="pagination"
                   aria-label={catalogNextPageLabel}
-                  disabled={!snapshot?.definitions.hasMore || inFlight}
+                  disabled={!definitionList?.hasMore || listPending || inFlight || workspaceError !== undefined}
                   onClick={goToNextPage}
                 >
                   {catalogNextPageLabel}
@@ -1437,15 +1333,16 @@ export function CatalogPage({
                   <div data-definition-editor="true">
                     {renderDefinitionEditor(definition, {
                       domainState,
-                      revisions: snapshot?.revisions ?? [],
-                      timeline: snapshot?.timeline ?? null,
-                      onRequestHistory: () => setHistoryOpen(true),
+                      revisions: historyData?.revisions ?? [],
+                      timeline: historyData?.timeline ?? null,
+                      onHistoryOpenChange: (open) => setHistorySelection(open ? detailScope : null),
                       onClose: requestCloseEditor,
+                      onChanged: () => { changedDefinition.current = detailScope; },
                       onEditorStateChange: setEditorState,
-                      historyHasMore: Boolean(snapshot?.revisionCursor || snapshot?.timelineCursor),
+                      historyHasMore: Boolean(historyData?.revisionCursor || historyData?.timelineCursor),
                       historyPending,
                       historyError,
-                      onLoadMoreHistory: () => void loadMoreHistory()
+                      onLoadMoreHistory: history.error !== undefined ? retryHistory : () => void loadMoreHistory()
                     })}
                   </div>
                 ) : (
@@ -1456,13 +1353,13 @@ export function CatalogPage({
                     {historyOpen ? (
                       <section aria-label={catalogTimelineLabel} data-catalog-history-region="true">
                         <CatalogHistoryBody
-                          timeline={snapshot?.timeline ?? null}
-                          revisions={snapshot?.revisions ?? []}
+                          timeline={historyData?.timeline ?? null}
+                          revisions={historyData?.revisions ?? []}
                           currentRevision={definition.currentRevision}
-                          hasMore={Boolean(snapshot?.revisionCursor || snapshot?.timelineCursor)}
+                          hasMore={Boolean(historyData?.revisionCursor || historyData?.timelineCursor)}
                           pending={historyPending}
                           error={historyError}
-                          onLoadMore={() => void loadMoreHistory()}
+                          onLoadMore={history.error !== undefined ? retryHistory : () => void loadMoreHistory()}
                         />
                       </section>
                     ) : null}
@@ -1483,17 +1380,16 @@ export function CatalogPage({
         onDeleted={() => {
           onDefinitionDeleted?.(deletingDefinition.id);
           setDeletingDefinition(null);
-          setSnapshot(null);
-          setInFlight(true);
-          setInspectorOpen(false);
-          setHistoryOpen(false);
+          setDeletionEpoch(epoch => epoch + 1);
+          setHistorySelection(null);
           setEditorState({ dirty: false, pending: false });
           setCursorTrail([]);
           closingEditor.current = true;
           try {
             commitAnchor({ ...anchor, definitionId: null, catalogReleaseId: null, cursor: null, cursorTrail: null }, "replace");
           } finally { closingEditor.current = false; }
-          onEditorClosed?.();
+          if (!onEditorClosed) void navigator.reload();
+          onEditorClosed?.(true);
         }} /> : null}
       <ConfirmDialog open={leaveEditorOpen} title="放弃未保存的修改？"
         description="当前修改尚未提交，关闭后将丢失。" confirmLabel="放弃修改" cancelLabel="继续编辑"
@@ -1610,10 +1506,11 @@ export function CatalogHistoryBody({
   onLoadMore?: () => void;
 }) {
   return (
-    <div className="parameter-catalog__history-body">
+    <div className="parameter-catalog__history-body" aria-busy={pending}>
       <h3 className="parameter-catalog__muted">{catalogHistoryLabel}</h3>
       {revisions.length === 0 ? (
-        <p className="parameter-catalog__muted">暂无历史修订。</p>
+        pending ? <p className="parameter-catalog__muted">正在加载历史…</p>
+          : !error ? <p className="parameter-catalog__muted">暂无历史修订。</p> : null
       ) : (
         <ol className="parameter-catalog__revisions">
           {revisions.map((item) => (
@@ -1650,6 +1547,7 @@ export function CatalogHistoryBody({
         </>
       ) : null}
       {error ? <p role="alert">{error}</p> : null}
+      {error && !timeline && onLoadMore ? <button type="button" className="button subtle sm" onClick={onLoadMore}>重试</button> : null}
       {hasMore && onLoadMore ? <button type="button" className="button subtle sm" disabled={pending} onClick={onLoadMore}>
         {pending ? "正在加载历史…" : "加载更多历史"}
       </button> : null}

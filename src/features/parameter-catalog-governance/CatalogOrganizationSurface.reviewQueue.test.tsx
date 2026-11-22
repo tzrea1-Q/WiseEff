@@ -36,9 +36,10 @@ describe("CatalogOrganizationSurface Organization Review Queue permission", () =
     expect(within(list).getByRole("button", { name: "处理审核" })).toBeVisible();
   });
 
-  it("releases queue count overrides on close so a later catalog read can show newly arrived work", async () => {
+  it("keeps the Catalog count through searches and reads fresh work when the review queue reopens", async () => {
     const ports = createMockCatalogPorts({ scenario: "ready" });
     const list = vi.spyOn(ports.governance, "listReviewItems");
+    const definitions = vi.spyOn(ports.catalog, "listDefinitions");
     const props = { ...ports, actor: "org-admin" as const, organizationId: CATALOG_ORGANIZATION_ID,
       currentPersonId: "admin", onAnchorChange: vi.fn() };
     const view = render(<CatalogOrganizationSurface {...props} search="?review=open" />);
@@ -46,9 +47,15 @@ describe("CatalogOrganizationSurface Organization Review Queue permission", () =
     await within(dialog).findByRole("table");
     await waitFor(() => expect(screen.getByRole("button", { name: /待审核事项/ })).toHaveTextContent("1"));
     await userEvent.click(within(dialog).getByRole("button", { name: "关闭" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: /待审核事项/ })).toHaveTextContent("1"));
     list.mockResolvedValue({ items: [catalogReviewItem], nextCursor: "next", totalCount: 4, hasMore: true,
       catalogReleaseId: catalogReviewItem.catalogReleaseId });
-    view.rerender(<CatalogOrganizationSurface {...props} search="?q=gpio" />);
+    const callsBeforeSearch = list.mock.calls.length;
+    view.rerender(<CatalogOrganizationSurface {...props} search="?q=gpio-int" />);
+    await waitFor(() => expect(definitions).toHaveBeenLastCalledWith(expect.objectContaining({ search: "gpio-int" })));
+    expect(list).toHaveBeenCalledTimes(callsBeforeSearch);
+    expect(screen.getByRole("button", { name: /待审核事项/ })).toHaveTextContent("1");
+    await userEvent.click(screen.getByRole("button", { name: /待审核事项/ }));
     await waitFor(() => expect(screen.getByRole("button", { name: /待审核事项/ })).toHaveTextContent("4"));
   });
   it("distinguishes same-named review destinations by their complete module paths", async () => {
@@ -63,10 +70,17 @@ describe("CatalogOrganizationSurface Organization Review Queue permission", () =
     ] }) };
     render(<CatalogOrganizationSurface {...ports} actor="org-admin" search="?review=open" moduleRegistry={moduleRegistry}
       organizationId={CATALOG_ORGANIZATION_ID} currentPersonId="admin" onAnchorChange={vi.fn()} />);
-    await userEvent.click(await screen.findByRole("button", { name: "处理审核" }));
-    await userEvent.click(screen.getByRole("combobox", { name: "审核登记目标模块" }));
+    const review = await screen.findByRole("dialog", { name: "待审核事项" });
+    const openReview = await within(review).findByRole("button", { name: "处理审核" });
+    expect(moduleRegistry.getRegistry).toHaveBeenCalledTimes(1);
+    await userEvent.click(openReview);
+    const targetModule = await screen.findByRole("combobox", { name: "审核登记目标模块" });
+    await waitFor(() => expect(targetModule).toBeEnabled());
+    await userEvent.click(targetModule);
     expect(await screen.findByRole("option", { name: "充电 / 控制器" })).toBeVisible();
     expect(screen.getByRole("option", { name: "电池 / 控制器" })).toBeVisible();
+    // The resolution editor checks fresh evidence before it permits a write.
+    expect(moduleRegistry.getRegistry).toHaveBeenCalledTimes(2);
   });
   it("continues a recorded definition intent in the current definition workspace with exact review context", async () => {
     const ports = createMockCatalogPorts({ scenario: "ready" });

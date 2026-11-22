@@ -960,12 +960,12 @@ describe("DefinitionEditorBody", () => {
 
   it.each([null, 0])("keeps identity facts, policy count %s and on-demand history readable without authoring", async (policyCount) => {
     const user = userEvent.setup();
-    const onRequestHistory = vi.fn();
+    const onHistoryOpenChange = vi.fn();
     render(
       <DefinitionEditorBody
         authoringAllowed={false}
         history={<ol aria-label="定义时间线"><li>目录发布</li></ol>}
-        onRequestHistory={onRequestHistory}
+        onHistoryOpenChange={onHistoryOpenChange}
         actor="org-admin"
         sessionPermissions={[]}
         domainState={ready}
@@ -989,7 +989,9 @@ describe("DefinitionEditorBody", () => {
     expect(screen.getByText(policyCount === null ? /策略使用量暂不可用/ : /策略 0/)).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: /查看历史/ }));
-    expect(onRequestHistory).toHaveBeenCalledOnce();
+    expect(onHistoryOpenChange).toHaveBeenLastCalledWith(true);
     expect(screen.getByRole("region", { name: "定义时间线" })).toHaveTextContent("目录发布");
+    await user.click(screen.getByRole("button", { name: /收起历史/ }));
+    expect(onHistoryOpenChange.mock.calls).toEqual([[true], [false]]);
   });
 });
