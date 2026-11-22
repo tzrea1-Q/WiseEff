@@ -46,6 +46,14 @@ describe("renderMarkdownPreview", () => {
     expect(html).toContain("&lt;script&gt;");
   });
 
+  it("turns literal <br> tags into line breaks outside code spans only", () => {
+    const html = renderMarkdownPreview("| 模式 | 说明 |\n| --- | --- |\n| 1 | 快充<br>限流<BR/>保护<br />结束 |\n\n第一行<br>第二行 `a<br>b`\n\n```\nx<br>y\n```");
+    expect(html).toContain("<td>快充<br/>限流<br/>保护<br/>结束</td>");
+    expect(html).toContain("<p>第一行<br/>第二行 <code>a&lt;br&gt;b</code></p>");
+    expect(html).toContain("<pre><code>x&lt;br&gt;y</code></pre>");
+    expect(renderMarkdownPreview("<br onclick=alert(1)>")).toBe("<p>&lt;br onclick=alert(1)&gt;</p>");
+  });
+
   it("refuses javascript: links", () => {
     const html = renderMarkdownPreview("[x](javascript:alert(1))");
     expect(html).not.toContain("<a ");

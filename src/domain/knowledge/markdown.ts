@@ -3,7 +3,9 @@
  * Input is escaped before any markup is generated, so arbitrary HTML in entry
  * content cannot reach the DOM. Covers the subset engineers actually use in
  * knowledge notes: headings, emphasis, inline code, fenced code, lists, quotes,
- * links, pipe tables, and paragraphs. Anything else renders as plain text.
+ * links, pipe tables, and paragraphs. The one raw tag honoured is `<br>`
+ * (outside code spans), because GFM tables have no other way to break a line
+ * inside a cell. Anything else renders as plain text.
  */
 
 function escapeHtml(value: string): string {
@@ -19,8 +21,12 @@ function isSafeUrl(url: string): boolean {
   return /^(https?:\/\/|\/|#|mailto:)/i.test(url.trim());
 }
 
+const ESCAPED_LINE_BREAK_TAG = /&lt;br\s*\/?&gt;/gi;
+
 function renderInline(escaped: string): string {
-  let html = escaped;
+  let html = escaped.split(/(`[^`]+`)/g)
+    .map((part, index) => index % 2 === 1 ? part : part.replace(ESCAPED_LINE_BREAK_TAG, "<br/>"))
+    .join("");
   html = html.replace(/`([^`]+)`/g, (_match, code: string) => `<code>${code}</code>`);
   html = html.replace(/\*\*([^*]+)\*\*/g, (_match, text: string) => `<strong>${text}</strong>`);
   html = html.replace(/(^|[^*])\*([^*]+)\*/g, (_match, prefix: string, text: string) => `${prefix}<em>${text}</em>`);
