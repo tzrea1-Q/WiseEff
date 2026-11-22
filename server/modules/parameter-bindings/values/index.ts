@@ -4,6 +4,7 @@ export {
   isReplacedCurrentBinding,
   mutateExistingProjectValue,
   readProjectValueHistory,
+  readListedCurrentValues,
   requiresCanonicalSourceImport,
   discoverCurrentSourceRevisionPins,
   discoverDeletedSourceRevisionPins,

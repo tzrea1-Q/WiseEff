@@ -281,7 +281,9 @@ export const S2_SCH_0366_FINGERPRINT = "e53750f39ab89cc4245099354082025ae60b57e1
 export const S2_SCH_0367_FINGERPRINT = "c0131d67b6d67d864437c7a66497aa02e3dc4507025d732ad712b95eb1eb6bfc";
 /** 0369 indexes historical subject spellings in the canonical parameter_catalog schema. */
 export const S2_SCH_0369_FINGERPRINT = "e0c64ede0ddcab825f166a3f86f65aea0382f5ee7b5918c64fd8241a316162e8";
-export const S2_SCH_LIVE_FINGERPRINT = S2_SCH_0369_FINGERPRINT;
+/** 0371 adds the set-based current suspension read. */
+export const S2_SCH_0371_FINGERPRINT = "9e41deec30c6b2891da1460f8149ca34545e0c0c6d6505d98c27f9918d03dd8a";
+export const S2_SCH_LIVE_FINGERPRINT = S2_SCH_0371_FINGERPRINT;
 
 const CATALOG_DATABASE_PREFIX = "wiseeff_pcat_";
 const FAKE_ENGINE_PATTERN = /pglite|postgres-js|pg-mem|sqlite|:memory:|memory:\/\//i;

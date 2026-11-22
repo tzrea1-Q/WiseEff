@@ -544,6 +544,21 @@ export const loadOwnedSourceRefs = async (
   return result.rows.map((row) => row.source_ref);
 };
 
+export async function loadProjectValuesByIds(
+  client: ValueClient,
+  valueIds: readonly string[],
+): Promise<ProjectValueRow[]> {
+  if (!valueIds.length) return [];
+  const result = await client.query<ProjectValueRow>(
+    `select id, binding_id, definition_id, definition_revision_id,
+            source_ref, config_revision_id, value_digest, value_kind, value, value_state, created_at
+       from parameter_catalog.${projectParameterValues}
+      where id = any($1::text[])`,
+    [valueIds],
+  );
+  return result.rows;
+}
+
 export const loadHistoryByRevision = async (
   client: ValueClient,
   bindingId: string,

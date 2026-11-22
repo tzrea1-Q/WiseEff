@@ -35,6 +35,7 @@ import {
   loadHistoryByRevision,
   loadOwnedSourceRefs,
   loadProjectValueById,
+  loadProjectValuesByIds,
   requiresCanonicalSourceImport as queryCanonicalSourceImport,
   discoverCurrentSourceRevisionPins as queryCurrentSourceRevisionPins,
   discoverDeletedSourceRevisionPins as queryDeletedSourceRevisionPins,
@@ -786,6 +787,16 @@ export const appendProjectValue = async (
     }
     throw error;
   }
+};
+
+// The list reader supplies current value IDs discovered from persisted bindings
+// in the same read snapshot. Historical values are irrelevant to an exact tip.
+export const readListedCurrentValues = async (
+  pool: ValueClient,
+  currentValueIds: readonly string[],
+): Promise<ReadonlyMap<string, ProjectValue>> => {
+  const rows = await loadProjectValuesByIds(pool, currentValueIds);
+  return new Map(rows.map((row) => [row.id, toProjectValue(row)]));
 };
 
 export const readProjectValueHistory = async (

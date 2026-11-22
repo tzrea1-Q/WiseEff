@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import pg from "pg";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { compileCatalogRelease } from "../../catalog-kernel/compiler/index";
 import { validCatalogReleaseBundle } from "../../catalog-kernel/compiler/__fixtures__/catalogReleaseBundle";
@@ -27,9 +27,11 @@ import {
   type EphemeralTestDatabase,
 } from "../../../testing/testDatabase";
 import { IDENTITY_PLACEHOLDER_SOURCE } from "../values/repositories";
-import { appendSourceCommittedValue, createSourceBackedBindingService } from "../binding/__fixtures__/sourceBackedBinding";
+import { appendSourceCommittedValue, createSourceBackedBindingService, sourceBackedCommand } from "../binding/__fixtures__/sourceBackedBinding";
+import { stabilizeCanonicalBinding } from "../binding";
 
 import { createUsageQueries } from "./index";
+import { expectEligibleBindingsToMatch } from "../queries/currentManagedBindings.testHelpers";
 
 const databaseAvailable = await isTestDatabaseAvailable();
 if (!databaseAvailable) {
@@ -175,6 +177,34 @@ describe("CATFIX-QUERY usage summaries", () => {
     await database?.drop();
   });
 
+  it("matches the eligibility oracle while the bootstrap identity is current", async () => {
+    const client = await pool.connect();
+    try {
+      await client.query("begin");
+      await client.query("set constraints all deferred");
+      const stabilized = await stabilizeCanonicalBinding(client, await sourceBackedCommand(client, {
+        snapshot,
+        organizationId: ORG,
+        projectId: PROJECT_A,
+        logicalNodeId: "logical-usage-bootstrap",
+        registrationId: registrationId as never,
+        definitionId: DEFINITION_ID,
+        effectiveRevisionId: REVISION_1,
+        expectedEffectiveRevisionId: null,
+      }));
+      if (!stabilized.ok) throw new Error("Binding stabilization failed");
+      const binding = stabilized.value.binding;
+      const current = await client.query(`select value.source_ref from parameter_catalog.${VALUES_RELATION} value
+        join parameter_catalog.project_parameter_bindings binding
+          on binding.id = value.binding_id and binding.current_value_id = value.id
+        where binding.id = $1 and value.id = $2`, [binding.id, binding.currentValueId]);
+      expect(current.rows).toEqual([{ source_ref: IDENTITY_PLACEHOLDER_SOURCE }]);
+      await expectEligibleBindingsToMatch(client, ORG);
+    } finally {
+      try { await client.query("rollback"); } finally { client.release(); }
+    }
+  });
+
   it("CATFIX-QUERY-05 counts two projects and current values without historical inflation", async () => {
     const seed = async (logicalNodeId: string, projectId: string) => {
       const binding = await createSourceBackedBindingService(pool, {
@@ -192,6 +222,10 @@ describe("CATFIX-QUERY usage summaries", () => {
       expect(binding.ok).toBe(true);
       if (!binding.ok) throw new Error("binding failed");
       let expectedTip = binding.value.binding.currentValueId;
+      expect((await pool.query(`select source_ref from parameter_catalog.${VALUES_RELATION}
+        where binding_id=$1 and source_ref=$2`, [binding.value.binding.id, IDENTITY_PLACEHOLDER_SOURCE])).rows)
+        .toEqual([{ source_ref: IDENTITY_PLACEHOLDER_SOURCE }]);
+      await expectEligibleBindingsToMatch(pool, ORG);
       for (const magnitude of [1, 2]) {
         const appended = await appendSourceCommittedValue(pool, {
           snapshot,
@@ -257,5 +291,31 @@ describe("CATFIX-QUERY usage summaries", () => {
       projectCount: 0,
       currentValueCount: 0,
     });
+
+    const client = await pool.connect();
+    const sql = vi.spyOn(client, "query");
+    try {
+      const usage = createUsageQueries(client);
+      const scope = {
+        organizationId: ORG,
+        projectScope: { kind: "all" } as const,
+        authScope: { organizationId: ORG, principalId: "user-org-admin" },
+      };
+      const missing = ParameterDefinitionId("pdef_unused");
+      const single = await usage.summarize({ ...scope, definitionIds: [missing] });
+      expect(single.ok).toBe(true);
+      if (!single.ok) throw new Error("single usage query failed");
+      expect(sql).toHaveBeenCalledTimes(1);
+      sql.mockClear();
+      const page = await usage.summarize({ ...scope, definitionIds: [DEFINITION_ID, missing] });
+      expect(page).toEqual({
+        ok: true,
+        value: { ...summarized.value, summaries: [...summarized.value.summaries, ...single.value.summaries] },
+      });
+      expect(sql).toHaveBeenCalledTimes(1);
+    } finally {
+      sql.mockRestore();
+      client.release();
+    }
   });
 });

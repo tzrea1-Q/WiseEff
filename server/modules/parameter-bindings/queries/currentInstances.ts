@@ -30,7 +30,31 @@ export async function selectCurrentJsonInstancesForFile(
 
 // B is selected before its evidence is checked: broken current references must
 // never disappear through an inner join and become a successful zero count.
-export const currentInstancesCte = `with candidates as (
+export const currentInstancesCte = `with current_instance_bindings as materialized (
+  select * from parameter_catalog.current_project_parameter_bindings
+  where organization_id = $1 and definition_id = any($2::text[])
+), current_instance_placements as materialized (
+  select registration_id, organization_id, module_id
+  from parameter_catalog.registration_effective_module where organization_id = $1
+), latest_dts_effects as (
+  select config_revision_id, logical_node_revision_id, property_occurrence_id,
+                  node_occurrence_id, property_name
+  from (
+    select effect.*, max(source_order) over (
+      partition by config_revision_id, logical_node_revision_id, property_name
+    ) as last_source_order
+    from public.dts_occurrence_effects effect
+    join (
+      select distinct pin.config_revision_id
+      from current_instance_bindings binding
+      join parameter_catalog.project_value_source_pins pin
+        on pin.project_value_id = binding.current_value_id and pin.binding_id = binding.id
+       and pin.organization_id = binding.organization_id and pin.project_id = binding.project_id
+       and pin.format = 'dts'
+    ) revisions using (config_revision_id)
+  ) ranked
+  where source_order = last_source_order and effect_kind in ('set', 'override')
+), candidates as (
   select b.id as binding_id, b.organization_id, b.project_id, project.name as project_name,
          b.definition_id, b.effective_revision_id, b.current_value_id, b.source_occurrence_id,
          value.id, value.definition_revision_id, value_revision.revision_number::text as value_revision_number,
@@ -63,28 +87,25 @@ export const currentInstancesCte = `with candidates as (
                 or left(pin.locator->>'pointer', length(occurrence.root_pointer) + 1) = occurrence.root_pointer || '/')
               and occurrence.configuration_schema_subject_id = b.subject_id
               and pin.locator_digest = 'sha256:' || encode(sha256(convert_to(E'{\\n  "kind": "json-pointer",\\n  "pointer": ' || to_json(pin.locator->>'pointer')::text || E'\\n}\\n', 'UTF8')), 'hex'))
-            or (pin.format = 'dts' and exists (
-              select 1 from public.dts_property_occurrences property
-              join public.dts_occurrence_effects effect on effect.property_occurrence_id = property.id
-                and effect.node_occurrence_id = property.node_occurrence_id and effect.config_revision_id = property.config_revision_id
-              join public.dts_logical_node_revisions logical on logical.id = effect.logical_node_revision_id
-                and logical.logical_node_id = occurrence.logical_node_id and logical.config_revision_id = property.config_revision_id
-              join parameter_catalog.parameter_definitions definition on definition.id = b.definition_id
-              where property.id = pin.property_occurrence_id and property.config_revision_id = pin.config_revision_id
-                and property.file_version_id = pin.file_version_id and property.property_name = definition.property_key
-                and effect.property_name = property.property_name and effect.effect_kind in ('set', 'override')
-                and not exists (select 1 from public.dts_occurrence_effects later
-                  where later.config_revision_id = effect.config_revision_id and later.logical_node_revision_id = effect.logical_node_revision_id
-                    and later.property_name = effect.property_name and later.source_order > effect.source_order)
-                and pin.locator = jsonb_build_object('kind', 'dts-property', 'propertyOccurrenceId', property.id,
-                  'nodeOccurrenceId', property.node_occurrence_id, 'fileVersionId', property.file_version_id, 'propertyName', property.property_name)
+            or (pin.format = 'dts'
+                and source_property.config_revision_id = pin.config_revision_id
+                and source_property.file_version_id = pin.file_version_id
+                and (pin.config_revision_id, logical.id, source_property.id,
+                     source_property.node_occurrence_id, source_property.property_name) in (
+                  select config_revision_id, logical_node_revision_id, property_occurrence_id,
+                         node_occurrence_id, property_name
+                  from latest_dts_effects
+                ) is true
+                and source_property.property_name = definition.property_key
+                and pin.locator = jsonb_build_object('kind', 'dts-property', 'propertyOccurrenceId', source_property.id,
+                  'nodeOccurrenceId', source_property.node_occurrence_id, 'fileVersionId', source_property.file_version_id, 'propertyName', source_property.property_name)
                 and pin.locator_digest = 'sha256:' || encode(sha256(convert_to(
-                  E'{\\n  "fileVersionId": ' || to_json(property.file_version_id)::text || E',\\n  "kind": "dts-property",\\n  "nodeOccurrenceId": ' ||
-                  to_json(property.node_occurrence_id)::text || E',\\n  "propertyName": ' || to_json(property.property_name)::text ||
-                  E',\\n  "propertyOccurrenceId": ' || to_json(property.id)::text || E'\\n}\\n', 'UTF8')), 'hex')
-            ))))
+                  E'{\\n  "fileVersionId": ' || to_json(source_property.file_version_id)::text || E',\\n  "kind": "dts-property",\\n  "nodeOccurrenceId": ' ||
+                  to_json(source_property.node_occurrence_id)::text || E',\\n  "propertyName": ' || to_json(source_property.property_name)::text ||
+                  E',\\n  "propertyOccurrenceId": ' || to_json(source_property.id)::text || E'\\n}\\n', 'UTF8')), 'hex')
+            )))
           and (occurrence.file_id = pin.file_id or parameter_catalog.source_origin_matches(b.id, occurrence.id, pin.file_id))) as valid
-    from parameter_catalog.current_project_parameter_bindings b
+    from current_instance_bindings b
     join public.projects project on project.id = b.project_id and project.organization_id = b.organization_id
     left join parameter_catalog.project_parameter_values value
       on value.id = b.current_value_id and value.binding_id = b.id and value.definition_id = b.definition_id
@@ -105,18 +126,19 @@ export const currentInstancesCte = `with candidates as (
      and config_set.organization_id = b.organization_id and config_set.project_id = b.project_id
     left join public.dts_logical_node_revisions logical on logical.logical_node_id = occurrence.logical_node_id
      and logical.config_revision_id = pin.config_revision_id
+    left join parameter_catalog.parameter_definitions definition on definition.id = b.definition_id
     left join public.dts_config_revision_members member
       on member.config_revision_id = pin.config_revision_id and member.file_id = pin.file_id
      and member.file_version_id = pin.file_version_id
     left join public.project_parameter_files file
       on file.id = pin.file_id and file.organization_id = b.organization_id
      and file.project_id = b.project_id and file.config_set_id = occurrence.config_set_id
-    left join parameter_catalog.registration_effective_module placement
+    left join current_instance_placements placement
       on placement.registration_id = b.registration_id and placement.organization_id = b.organization_id
     left join public.parameter_modules module on module.id = placement.module_id and module.organization_id = b.organization_id
     left join public.attribution_subjects subject on subject.id = module.attribution_subject_id
    where b.organization_id = $1 and b.definition_id = any($2::text[])
-     and ${currentManagedSourceBindingPredicate("b")}
+     and ${currentManagedSourceBindingPredicate("b", 1)}
 )`;
 
 export async function assertCurrentInstancesValid(db: Queryable, organizationId: string, definitionIds: readonly string[]): Promise<void> {

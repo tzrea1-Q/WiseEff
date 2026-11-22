@@ -17,9 +17,10 @@ import {
   ProjectValueId,
   SubjectRegistrationId
 } from "../../parameter-catalog-contract";
-import type { Binding } from "../binding";
+import { readStoredProjectBindings, type Binding } from "../binding";
 import type { BindingRow } from "../binding/repositories";
-import { readProtectedReference } from "./readAdapter";
+import { readListedCurrentValues } from "../values";
+import { readListedProtectedReference } from "./readAdapter";
 import type { ProtectedReferenceDto } from "./dto";
 import { currentManagedSourceBindingPredicate } from "../queries/currentManagedBindings";
 
@@ -59,7 +60,7 @@ export async function readProjectProtectedParameters(
     throw new ApiError("NOT_FOUND", "Project was not found.");
   }
   const listed = await pool.query<BindingRow>(
-    `select id, organization_id, catalog_release_id, project_id, logical_node_id,
+    `select id, organization_id, catalog_release_id, project_id, logical_node_id, source_occurrence_id,
             registration_id, subject_id, definition_id, effective_revision_id, current_value_id
        from parameter_catalog.current_project_parameter_bindings binding
       where organization_id = $1 and project_id = $2
@@ -67,10 +68,21 @@ export async function readProjectProtectedParameters(
       order by id`,
     [parameterOrganizationId(auth), projectId]
   );
+  if (!listed.rows.length) return [];
   const kernel = createCatalogKernel(pool);
+  const currentValues = await readListedCurrentValues(pool, listed.rows.map((row) => row.current_value_id));
+  // Direct readers can observe a new binding tip between PostgreSQL statements.
+  const stored = await readStoredProjectBindings(
+    pool, parameterOrganizationId(auth), projectId, listed.rows.map((row) => row.id)
+  );
+  const storedById = new Map(stored.map((row) => [row.id, row]));
   const snapshots = new Map<string, PinnedCatalogSnapshot>();
   const items: ProjectProtectedParameter[] = [];
   for (const row of listed.rows) {
+    const current = storedById.get(row.id);
+    if (!current || (Object.keys(row) as Array<keyof BindingRow>).some((key) => current[key] !== row[key])) {
+      throw new ApiError("CONFLICT", "Configured parameter cannot be read at its exact pin.", { reason: "missing-binding" });
+    }
     let snapshot = snapshots.get(row.catalog_release_id);
     if (!snapshot) {
       const pin = await kernel.resolveCatalogReleasePin(CatalogReleaseId(row.catalog_release_id));
@@ -89,6 +101,7 @@ export async function readProjectProtectedParameters(
       organizationId: row.organization_id,
       projectId: row.project_id,
       logicalNodeId: row.logical_node_id,
+      sourceOccurrenceId: row.source_occurrence_id,
       registrationId: SubjectRegistrationId(row.registration_id),
       subjectId: CatalogSubjectId(row.subject_id),
       definitionId: ParameterDefinitionId(row.definition_id),
@@ -96,11 +109,11 @@ export async function readProjectProtectedParameters(
       currentValueId: ProjectValueId(row.current_value_id),
       catalogRelease: snapshot.release
     };
-    const protectedRead = await readProtectedReference(pool, {
+    const protectedRead = readListedProtectedReference({
       snapshot,
       binding,
       definitionRevisionId: binding.effectiveRevisionId
-    });
+    }, currentValues);
     if (!protectedRead.ok) {
       throw new ApiError("CONFLICT", "Configured parameter cannot be read at its exact pin.", {
         reason: protectedRead.error.reason

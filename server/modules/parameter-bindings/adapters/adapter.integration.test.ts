@@ -1,7 +1,20 @@
 import { randomUUID } from "node:crypto";
 
 import pg from "pg";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { makeTestAuthContext } from "../../../testing/authContext";
+import { createUserInvocation } from "../../auth/trustedInvocation";
+import { catalogReadTransaction } from "../../catalog-kernel/runtime/readTransaction";
+import { encodeBundleBytes } from "../../catalog-publication/builder/bundleCodec";
+import { buildCompleteSuccessor } from "../../catalog-publication/builder/completeSuccessor";
+import {
+  allocationFor,
+  allocationForRevision,
+  firstAcmePredecessor,
+  frozenPageIdentity,
+  integerContent,
+  pageIntegerChange,
+} from "../../catalog-publication/builder/predecessorHarness";
 
 import { compileCatalogRelease } from "../../catalog-kernel/compiler/index";
 import { validCatalogReleaseBundle } from "../../catalog-kernel/compiler/__fixtures__/catalogReleaseBundle";
@@ -33,9 +46,12 @@ import { createSourceBackedBindingService, appendSourceCommittedValue } from "..
 
 import {
   createProtectedWorkflowAdapters,
+  readProjectProtectedParameters,
   readProtectedReference,
   writebackProtectedReference,
 } from "./index";
+import { readListedCurrentValues } from "../values";
+import { readListedProtectedReference } from "./readAdapter";
 
 const databaseAvailable = await isTestDatabaseAvailable();
 if (!databaseAvailable) {
@@ -137,15 +153,15 @@ describe("protected-reference adapters", () => {
     }
   };
 
-  const stabilizeNode = async (logicalNodeId: string): Promise<Binding> => {
+  const stabilizeNode = async (
+    logicalNodeId: string,
+    pin = { snapshot, projectId: PROJECT, definitionId: DEFINITION_ID, effectiveRevisionId: REVISION_1 },
+  ): Promise<Binding> => {
     const result = await createSourceBackedBindingService(pool, { sourceRef: SOURCE_A }).stabilize({
-      snapshot,
+      ...pin,
       organizationId: ORG,
-      projectId: PROJECT,
       logicalNodeId,
       registrationId,
-      definitionId: DEFINITION_ID,
-      effectiveRevisionId: REVISION_1,
       expectedEffectiveRevisionId: null,
     });
     expect(result.ok).toBe(true);
@@ -346,18 +362,21 @@ describe("protected-reference adapters", () => {
       error: { kind: "typed-block", reason: "missing-binding" },
     });
 
-    const missingCurrent = await readProtectedReference(pool, {
+    const missingCurrentCommand = {
       snapshot,
       binding: {
         ...binding,
         currentValueId: ProjectValueId(`pval_${"0".repeat(64)}`),
       },
       definitionRevisionId: REVISION_1,
-    });
+    };
+    const missingCurrent = await readProtectedReference(pool, missingCurrentCommand);
     expect(missingCurrent).toEqual({
       ok: false,
       error: { kind: "typed-block", reason: "missing-current-value" },
     });
+    const currentValues = await readListedCurrentValues(pool, [missingCurrentCommand.binding.currentValueId]);
+    expect(readListedProtectedReference(missingCurrentCommand, currentValues)).toEqual(missingCurrent);
     expect(await currentTip(binding.id)).toBe(binding.currentValueId);
   });
 
@@ -453,4 +472,144 @@ describe("protected-reference adapters", () => {
     expect(await valueCount(binding.id)).toBe(valuesBefore);
     expect(await historyEvents(binding.id)).toEqual(historyBefore);
   });
+
+  it("rejects a source occurrence change between listing and reading the values", async () => {
+    const projectId = `${PROJECT}-occurrence-race`;
+    await pool.query("insert into public.projects (id, organization_id, name, code) values ($1, $2, 'Race', 'S6-RACE')",
+      [projectId, ORG]);
+    const pin = { snapshot, projectId, definitionId: DEFINITION_ID, effectiveRevisionId: REVISION_1 };
+    const binding = await stabilizeNode("race-original", pin);
+    const replacement = await stabilizeNode("race-replacement", pin);
+    const invocation = createUserInvocation(makeTestAuthContext({ organizationId: ORG, roleId: "hardware-user" }));
+    const client = await pool.connect();
+    const query = client.query.bind(client);
+    try {
+      await query("begin");
+      // Simulate a migration rewriting otherwise immutable source identity.
+      await query("set local session_replication_role = replica");
+      await query("delete from parameter_catalog.project_parameter_bindings where id = $1", [replacement.id]);
+      const reader = catalogReadTransaction({
+        query: (async (sql: string, params?: unknown[]) => {
+          const result = await query(sql, params);
+          if (sql.includes("from parameter_catalog.current_project_parameter_bindings binding")) {
+            await query("update parameter_catalog.project_parameter_bindings set source_occurrence_id = $2 where id = $1",
+              [binding.id, replacement.sourceOccurrenceId]);
+          }
+          return result;
+        }) as typeof client.query
+      });
+      await expect(readProjectProtectedParameters(reader, { invocation, projectId })).rejects.toMatchObject({
+        code: "CONFLICT",
+        details: { reason: "missing-binding" },
+      });
+      await expect(readProtectedReference(client, { snapshot, binding, definitionRevisionId: REVISION_1 }))
+        .resolves.toEqual({ ok: false, error: { kind: "typed-block", reason: "missing-binding" } });
+    } finally {
+      await query("rollback");
+      client.release();
+    }
+  });
+
+  it("lists exact pins across releases in a fixed query count, including a now-retired Definition", async () => {
+    const projectId = `${PROJECT}-list`;
+    await pool.query("insert into public.projects (id, organization_id, name, code) values ($1, $2, 'List', 'S6-LIST')",
+      [projectId, ORG]);
+    const oldPin = { snapshot, projectId, definitionId: DEFINITION_ID, effectiveRevisionId: REVISION_1 };
+    const retiring = await stabilizeNode("list-0", oldPin);
+    const bindings = [retiring];
+
+    const predecessor = firstAcmePredecessor();
+    const definition = predecessor.first.documents.find((document) => document.kind === "definition" && document.content.id === DEFINITION_ID);
+    if (definition?.kind !== "definition") throw new Error("List fixture Definition is missing");
+    const { displayName, documentation } = definition.content.revision;
+    const next = allocationFor("list_current");
+    const built = await buildCompleteSuccessor({
+      predecessorArtifact: { digest: predecessor.digest, bytes: predecessor.bytes },
+      productPath: "m2-core",
+      changeSet: [pageIntegerChange(next.propertyKey, "List current")],
+      frozenIdentity: frozenPageIdentity([next]),
+    });
+    if (!built.ok || built.value.kind !== "successor") throw new Error("List fixture successor failed");
+    const source = built.value.artifact.bundle;
+    const compiled = compileOrThrow(source);
+    const installed = await installPublishedRelease(pool, {
+      mode: "advance",
+      source: jsonCatalogReleaseSource(source),
+      expectedCurrent: snapshot.release,
+      expectedTargetDigest: compiled.aggregateDigest,
+    });
+    if (!installed.ok) throw new Error(`List fixture installation failed: ${installed.error.kind}`);
+    const kernel = createCatalogKernel(pool);
+    const loaded = await kernel.loadPinnedCatalog({ id: compiled.release.id, digest: compiled.aggregateDigest });
+    if (!loaded.ok) throw new Error(`List fixture snapshot failed: ${loaded.error.kind}`);
+    const newPin = {
+      snapshot: loaded.value,
+      projectId,
+      definitionId: ParameterDefinitionId(next.definitionId),
+      effectiveRevisionId: DefinitionRevisionId(next.revisionId),
+    };
+    const snapshots = new Map([snapshot, loaded.value].map((release) => [release.release.id, release]));
+    const invocation = createUserInvocation(makeTestAuthContext({ organizationId: ORG, roleId: "hardware-user" }));
+    const client = await pool.connect();
+    const query = vi.spyOn(client, "query");
+    const compare = async () => {
+      await client.query("begin isolation level repeatable read read only");
+      try {
+        query.mockClear();
+        const listed = await readProjectProtectedParameters(catalogReadTransaction(client), { invocation, projectId });
+        const queryCount = query.mock.calls.length;
+        const priorPins = [];
+        for (const binding of bindings.sort((left, right) => left.id < right.id ? -1 : 1)) {
+          const prior = await readProtectedReference(client, {
+            snapshot: snapshots.get(binding.catalogRelease.id)!,
+            binding,
+            definitionRevisionId: binding.effectiveRevisionId,
+          });
+          if (!prior.ok) throw new Error(prior.error.reason);
+          priorPins.push(prior.value);
+        }
+        expect(listed.map(({ pin }) => pin)).toEqual(priorPins);
+        return queryCount;
+      } finally {
+        await client.query("rollback");
+      }
+    };
+    try {
+      for (let index = 1; index < 3; index++) bindings.push(await stabilizeNode(`list-${index}`, newPin));
+      const small = await compare();
+      for (let index = 3; index < 30; index++) bindings.push(await stabilizeNode(`list-${index}`, newPin));
+      expect(await compare()).toBe(small);
+
+      const retirement = await buildCompleteSuccessor({
+        predecessorArtifact: { digest: compiled.aggregateDigest, bytes: encodeBundleBytes(source) },
+        productPath: "m2-core",
+        changeSet: [{ op: "retire-definition", definitionId: DEFINITION_ID, content: integerContent(displayName, documentation) }],
+        frozenIdentity: {
+          ...frozenPageIdentity([allocationForRevision(definition.content.propertyKey, 2)], "retired", "1.2.0"),
+          publishedAt: "2026-09-13T00:00:00Z",
+        },
+      });
+      if (!retirement.ok || retirement.value.kind !== "successor") throw new Error("List fixture retirement failed");
+      const retiredSource = retirement.value.artifact.bundle;
+      const retiredRelease = compileOrThrow(retiredSource);
+      const retired = await installPublishedRelease(pool, {
+        mode: "advance",
+        source: jsonCatalogReleaseSource(retiredSource),
+        expectedCurrent: loaded.value.release,
+        expectedTargetDigest: retiredRelease.aggregateDigest,
+      });
+      if (!retired.ok) throw new Error(`List fixture retirement installation failed: ${retired.error.kind}`);
+      bindings.splice(bindings.indexOf(retiring), 1);
+      await compare();
+      await expect(readProtectedReference(pool, { snapshot, binding: retiring, definitionRevisionId: REVISION_1 }))
+        .resolves.toMatchObject({ ok: true, value: { bindingId: retiring.id } });
+      await expect(readProjectProtectedParameters(pool, {
+        invocation: createUserInvocation(makeTestAuthContext({ organizationId: "foreign-org", roleId: "hardware-user" })),
+        projectId,
+      })).rejects.toMatchObject({ code: "NOT_FOUND" });
+    } finally {
+      query.mockRestore();
+      client.release();
+    }
+  }, 120_000);
 });

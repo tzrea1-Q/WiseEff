@@ -1,5 +1,6 @@
 import type pg from "pg";
 
+import type { Binding } from "../binding";
 import type { ProjectValue, ProjectValueConflict } from "../values";
 import { readProjectValueHistory } from "../values";
 
@@ -50,22 +51,34 @@ export const readProtectedReference = async (
     return blocked(mapHistoryConflict(history.error));
   }
 
-  const current = currentValueFromHistory(history.value, binding.value.currentValueId);
+  return toExactReference(binding.value, currentValueFromHistory(history.value, binding.value.currentValueId));
+};
+
+export const readListedProtectedReference = (
+  command: ProtectedReadCommand,
+  currentValues: ReadonlyMap<string, ProjectValue>,
+): ProtectedReferenceReadResult => {
+  const binding = requireBinding(command);
+  if (!binding.ok) return binding;
+  const current = currentValues.get(binding.value.currentValueId);
+  // Match the binding and revision filters used by the history reader.
+  return toExactReference(binding.value, current?.bindingId === binding.value.id &&
+    current.definitionRevisionId === command.definitionRevisionId ? current : undefined);
+};
+
+const toExactReference = (binding: Binding, current: ProjectValue | null | undefined): ProtectedReferenceReadResult => {
   if (!current) {
     return blocked({ kind: "typed-block", reason: "missing-current-value" });
   }
-  if (
-    current.bindingId !== binding.value.id ||
-    current.definitionId !== binding.value.definitionId
-  ) {
+  if (current.bindingId !== binding.id || current.definitionId !== binding.definitionId) {
     return blocked({ kind: "typed-block", reason: "missing-binding" });
   }
-  if (current.definitionRevisionId !== binding.value.effectiveRevisionId) {
+  if (current.definitionRevisionId !== binding.effectiveRevisionId) {
     return blocked({ kind: "typed-block", reason: "revision-disagreement" });
   }
   if (current.valueState === "deleted") {
     return blocked({ kind: "typed-block", reason: "missing-current-value" });
   }
 
-  return { ok: true, value: toProtectedReferenceDto(binding.value, current) };
+  return { ok: true, value: toProtectedReferenceDto(binding, current) };
 };

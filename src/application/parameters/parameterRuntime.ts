@@ -225,8 +225,11 @@ export function createParameterRuntimeActions({
       return latest(current);
     };
 
-    const entry: ProjectParameterRead = {
-      bindings: readProject(async () => {
+    let fullRead: Pick<ProjectParameterRead, "bindings" | "settled"> | undefined;
+    const readBindings = () => {
+      if (fullRead) return fullRead;
+      dispatch({ type: "UPDATE_PROJECT_PARAMETER_CACHE", projectId, status: "loading" });
+      const bindings = readProject(async () => {
         if (!canonicalRepository?.listProtectedProjectBindings) throw new Error("Canonical Binding repository is required in api runtime mode.");
         return canonicalRepository.listProtectedProjectBindings(projectId);
       }, (current) => current.bindings, (response) => dispatch({
@@ -235,23 +238,29 @@ export function createParameterRuntimeActions({
         parameters: (response?.items ?? [])
           .filter((binding) => !binding.projectId || binding.projectId === projectId)
           .map((binding) => parameterRecordFromBinding(projectId, binding))
-      })),
+      }));
+      const settled = Promise.allSettled([bindings, entry.drafts]).then((results) => {
+        if (projectReads.get(projectId) !== entry) return projectReads.get(projectId)?.settled;
+        const failure = results.find((result) => result.status === "rejected");
+        dispatch({ type: "UPDATE_PROJECT_PARAMETER_CACHE", projectId, status: failure ? "error" : "ready" });
+        if (failure) return { notification: formatParameterRuntimeError(failure.reason) };
+      });
+      fullRead = { bindings, settled };
+      return fullRead;
+    };
+    const entry: ProjectParameterRead = {
+      get bindings() { return readBindings().bindings; },
       drafts: readProject(async () => requireRepository(repository).listDrafts(projectId),
         (current) => current.drafts, (drafts) => dispatch({
           type: "UPDATE_PROJECT_PARAMETER_CACHE",
           projectId,
           drafts: (drafts ?? []).filter((draft) => draft.projectId === projectId)
         })),
-      settled: Promise.resolve()
+      get settled() { return readBindings().settled; }
     };
     projectReads.set(projectId, entry);
-    dispatch({ type: "UPDATE_PROJECT_PARAMETER_CACHE", projectId, status: "loading" });
-    entry.settled = Promise.allSettled([entry.bindings, entry.drafts]).then((results) => {
-      if (projectReads.get(projectId) !== entry) return projectReads.get(projectId)?.settled;
-      const failure = results.find((result) => result.status === "rejected");
-      dispatch({ type: "UPDATE_PROJECT_PARAMETER_CACHE", projectId, status: failure ? "error" : "ready" });
-      if (failure) return { notification: formatParameterRuntimeError(failure.reason) };
-    });
+    // Draft-only consumers can await this rejection without starting a binding read.
+    void entry.drafts.catch(() => undefined);
     return entry;
   };
 

@@ -1,4 +1,4 @@
-export { createBindingService, stabilizeCanonicalBinding, readSourceRegistrationAgreement } from "./service";
+export { createBindingService, stabilizeCanonicalBinding, readSourceRegistrationAgreement, readStoredProjectBindings } from "./service";
 export type { BindingService } from "./service";
 export type {
   Binding,

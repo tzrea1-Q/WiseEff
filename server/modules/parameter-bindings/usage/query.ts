@@ -1,3 +1,4 @@
+import { disableBindingReadJit } from "../readTransaction";
 import pg from "pg";
 
 import { ParameterDefinitionId } from "../../parameter-catalog-contract/index";
@@ -44,6 +45,7 @@ const withReadTransaction = async <T>(
   const client = await source.connect();
   try {
     await client.query("begin read only");
+    await disableBindingReadJit(client);
     const result = await work(asQueryable(client));
     await client.query("commit");
     return result;
@@ -120,7 +122,7 @@ export const summarizeUsage = async (
              where value.id is not null
                and value.source_ref is distinct from $3
            )::text as current_value_count
-         from parameter_catalog.current_project_parameter_bindings binding
+         from ${includeConfiguration ? "current_instance_bindings" : "parameter_catalog.current_project_parameter_bindings"} binding
          left join parameter_catalog.${valuesRelation} value
            on value.id = binding.current_value_id
         where binding.organization_id = $1

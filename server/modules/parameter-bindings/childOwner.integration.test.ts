@@ -29,6 +29,7 @@ import { ensureSeedSubjectRegistrations } from "./seedInitialization/registratio
 import { produceDtsReviewEvidenceInTransaction } from "../parameter-governance/evidence/dtsProducer";
 import { subjectMatcherRevision } from "../catalog-kernel/runtime/subjectMatch";
 import { stabilizeCanonicalBinding } from "./binding/service";
+import { expectEligibleBindingsToMatch } from "./queries/currentManagedBindings.testHelpers";
 import { lockOrganizationModuleRecognition, lockOrganizationSubjectRegistration } from "../parameter-modules/recognitionLock";
 import { resolveAttributionModuleForBinding } from "../parameter-modules/ensureAttributionModuleForBinding";
 import { resolveModuleIdForBinding } from "../parameter-modules/resolveModuleForBinding";
@@ -256,6 +257,19 @@ describe("driver-scoped child ownership", () => {
     expect(before.filter((item) => item.subject_id === "s4-charge-mode")).toHaveLength(3);
     expect(before.filter((item) => item.subject_id === "s4-battery1")).toHaveLength(9);
     expect(before.some((item) => item.history_count > 0)).toBe(true);
+    await expectEligibleBindingsToMatch(root, organizationId);
+    expect((await pool.query(
+      "select id from parameter_catalog.project_parameter_bindings where organization_id=$1", [ORG2],
+    )).rows.length).toBeGreaterThan(0);
+    await expectEligibleBindingsToMatch(root, ORG2);
+    await root.transaction(async tx => {
+      await tx.query(`update parameter_catalog.organization_subject_registrations set status='retired'
+        where organization_id=$1 and subject_id='s4-charge-balance'`, [organizationId]);
+      await expectEligibleBindingsToMatch(tx, organizationId);
+      await expectEligibleBindingsToMatch(tx, ORG2);
+      await tx.query(`update parameter_catalog.organization_subject_registrations set status='active'
+        where organization_id=$1 and subject_id='s4-charge-balance'`, [organizationId]);
+    });
     const preflight = await migrateModuleStructure(root, organizationId, false);
     expect(preflight.changes).toContainEqual(expect.objectContaining({ action: "structural-placement", moduleId: typed.id,
       detail: { previousBusinessModuleId: chargeTest.id, effectiveModuleId: balance.id } }));

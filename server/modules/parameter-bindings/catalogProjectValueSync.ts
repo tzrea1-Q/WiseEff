@@ -1,3 +1,4 @@
+import { disableBindingReadJit } from "./readTransaction";
 import { parameterOrganizationId, parameterInvocation } from "../parameters/operatingScope";
 /**
  * Consumer of Catalog Kernel + Binding/ProjectValue owners.
@@ -42,11 +43,11 @@ import {
 import { stabilizeCanonicalBinding, type Binding } from "../parameter-bindings/binding";
 import {
   readProjectProtectedParameters,
-  readProtectedReference,
   type ProjectProtectedParameter,
   writebackProtectedReference,
 } from "../parameter-bindings/adapters";
-import { hasDeletedCurrentValue, type ProjectValuePayload } from "../parameter-bindings/values";
+import { readListedProtectedReference } from "./adapters/readAdapter";
+import { hasDeletedCurrentValue, readListedCurrentValues, type ProjectValuePayload } from "../parameter-bindings/values";
 import type { ValueClient } from "../parameter-bindings/values/repositories";
 import { parseDtsValue, renderDtsValue } from "../dts/valueAst";
 import { parseCompatibles } from "../dts/compatible";
@@ -802,7 +803,7 @@ export async function listCanonicalInitializationBindingCandidates(
   if (input.projectIds.length === 0) return [];
 
   const values: unknown[] = [input.organizationId, [...input.projectIds]];
-  const conditions = ["b.organization_id = $1", "b.project_id = any($2::text[])", currentManagedSourceBindingPredicate("b")];
+  const conditions = ["b.organization_id = $1", "b.project_id = any($2::text[])", currentManagedSourceBindingPredicate("b", 1)];
 
   if (input.bindingIds?.length) {
     values.push([...input.bindingIds]);
@@ -1095,7 +1096,7 @@ async function readBoundedCatalogParameters(
          on placement.registration_id = b.registration_id and placement.organization_id = b.organization_id
        left join public.parameter_modules module on module.id = placement.module_id and module.organization_id = b.organization_id
        where b.organization_id = $1 and b.project_id = $2 and b.id > $3
-         and ${currentManagedSourceBindingPredicate("b")}
+         and ${currentManagedSourceBindingPredicate("b", 1)}
          and value.source_ref <> 'canonical-binding-identity'
          and ($5::text[] is null or placement.module_id = any($5::text[]))
          and ($6::text is null or module.name = $6)
@@ -1104,6 +1105,7 @@ async function readBoundedCatalogParameters(
       [parameterOrganizationId(auth), input.projectId, afterId, input.limit - items.length, input.moduleIds ?? null, input.module ?? null, input.bindingId ?? null],
     );
     if (candidates.rows.length === 0) break;
+    const currentValues = await readListedCurrentValues(pool, candidates.rows.map((row) => row.current_value_id));
     for (const row of candidates.rows) {
       afterId = row.id;
       let snapshot = snapshots.get(row.catalog_release_id);
@@ -1126,7 +1128,7 @@ async function readBoundedCatalogParameters(
         content.description.kind === "present" ? content.description.value : null,
         content.documentation.kind === "present" ? content.documentation.value : null,
       ].some((text) => text?.toLowerCase().includes(term))) continue;
-      const read = await readProtectedReference(pool, { snapshot, binding, definitionRevisionId: binding.effectiveRevisionId });
+      const read = readListedProtectedReference({ snapshot, binding, definitionRevisionId: binding.effectiveRevisionId }, currentValues);
       if (!read.ok) throw new ApiError("CONFLICT", "Configured parameter cannot be read at its exact pin.", { reason: read.error.reason });
       items.push({ pin: read.value, propertyKey: definition.definition.propertyKey, revision: revision.revision });
     }
@@ -1145,6 +1147,7 @@ export async function listCatalogBindingRowsForProject(
   let destroy = false;
   try {
     await client.query("begin isolation level repeatable read read only");
+    await disableBindingReadJit(client);
     const rows = await listCatalogBindingRowsInSnapshot(catalogReadTransaction(client, pool), auth, input);
     await client.query("commit");
     return rows;
@@ -1194,6 +1197,8 @@ async function listCatalogBindingRowsInSnapshot(
     ? await createCatalogKernel(pool).loadCurrentCatalog(pinOf(pointer.current.id, pointer.current.digest))
     : null;
   const currentCatalog = current?.ok ? current.value : null;
+  // The selected IDs already passed the current-binding view in this
+  // transaction. Rejoining that view would re-run its visibility predicates.
   const locator = await pool.query<{
       binding_id: string;
       node_locator: string | null;
@@ -1207,37 +1212,45 @@ async function listCatalogBindingRowsInSnapshot(
       source_occurrence_id: string | null;
     }>(
       `
-      select distinct on (b.id)
-        b.id as binding_id,
+      with module_placement as materialized (
+        select placement.registration_id, placement.module_id, module.name as module_name
+        from parameter_catalog.registration_effective_module placement
+        left join public.parameter_modules module
+          on module.id = placement.module_id and module.organization_id = placement.organization_id
+        where placement.organization_id = $6 and placement.registration_id = any($8::text[])
+      ), locator as materialized (
+      select
+        b.id,
         coalesce(lnr.node_locator, source_pin.locator->>'pointer') as node_locator,
         case
           when lnr.unit_address is not null then lnr.name || '@' || lnr.unit_address
           else lnr.name
         end as instance_name,
         placement.module_id,
-        module.name as module_name,
+        placement.module_name,
         source_pin.format as source_format,
         source_property.raw_text as source_raw_text,
         source_pin.file_id as source_file_id,
-        coalesce(structured_node.node_path, source_occurrence.root_pointer) as source_node_path,
+        source_occurrence.root_pointer,
+        source_pin.file_version_id,
+        source_property.property_name,
+        source_property.start_offset,
+        source_property.end_offset,
+        lnr.config_revision_id,
         source_pin.source_occurrence_id
-      from parameter_catalog.current_project_parameter_bindings b
-      join unnest($1::text[], $2::text[], $3::text[], $4::text[])
-        selected(binding_id, current_value_id, effective_revision_id, catalog_release_id)
+      from parameter_catalog.project_parameter_bindings b
+      join unnest($1::text[], $2::text[], $3::text[], $4::text[], $5::text[])
+        selected(binding_id, current_value_id, effective_revision_id, catalog_release_id, config_revision_id)
         on b.id = selected.binding_id and b.current_value_id = selected.current_value_id
        and b.effective_revision_id = selected.effective_revision_id and b.catalog_release_id = selected.catalog_release_id
-      left join parameter_catalog.project_parameter_values value
-        on value.id = b.current_value_id
-       and value.binding_id = b.id
-       and value.definition_id = b.definition_id
       left join parameter_catalog.project_value_source_pins source_pin
-        on source_pin.project_value_id = value.id
+        on source_pin.project_value_id = b.current_value_id
        and source_pin.binding_id = b.id
        and source_pin.definition_id = b.definition_id
        and source_pin.organization_id = b.organization_id
        and source_pin.project_id = b.project_id
        and source_pin.source_occurrence_id = b.source_occurrence_id
-       and source_pin.config_revision_id = value.config_revision_id
+       and source_pin.config_revision_id = selected.config_revision_id
       left join parameter_catalog.project_parameter_source_occurrences source_occurrence
         on source_occurrence.id = source_pin.source_occurrence_id
        and source_occurrence.organization_id = b.organization_id
@@ -1247,25 +1260,32 @@ async function listCatalogBindingRowsInSnapshot(
       left join dts_property_occurrences source_property
         on source_property.id = source_pin.property_occurrence_id
        and source_property.file_version_id = source_pin.file_version_id
-      left join (dts_properties structured_property
-        inner join dts_nodes structured_node on structured_node.id = structured_property.node_id)
-        on structured_node.file_version_id = source_pin.file_version_id
-       and structured_property.name = source_property.property_name
-       and structured_property.start_offset = source_property.start_offset
-       and structured_property.end_offset = source_property.end_offset
       left join dts_logical_node_revisions lnr
         on lnr.logical_node_id = b.logical_node_id
        and lnr.config_revision_id = source_pin.config_revision_id
-      left join parameter_catalog.registration_effective_module placement
-        on placement.registration_id = b.registration_id and placement.organization_id = b.organization_id
-      left join public.parameter_modules module
-        on module.id = placement.module_id and module.organization_id = b.organization_id
-      where b.organization_id = $5 and b.project_id = $6
-      order by b.id, lnr.config_revision_id desc nulls last
+      left join module_placement placement on placement.registration_id = b.registration_id
+      where b.organization_id = $6 and b.project_id = $7
+      ), structured as materialized (
+        select node.file_version_id, property.name, property.start_offset, property.end_offset, node.node_path
+        from (select distinct file_version_id from locator where property_name is not null) files
+        join dts_nodes node on node.file_version_id = files.file_version_id
+        join dts_properties property on property.node_id = node.id
+      )
+      select distinct on (b.id)
+        b.id as binding_id, b.node_locator, b.instance_name, b.module_id, b.module_name,
+        b.source_format, b.source_raw_text, b.source_file_id, b.source_occurrence_id,
+        coalesce(structured.node_path, b.root_pointer) as source_node_path
+      from locator b
+      left join structured on structured.file_version_id = b.file_version_id
+       and structured.name = b.property_name
+       and structured.start_offset = b.start_offset
+       and structured.end_offset = b.end_offset
+      order by b.id, b.config_revision_id desc nulls last
       `,
       [rows.map((row) => row.pin.bindingId), rows.map((row) => row.pin.currentValueId),
         rows.map((row) => row.pin.definitionRevisionId), rows.map((row) => row.pin.catalogRelease.id),
-        parameterOrganizationId(auth), input.projectId],
+        rows.map((row) => row.pin.source.configRevisionId),
+        parameterOrganizationId(auth), input.projectId, [...new Set(rows.map((row) => row.pin.registrationId))]],
     );
   const locators = new Map(locator.rows.map((row) => [row.binding_id, row]));
   const items: CatalogBindingView[] = [];
@@ -1484,7 +1504,7 @@ export async function listCatalogBindingsForImport(
     join parameter_catalog.project_value_source_pins pin on pin.project_value_id=v.id and pin.binding_id=b.id
     where b.organization_id = $1
       and b.project_id = $2
-      and ${currentManagedSourceBindingPredicate("b")}
+      and ${currentManagedSourceBindingPredicate("b", 1)}
       and v.source_ref <> 'canonical-binding-identity'
       and (
         d.property_key = any($3::text[])

@@ -138,6 +138,22 @@ export const loadSourceRegistrationAgreement = async (
 export const activeOwnerRegistered = (client: BindingWriterClient, organizationId: string, subjectId: string): Promise<boolean> =>
   hasActiveOrganizationSubjectOwner(client as unknown as pg.Client, organizationId, subjectId);
 
+export async function loadStoredProjectBindings(
+  client: BindingWriterClient,
+  organizationId: string,
+  projectId: string,
+  bindingIds: readonly string[],
+): Promise<BindingRow[]> {
+  const result = await client.query<BindingRow>(
+    `select id, organization_id, catalog_release_id, project_id, logical_node_id, source_occurrence_id,
+            registration_id, subject_id, definition_id, effective_revision_id, current_value_id
+       from parameter_catalog.project_parameter_bindings
+      where organization_id = $1 and project_id = $2 and id = any($3::text[])`,
+    [organizationId, projectId, bindingIds],
+  );
+  return result.rows;
+}
+
 export const loadBindingByComposite = async (
   client: BindingWriterClient,
   input: {
