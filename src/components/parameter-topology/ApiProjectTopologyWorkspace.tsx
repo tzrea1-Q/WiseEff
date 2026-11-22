@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FileJson, SlidersHorizontal } from "lucide-react";
 import { NavigatorWorkbench } from "@/components/layout/NavigatorWorkbench";
 import { SectionEmpty } from "@/components/common/SectionState";
+import "@/components/ui/view-switch.css";
 import type {
   SubmitParameterChangesInput,
   WorkflowAssigneeCandidates
@@ -1457,14 +1458,14 @@ export function ApiProjectTopologyWorkspace({
   }, [projectId, dtsBindingCount, jsonBindingCount, loadState.kind, requestedBindingId]);
 
   const formatSwitcher = jsonBindingCount > 0 || Boolean(canonicalRepository) ? (
-    <div className="parameter-workspace-format-switch" role="tablist" aria-label="参数配置格式">
+    <div className="view-switch view-switch--tabs" role="tablist" aria-label="参数配置格式">
       <button
         type="button"
         role="tab"
         id="format-tab-dts"
         aria-selected={activeFormatTab === "dts"}
         aria-controls="format-panel-dts"
-        className={`parameter-workspace-format-switch__tab${activeFormatTab === "dts" ? " is-active" : ""}`}
+        className="view-switch__item"
         onClick={() => { pendingFormatFocus.current = activeFormatTab === "dts" ? null : "dts"; setActiveFormatTab("dts"); }}
       >
         <SlidersHorizontal size={14} aria-hidden="true" />
@@ -1477,7 +1478,7 @@ export function ApiProjectTopologyWorkspace({
         id="format-tab-json"
         aria-selected={activeFormatTab === "json"}
         aria-controls="format-panel-json"
-        className={`parameter-workspace-format-switch__tab${activeFormatTab === "json" ? " is-active" : ""}`}
+        className="view-switch__item"
         onClick={() => { pendingFormatFocus.current = activeFormatTab === "json" ? null : "json"; setActiveFormatTab("json"); }}
       >
         <FileJson size={14} aria-hidden="true" />

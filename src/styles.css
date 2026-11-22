@@ -21358,47 +21358,7 @@ body.xiaoze-popup-drag-active {
   background: var(--surface-raised);
 }
 
-/* ── Parameter workspace format switcher (DTS / JSON tabs) ── */
-.parameter-workspace-format-switch {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
-  padding: var(--space-1);
-  background: var(--surface-sunken);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-}
-
-.parameter-workspace-format-switch__tab {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  min-height: var(--space-8);
-  padding: 0 var(--space-3);
-  color: var(--text-muted);
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: var(--radius-md);
-  font: inherit;
-  font-size: var(--text-sm);
-  font-weight: 600;
-  cursor: pointer;
-  transition: color var(--duration-fast) var(--ease-out), background var(--duration-fast) var(--ease-out), box-shadow var(--duration-fast) var(--ease-out);
-}
-
-.parameter-workspace-format-switch__tab:hover:not(:disabled) {
-  color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 6%, transparent);
-}
-
-.parameter-workspace-format-switch__tab.is-active,
-.parameter-workspace-format-switch__tab[aria-selected="true"] {
-  color: var(--accent);
-  background: var(--surface);
-  border-color: var(--border);
-  box-shadow: var(--shadow-1);
-}
-
+/* ── Parameter workspace format counts ── */
 .parameter-workspace-format-switch__badge {
   display: inline-flex;
   align-items: center;
@@ -21411,11 +21371,6 @@ body.xiaoze-popup-drag-active {
   font-weight: 700;
   background: color-mix(in srgb, var(--text-muted) 12%, transparent);
   color: inherit;
-}
-
-.parameter-workspace-format-switch__tab.is-active .parameter-workspace-format-switch__badge {
-  background: color-mix(in srgb, var(--accent) 12%, transparent);
-  color: var(--accent);
 }
 
 /* ── JSON Parameter Workbench ── */

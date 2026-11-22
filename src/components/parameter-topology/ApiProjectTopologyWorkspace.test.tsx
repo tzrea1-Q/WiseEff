@@ -325,6 +325,10 @@ describe("ApiProjectTopologyWorkspace", () => {
       topologyRepository={repository} listConfigSets={vi.fn().mockResolvedValue([{ id: "config", name: "default" }])}
       canonicalRepository={protectedRepository(readProjectBindings)} loadProjectParameters={loadProjectParameters} /></StrictMode>);
     const jsonTab = await screen.findByRole("tab", { name: /JSON 参数/ });
+    const formatTabs = screen.getByRole("tablist", { name: "参数配置格式" });
+    expect(formatTabs).toHaveClass("view-switch--tabs");
+    expect(within(formatTabs).getByRole("tab", { selected: true })).toHaveClass("view-switch__item");
+    expect(jsonTab).toHaveClass("view-switch__item");
     expect(repository.listBindings).toHaveBeenCalledExactlyOnceWith("aurora", "rev-real-1");
     expect(loadProjectParameters).toHaveBeenCalledWith("aurora");
     expect(readProjectBindings).not.toHaveBeenCalled();
