@@ -133,16 +133,17 @@ describe("createAgentLoopLogAnalyzer", () => {
       { id: 1, status: "contradicted" }
     ] }, usage: { inputTokens: 153, outputTokens: 39 } }]);
     const nativeVerifier = vi.spyOn(verifier, "invokeTools");
-    const { adapter } = analyzer([
+    const { adapter, model } = analyzer([
       { content: { action: "tool", tool: "read_line_range", args: { startLine: 2, endLine: 2 } } },
       { content: { ...finalPayload, evidence: [{ ...finalPayload.evidence[0], lineNumbers: [2] }] } }
-    ], { protocol, verifier: { model: verifier, modelLabel: "verify-test" } });
+    ], { protocol, maxSteps: 2, verifier: { model: verifier, modelLabel: "verify-test" } });
     const trace: LogAnalysisTraceStep[] = [];
     const output = await adapter.analyze(buildInput({ filePath: "charging.log", procedure: "untrusted skill text",
       onTrace: (step) => { trace.push(step); } }));
 
-    expect(output).toMatchObject({ analysisSource: "agent", conclusion: finalPayload.conclusion,
+    expect(output).toMatchObject({ analysisSource: "agent", conclusion: "现有证据不足以支持结论，请人工复核。",
       confidence: 0.5, evidence: [], verification: { status: "failed", checkedClaims: 2, unsupportedClaims: 2, model: "verify-test" } });
+    expect(model.calls).toHaveLength(2);
     expect(verifier.calls).toHaveLength(1);
     expect(nativeVerifier).not.toHaveBeenCalled();
     expect(trace).toContainEqual(expect.objectContaining({ kind: "model-turn", inputTokens: 153, outputTokens: 39 }));
@@ -153,10 +154,28 @@ describe("createAgentLoopLogAnalyzer", () => {
     expect(JSON.stringify(output)).not.toContain("9999");
   });
 
-  it.each(["json", "tools"] as const)("revises unsupported evidence once and checks the replacement in %s", async (protocol) => {
+  it.each(["json", "tools"] as const)("keeps unsupported report content without revision in %s", async (protocol) => {
+    const script = [readChargingLines, { content: mixedCandidate }];
+    const input = buildInput();
+    const original = await analyzer(script, { protocol }).adapter.analyze(input);
+    const verifier = createScriptedLogAnalysisModel([{ content: { claims: [
+      { id: 0, status: "unsupported" }, supportedClaims[1], { id: 2, status: "unsupported" }
+    ] } }]);
+    const { adapter, model } = analyzer(script, { protocol, verifier: { model: verifier, modelLabel: "verify-test" } });
+    expect(original.evidence).toHaveLength(2);
+    expect(await adapter.analyze(input)).toEqual({ ...original, confidence: 0.7,
+      verification: { status: "failed", checkedClaims: 3, unsupportedClaims: 2, model: "verify-test" } });
+    expect(model.calls).toHaveLength(2);
+    expect(verifier.calls).toHaveLength(1);
+  });
+
+  it.each(["json", "tools"] as const)("revises contradicted evidence once and checks the replacement in %s", async (protocol) => {
     const verifier = createScriptedLogAnalysisModel([
-      { content: { claims: [...supportedClaims, { id: 2, status: "unsupported",
-        counterAnchors: [{ file: "charging.log", line: 2 }, { file: "charging.log", line: 6 }] }] } },
+      { content: { claims: [
+        { id: 0, status: "unsupported", counterAnchors: [{ file: "charging.log", line: 2 }, { file: "charging.log", line: 6 }] },
+        supportedClaims[1],
+        { id: 2, status: "contradicted" }
+      ] } },
       { content: { claims: supportedClaims } }
     ]);
     const alternate = { statement: "适配器故障", reason: "日志记录热保护先触发", anchors: [{ file: "charging.log", line: 3 }] };
@@ -168,15 +187,18 @@ describe("createAgentLoopLogAnalyzer", () => {
     const output = await adapter.analyze(buildInput({ filePath: "charging.log", onProgress }));
     expect(output).toMatchObject({ conclusion: revised.conclusion, confidence: 0.9, alternativeHypotheses: [alternate],
       evidence: [expect.objectContaining({ lineNumbers: [3, 4] })],
-      verification: { status: "revised", checkedClaims: 3, unsupportedClaims: 1, model: "verify-test" } });
+      verification: { status: "revised", checkedClaims: 3, unsupportedClaims: 2, model: "verify-test" } });
     expect(onProgress.mock.calls.map(([state]) => state.step)).toEqual([1, 2, 3]);
-    expect(model.calls.at(-1)?.at(-1)?.content).toContain('"counterAnchors":[{"file":"charging.log","line":2}]');
+    const revisionPrompt = model.calls.at(-1)?.at(-1)?.content;
+    expect(revisionPrompt).toContain("contradicted by the cited lines");
+    expect(revisionPrompt).toContain('"contradictedClaimIds":[2]');
+    expect(revisionPrompt).toContain('"counterAnchors":[{"file":"charging.log","line":2}]');
     expect(verifier.calls).toHaveLength(2);
   });
 
-  it.each(["step limit", "verification tokens", "unsupported replacement"] as const)(
-    "drops unsupported evidence and caps confidence at the %s", async (limit) => {
-      const claims = [...supportedClaims, { id: 2, status: "unsupported" }];
+  it.each(["step limit", "verification tokens"] as const)(
+    "drops contradicted evidence and caps confidence at the %s", async (limit) => {
+      const claims = [...supportedClaims, { id: 2, status: "contradicted" }];
       const verifier = createScriptedLogAnalysisModel([{ content: { claims },
         ...(limit === "verification tokens" ? { usage: { inputTokens: 78_900, outputTokens: 100 } } : {}) }]);
       const maxSteps = limit === "step limit" ? 2 : 4;
@@ -187,22 +209,33 @@ describe("createAgentLoopLogAnalyzer", () => {
       expect(output).toMatchObject({ conclusion: finalPayload.conclusion, confidence: 0.5,
         evidence: [expect.objectContaining({ lineNumbers: [3, 4] })],
         verification: { status: "failed", checkedClaims: 3, unsupportedClaims: 1 } });
-      expect(model.calls).toHaveLength(limit === "unsupported replacement" ? 3 : 2);
+      expect(model.calls).toHaveLength(2);
     }
   );
 
-  it("replaces an unsupported conclusion with an uncertainty statement when revision fails", async () => {
-    const verifier = createScriptedLogAnalysisModel([{ content: { claims: [
-      { id: 0, status: "unsupported" }, supportedClaims[1], { id: 2, status: "unsupported" }
-    ] } }]);
-    const { adapter } = analyzer([readChargingLines, { content: mixedCandidate }, { content: "unusable revision" }], {
-      verifier: { model: verifier, modelLabel: "verify-test" }
+  it.each([
+    { conclusionStatus: "unsupported", revision: { ...finalPayload, conclusion: "The revision still lacks support." }, checks: 2 },
+    { conclusionStatus: "contradicted", revision: "unusable revision", checks: 1 }
+  ])("handles a $conclusionStatus conclusion when contradiction revision fails", async ({ conclusionStatus, revision, checks }) => {
+    const verifier = createScriptedLogAnalysisModel([
+      { content: { claims: [
+        { id: 0, status: conclusionStatus }, { id: 1, status: "unsupported" }, { id: 2, status: "contradicted" }
+      ] } },
+      { content: { claims: [{ id: 0, status: "unsupported" }, supportedClaims[1]] } }
+    ]);
+    const { adapter, model } = analyzer([readChargingLines, { content: mixedCandidate }, { content: revision }], {
+      protocol: "json", verifier: { model: verifier, modelLabel: "verify-test" }
     });
+    const contradicted = conclusionStatus === "contradicted";
     expect(await adapter.analyze(buildInput())).toMatchObject({
-      conclusion: "现有证据不足以支持结论，请人工复核。", confidence: 0.5,
-      evidence: [expect.objectContaining({ lineNumbers: [3, 4] })],
-      verification: { status: "failed", checkedClaims: 3, unsupportedClaims: 2 }
+      conclusion: contradicted ? "现有证据不足以支持结论，请人工复核。" : finalPayload.conclusion,
+      impact: contradicted ? "现有证据不足以判断影响。" : finalPayload.impact,
+      suggestedActions: contradicted ? ["人工复核已引用的证据。"] : finalPayload.suggestedActions,
+      confidence: 0.5, evidence: [finalPayload.evidence[0]],
+      verification: { status: "failed", checkedClaims: 3, unsupportedClaims: 3, model: "verify-test" }
     });
+    expect(model.calls).toHaveLength(3);
+    expect(verifier.calls).toHaveLength(checks);
   });
 
   it.each(["provider failure", "missing verdict", "duplicate verdict", "final-answer reserve"] as const)(
