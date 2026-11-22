@@ -17,7 +17,7 @@ import {
   ProjectValueId,
   SubjectRegistrationId
 } from "../../parameter-catalog-contract";
-import type { Binding } from "../binding";
+import { loadStoredProjectBindings, type Binding } from "../binding";
 import type { BindingRow } from "../binding/repositories";
 import { readListedCurrentValues } from "../values";
 import { readListedProtectedReference } from "./readAdapter";
@@ -72,14 +72,10 @@ export async function readProjectProtectedParameters(
   const kernel = createCatalogKernel(pool);
   const currentValues = await readListedCurrentValues(pool, listed.rows.map((row) => row.current_value_id));
   // Direct readers can observe a new binding tip between PostgreSQL statements.
-  const stored = await pool.query<BindingRow>(
-    `select id, organization_id, catalog_release_id, project_id, logical_node_id, source_occurrence_id,
-            registration_id, subject_id, definition_id, effective_revision_id, current_value_id
-       from parameter_catalog.project_parameter_bindings
-      where organization_id = $1 and project_id = $2 and id = any($3::text[])`,
-    [parameterOrganizationId(auth), projectId, listed.rows.map((row) => row.id)]
+  const stored = await loadStoredProjectBindings(
+    pool, parameterOrganizationId(auth), projectId, listed.rows.map((row) => row.id)
   );
-  const storedById = new Map(stored.rows.map((row) => [row.id, row]));
+  const storedById = new Map(stored.map((row) => [row.id, row]));
   const snapshots = new Map<string, PinnedCatalogSnapshot>();
   const items: ProjectProtectedParameter[] = [];
   for (const row of listed.rows) {

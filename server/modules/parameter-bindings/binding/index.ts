@@ -1,5 +1,6 @@
 export { createBindingService, stabilizeCanonicalBinding, readSourceRegistrationAgreement } from "./service";
 export type { BindingService } from "./service";
+export { loadStoredProjectBindings } from "./repositories";
 export type {
   Binding,
   BindingAgreementConflictReason,
