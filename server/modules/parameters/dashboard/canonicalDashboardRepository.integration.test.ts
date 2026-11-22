@@ -33,8 +33,9 @@ import { registerParameterDashboardRoutes } from "./routes";
 import { readBindingDashboardKpis } from "../../parameter-bindings/dashboardRead";
 import {
   aggregateBindingDashboardHotspots as aggregateLegacyHotspots,
-  readBindingDashboardKpis as readLegacyKpis
-} from "./legacyDashboard.testHelpers";
+  readBindingDashboardKpis as readLegacyKpis,
+  seedDashboardBindingHistory
+} from "../../parameter-bindings/legacyDashboard.testHelpers";
 
 const ORGANIZATION_ID = "org-dashboard-canonical-repository";
 const PROJECT_ID = "project-dashboard-canonical-repository";
@@ -510,18 +511,7 @@ describe("canonical dashboard repository", () => {
                 ($3 || '-actorless', $1, $2, null, 'system', 'parameters', 'parameter', 'fixture', 'info', $3)`,
         [organizationId, projectId, `${projectId}-metrics`, reviewer.user.id, author.user.id]
       );
-      await db.query(
-        `insert into parameter_catalog.binding_history_events
-           (id, binding_id, old_current_value_id, reason, success_audit_ref, catalog_release_id, created_at)
-         select b.id || '-' || event.name, b.id, b.current_value_id, 'dashboard metrics fixture',
-                $2 || '-' || event.name, b.catalog_release_id, event.at
-           from parameter_catalog.project_parameter_bindings b
-           cross join (values ('shared', '2020-01-02'::timestamptz),
-                              ('actorless', '2020-01-03'::timestamptz),
-                              ('older', '2019-12-31'::timestamptz)) event(name, at)
-          where b.id = any($1::text[])`,
-        [bindingIds.get(projectId), `${projectId}-metrics`]
-      );
+      await seedDashboardBindingHistory(db, bindingIds.get(projectId) ?? [], `${projectId}-metrics`);
     }
 
     for (const authorizedProjectIds of [null, [first.projectId, foreign.projectId]]) {

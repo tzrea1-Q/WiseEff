@@ -1,7 +1,7 @@
 // Pre-PR #1598 SQL kept here as a PostgreSQL equivalence oracle.
-import type { Database } from "../../../shared/database/client";
-import type { HotspotDimension } from "../../../../src/domain/parameters/dashboardTypes";
-import { publishedSubjectOwner } from "../../catalog-kernel/ownerSchema";
+import type { Database } from "../../shared/database/client";
+import type { HotspotDimension } from "../../../src/domain/parameters/dashboardTypes";
+import { publishedSubjectOwner } from "../catalog-kernel/ownerSchema";
 
 export type BindingDashboardScope = {
   organizationId: string;
@@ -280,4 +280,20 @@ export async function aggregateBindingDashboardHotspots(
     contributorsInWindow: Number(row.contributors_in_window),
     contributorsAllTime: Number(row.contributors_all_time)
   }));
+}
+
+/** Seeds binding history rows for the dashboard equivalence fixture (test-only raw catalog write). */
+export async function seedDashboardBindingHistory(db: Database, bindingIds: readonly string[], auditPrefix: string) {
+  await db.query(
+    `insert into parameter_catalog.binding_history_events
+       (id, binding_id, old_current_value_id, reason, success_audit_ref, catalog_release_id, created_at)
+     select b.id || '-' || event.name, b.id, b.current_value_id, 'dashboard metrics fixture',
+            $2 || '-' || event.name, b.catalog_release_id, event.at
+       from parameter_catalog.project_parameter_bindings b
+       cross join (values ('shared', '2020-01-02'::timestamptz),
+                          ('actorless', '2020-01-03'::timestamptz),
+                          ('older', '2019-12-31'::timestamptz)) event(name, at)
+      where b.id = any($1::text[])`,
+    [bindingIds, auditPrefix]
+  );
 }
