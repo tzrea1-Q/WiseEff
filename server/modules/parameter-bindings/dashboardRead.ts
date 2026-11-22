@@ -377,12 +377,10 @@ export async function aggregateBindingDashboardHotspots(
          select group_key, ${grouping.select}
          from scoped_bindings
          group by group_key, ${grouping.groupBy}
-       ), activity as materialized (
-         select b.group_key,
+       ), binding_activity as materialized (
+         select b.group_key, b.id, audit.actor_user_id,
                 count(distinct history.id) filter (where history.created_at >= $2 and history.created_at < $3) as history_events_in_window,
-                count(distinct b.id) filter (where old_value.id is not null) as modified_param_count,
-                count(distinct audit.actor_user_id) filter (where history.created_at >= $2 and history.created_at < $3) as contributors_in_window,
-                count(distinct audit.actor_user_id) as contributors_all_time,
+                bool_or(old_value.id is not null) as modified,
                 max(history.created_at) filter (where history.created_at >= $2 and history.created_at < $3) as last_changed_at
          from scoped_bindings b
          join parameter_catalog.binding_history_events history on history.binding_id = b.id
@@ -393,7 +391,16 @@ export async function aggregateBindingDashboardHotspots(
          left join public.audit_events audit
            on audit.id = history.success_audit_ref
           and audit.organization_id = b.organization_id and audit.project_id = b.project_id
-         group by b.group_key
+         group by b.group_key, b.id, audit.actor_user_id
+       ), activity as (
+         select group_key,
+                sum(history_events_in_window) as history_events_in_window,
+                count(distinct id) filter (where modified) as modified_param_count,
+                count(distinct actor_user_id) filter (where history_events_in_window > 0) as contributors_in_window,
+                count(distinct actor_user_id) as contributors_all_time,
+                max(last_changed_at) as last_changed_at
+         from binding_activity
+         group by group_key
        ), workflow as materialized (
          select b.group_key,
                 count(distinct request.id) filter (where request.created_at >= $2 and request.created_at < $3) as related_request_count,
