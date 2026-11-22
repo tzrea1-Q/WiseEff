@@ -172,9 +172,9 @@ describe("createAgentLoopLogAnalyzer", () => {
   it.each(["json", "tools"] as const)("revises contradicted evidence once and checks the replacement in %s", async (protocol) => {
     const verifier = createScriptedLogAnalysisModel([
       { content: { claims: [
-        { id: 0, status: "unsupported", counterAnchors: [{ file: "charging.log", line: 2 }, { file: "charging.log", line: 6 }] },
+        { id: 0, status: "unsupported", counterAnchors: [{ file: "charging.log", line: 5 }] },
         supportedClaims[1],
-        { id: 2, status: "contradicted" }
+        { id: 2, status: "contradicted", counterAnchors: [{ file: "charging.log", line: 2 }, { file: "charging.log", line: 6 }] }
       ] } },
       { content: { claims: supportedClaims } }
     ]);

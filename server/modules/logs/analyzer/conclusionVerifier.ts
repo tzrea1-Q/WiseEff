@@ -87,7 +87,7 @@ export async function verifyLogConclusion(input: {
       verdict.data.claims.every(({ id }) => id < claims.length)) {
       reason = "verification";
       const counterAnchors = verdict.data.claims.flatMap(({ status, counterAnchors }) =>
-        status === "unsupported" ? counterAnchors?.slice(0, 8) ?? [] : []).flatMap((value) => {
+        status === "contradicted" ? counterAnchors?.slice(0, 8) ?? [] : []).flatMap((value) => {
         const parsed = logGroundedAnchorSchema.safeParse(value);
         return parsed.success && input.isSeen(parsed.data) ? [parsed.data] : [];
       });
