@@ -107,7 +107,7 @@ describe("LogsPage api rerun wiring", () => {
     }));
     await waitForApiRuntime(repository);
 
-    const history = document.querySelector(".logs-aux-panel") as HTMLElement;
+    const history = await screen.findByRole("complementary", { name: "历史日志记录" });
     fireEvent.click(within(history).getByRole("button", { name: /usb_pd_negotiation/ }));
     fireEvent.click(screen.getByRole("button", { name: "查看关联参数" }));
     expect(window.location.pathname).toBe("/parameters");
@@ -124,7 +124,7 @@ describe("LogsPage api rerun wiring", () => {
     }));
     await waitForApiRuntime(repository);
 
-    const history = document.querySelector(".logs-aux-panel") as HTMLElement;
+    const history = await screen.findByRole("complementary", { name: "历史日志记录" });
     fireEvent.click(within(history).getByRole("button", { name: /usb_pd_negotiation/ }));
     expect(screen.queryByRole("button", { name: "查看关联参数" })).not.toBeInTheDocument();
     await userEvent.setup().click(screen.getByRole("button", { name: "更多" }));
@@ -135,7 +135,7 @@ describe("LogsPage api rerun wiring", () => {
     const repository = renderApiLogs();
     await waitForApiRuntime(repository);
 
-    const history = document.querySelector(".logs-aux-panel") as HTMLElement;
+    const history = await screen.findByRole("complementary", { name: "历史日志记录" });
     fireEvent.click(within(history).getByRole("button", { name: /usb_pd_negotiation/ }));
     await selectReportAction("重新分析");
 
@@ -149,7 +149,7 @@ describe("LogsPage api rerun wiring", () => {
     const repository = renderApiLogs(createLogRepository({ rerunLog: vi.fn().mockRejectedValue(new Error("boom")) }));
     await waitForApiRuntime(repository);
 
-    const history = document.querySelector(".logs-aux-panel") as HTMLElement;
+    const history = await screen.findByRole("complementary", { name: "历史日志记录" });
     fireEvent.click(within(history).getByRole("button", { name: /usb_pd_negotiation/ }));
     await selectReportAction("重新分析");
 
@@ -168,7 +168,7 @@ describe("LogsPage api rerun wiring", () => {
       }, "request-904"))
     }));
     await waitForApiRuntime(repository);
-    const history = document.querySelector(".logs-aux-panel") as HTMLElement;
+    const history = await screen.findByRole("complementary", { name: "历史日志记录" });
     fireEvent.click(within(history).getByRole("button", { name: /usb_pd_negotiation/ }));
     const reportBefore = document.querySelector(".logs-conclusion-actions")?.parentElement?.textContent;
     await selectReportAction("重新分析");
@@ -207,7 +207,7 @@ describe("getContextQuery", () => {
 });
 
 describe("LogsPage · 主行动", () => {
-  it("canonical 关联日志跳到精确项目 Binding", () => {
+  it("canonical 关联日志跳到精确项目 Binding", async () => {
     renderApp({
       path: "/logs",
       initialAppState: {
@@ -218,7 +218,7 @@ describe("LogsPage · 主行动", () => {
       }
     });
 
-    const history = screen.getByRole("complementary", { name: "历史日志记录" });
+    const history = await screen.findByRole("complementary", { name: "历史日志记录" });
     fireEvent.click(within(history).getByRole("button", { name: /usb_pd_negotiation/ }));
     fireEvent.click(screen.getByRole("button", { name: "查看关联参数" }));
 
@@ -228,7 +228,7 @@ describe("LogsPage · 主行动", () => {
     expect(window.location.search).not.toContain("parameter=");
   });
 
-  it("mock 关联日志以查看关联参数作为唯一主行动", () => {
+  it("mock 关联日志以查看关联参数作为唯一主行动", async () => {
     renderApp({
       path: "/logs",
       initialAppState: {
@@ -239,7 +239,7 @@ describe("LogsPage · 主行动", () => {
       }
     });
 
-    const history = screen.getByRole("complementary", { name: "历史日志记录" });
+    const history = await screen.findByRole("complementary", { name: "历史日志记录" });
     fireEvent.click(within(history).getByRole("button", { name: /usb_pd_negotiation/ }));
     fireEvent.click(screen.getByRole("button", { name: "查看关联参数" }));
 
@@ -251,7 +251,7 @@ describe("LogsPage · 主行动", () => {
   it("Complete 日志从更多菜单生成参数修改请求且 URL 带 logId", async () => {
     renderApp({ path: "/logs", initialAppState: userState });
 
-    const history = screen.getByRole("complementary", { name: "历史日志记录" });
+    const history = await screen.findByRole("complementary", { name: "历史日志记录" });
     fireEvent.click(within(history).getByRole("button", { name: /usb_pd_negotiation/ }));
     await selectReportAction("生成参数修改请求");
 
@@ -263,18 +263,18 @@ describe("LogsPage · 主行动", () => {
   it("从日志跳到参数页后，修改原因预填日志结论", async () => {
     renderApp({ path: "/logs", initialAppState: userState });
 
-    const history = screen.getByRole("complementary", { name: "历史日志记录" });
+    const history = await screen.findByRole("complementary", { name: "历史日志记录" });
     fireEvent.click(within(history).getByRole("button", { name: /usb_pd_negotiation/ }));
     await selectReportAction("生成参数修改请求");
 
-    const reason = screen.getByLabelText("修改原因");
+    const reason = await screen.findByLabelText("修改原因");
     expect(reason).toHaveValue("依据日志 usb_pd_negotiation_20260503.log 分析：PD 协商在 9V/3A 档位稳定完成，未出现握手重试。");
   });
 
   it("点击导出报告会创建 Markdown 下载", async () => {
     renderApp({ path: "/logs", initialAppState: userState });
 
-    const history = screen.getByRole("complementary", { name: "历史日志记录" });
+    const history = await screen.findByRole("complementary", { name: "历史日志记录" });
     fireEvent.click(within(history).getByRole("button", { name: /usb_pd_negotiation/ }));
     await selectReportAction("导出报告");
 
@@ -284,7 +284,7 @@ describe("LogsPage · 主行动", () => {
   it("点击复制链接会写入包含 logId 的分享链接", async () => {
     renderApp({ path: "/logs", initialAppState: userState });
 
-    const history = screen.getByRole("complementary", { name: "历史日志记录" });
+    const history = await screen.findByRole("complementary", { name: "历史日志记录" });
     fireEvent.click(within(history).getByRole("button", { name: /usb_pd_negotiation/ }));
     await selectReportAction("复制链接");
 

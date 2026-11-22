@@ -108,7 +108,7 @@ describe("permission-aware routing", () => {
     const navigation = within(screen.getByRole("navigation", { name: "主导航" }));
     fireEvent.click(navigation.getByRole("link", { name: "变更中心" }));
     expect(window.location.pathname).toBe("/parameter-changes");
-    expect(await screen.findByRole("table", { name: "我的提交" })).toBeInTheDocument();
+    expect(await screen.findByRole("table", { name: "我的提交" }, { timeout: 4_000 })).toBeInTheDocument();
     expect(screen.queryByRole("radio", { name: "审阅队列" })).not.toBeInTheDocument();
   });
   it.each(["guest", "hardware-user", "admin"])("matches workflow sidebar entries to route permissions for %s", (roleId) => {

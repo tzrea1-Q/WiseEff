@@ -29,7 +29,7 @@ describe("Knowledge Definition navigation", () => {
       runtime={{ parameterCatalogRepository: ports.catalog, operatingOrganizationId } as AppRuntime}
       runtimeMode="api" onNavigate={navigate} onFeedback={() => undefined} sessionPermissions={[]}
       DebuggingAdminPage={() => null} /></ToastProvider>);
-    await screen.findByRole("button", { name: `查看 ${activeDefinition.propertyKey}` });
+    await screen.findByRole("button", { name: `查看 ${activeDefinition.propertyKey}` }, { timeout: 4_000 });
     expect(navigate).not.toHaveBeenCalled();
     const user = userEvent.setup();
     await user.type(screen.getByRole("searchbox", { name: "搜索参数定义" }), `${activeDefinition.propertyKey}{Enter}`);
@@ -54,7 +54,7 @@ describe("Knowledge Definition navigation", () => {
       runtimeMode="api" onNavigate={() => undefined} onFeedback={() => undefined} sessionPermissions={[]}
       knowledgeCapability={{ userId: initialState.currentUserId, canView: true, canEdit, canManage: false }}
       DebuggingAdminPage={() => null} /></ToastProvider>);
-    const detail = await screen.findByRole("region", { name: "定义详情" });
+    const detail = await screen.findByRole("region", { name: "定义详情" }, { timeout: 4_000 });
     const user = userEvent.setup();
     await user.click(within(detail).getByText("相关知识", { selector: "summary" }));
     if (!canEdit) {
@@ -99,7 +99,7 @@ describe("Knowledge Definition navigation", () => {
     const destination = new URL(navigate.mock.calls[0][0], "http://localhost");
     expect(destination.searchParams.get("definitionId")).toBe(activeDefinition.id);
     expect(canAccessPage(roleId, getPageByPath(destination.pathname).key)).toBe(true);
-    const detail = await screen.findByRole("region", { name: "定义详情" });
+    const detail = await screen.findByRole("region", { name: "定义详情" }, { timeout: 4_000 });
     expect(screen.queryByRole("heading", { name: "无权访问该页面" })).not.toBeInTheDocument();
     if (roleId !== "admin" && roleId !== "platform-admin") {
       expect(within(detail).getByText(activeDefinition.propertyKey)).toBeInTheDocument();

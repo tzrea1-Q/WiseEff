@@ -19,13 +19,12 @@ import { ModalDialog } from "@/components/common/ModalDialog";
 import { ToastProvider } from "@/components/common/toast/ToastProvider";
 import { TopBarNotifications } from "./components/notifications/TopBarNotifications";
 import { createStateBackedNotificationsClient } from "@/infrastructure/mock/mockNotificationsGateway";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from "react";
+import { lazy, useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
 import { WiseEffIcon } from "./components/WiseEffIcon";
 import { ProjectParameterInitializationWizard } from "./ProjectParameterInitializationWizard";
 import { ProjectParametersLoading } from "./components/parameter-topology/ProjectParametersLoading";
-import { PageRouter, type PageProps } from "@/app/routes";
-import { DebuggingAdminPage } from "@/DebuggingAdminPage";
+import { PageRouter, RoutePageBoundary, type PageProps } from "@/app/routes";
 import {
   createDebuggingRuntimeActions,
   type DebuggingRuntimeActions
@@ -74,12 +73,11 @@ import { XiaozePageContext, XiaozePageContextRegistrar } from "@/features/agent/
 import { XiaozeProvider, XiaozeProactiveInsights } from "@/features/agent/XiaozeProvider";
 import { OrganizationBusinessWorkspace } from "@/features/organization/OrganizationBusinessWorkspace";
 import type { OrganizationWorkspaceClient } from "@/infrastructure/http/userGovernanceClient";
-import { InvitationAcceptancePage } from "@/features/organization/InvitationAcceptancePage";
 import { isOrganizationBusinessPath, withBusinessOrganizationScope } from "@/infrastructure/http/organizationScope";
 import { supportsXiaozeProactiveInsights } from "@/features/agent/xiaozeProactiveInsights";
 import { FeedbackDialog } from "@/features/product-feedback/FeedbackDialog";
 import { xiaozeProactiveEnabled } from "@/infrastructure/http/runtimeMode";
-import { getPageByPath, getXiaozeContextSummary, navigationItems, pageUsesProjectScope, PageConfig, utilityItems } from "./appConfig";
+import { getPageByPath, getXiaozeContextSummary, navigationItems, pageUsesProjectScope, utilityItems, type PageConfig } from "./appConfig";
 import { isDiscoveryGroupVisible, workflowForGroup, WORKFLOW_IDS, type WorkflowId } from "@/domain/workflowDiscovery";
 import { useWorkflowPublication } from "@/application/workflow-publication/useWorkflowPublication";
 import type { WorkflowPublicationClient } from "@/infrastructure/http/workflowPublicationClient";
@@ -96,7 +94,7 @@ function isStaticDownloadPath(pathname: string) {
   return pathname.startsWith("/downloads/");
 }
 import { TopBarActionsContext, SkipLink, MAIN_CONTENT_ID } from "./components/layout";
-import { readInitialNodeDebuggingProtocol } from "./NodeDebuggingPage";
+import { readInitialNodeDebuggingProtocol } from "@/application/debugging/nodeDebuggingSession";
 import { initialState, mockDataFingerprint } from "@/infrastructure/mock/prototypeState";
 import {
   type PrototypeState,
@@ -128,6 +126,9 @@ import { handleSpaLinkClick } from "@/linear-template/spaLinkNavigation";
 import { presentError } from "@/infrastructure/http/presentError";
 import { wiseEffRuntimeMode, xiaozeInspectorEnabled, type WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
 import type { UserGovernanceActions } from "@/UserPermissionsPage";
+
+const DebuggingAdminPage = lazy(() => import("@/DebuggingAdminPage").then((module) => ({ default: module.DebuggingAdminPage })));
+const InvitationAcceptancePage = lazy(() => import("@/features/organization/InvitationAcceptancePage").then((module) => ({ default: module.InvitationAcceptancePage })));
 
 /**
  * `unreachable` means the `/api/v1/me` probe failed before an auth rejection
@@ -236,7 +237,7 @@ function App({
   return (
     <TooltipProvider delayDuration={0}>
       <ToastProvider>
-        {runtimeMode === "api" && window.location.pathname === "/invite" ? <InvitationAcceptancePage /> : <AppShell
+        {runtimeMode === "api" && window.location.pathname === "/invite" ? <RoutePageBoundary><InvitationAcceptancePage /></RoutePageBoundary> : <AppShell
           authClient={authClient}
           workflowPublicationClient={workflowPublicationClient}
           debuggingAdminClient={debuggingAdminClient}

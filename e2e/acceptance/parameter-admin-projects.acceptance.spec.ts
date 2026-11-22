@@ -231,13 +231,16 @@ test.describe("parameter-admin project list", () => {
       } finally {
         releaseProjectList();
         await Promise.all(routeTaskSettlements);
-        const settled = await Promise.allSettled([signIn, page.unroute(runtimeProjectList)]);
+        const settled = await Promise.allSettled([signIn]);
         const settledRoutes = (await Promise.all(routeTaskSettlements)).flat();
         failure ??= [...settled, ...settledRoutes].find((result) => result.status === "rejected");
       }
       if (failure) throw failure.reason;
       await dismissXiaozeHint(page);
       await expect(page.getByRole("region", { name: "项目清单", exact: true })).toBeVisible({ timeout: 30_000 });
+      // A predicate route intercepts every request. Removing it while the lazily loaded page's module
+      // requests are still paused in interception can strand them, so unroute only once the page rendered.
+      await page.unroute(runtimeProjectList);
 
       const search = page.getByRole("searchbox", { name: "搜索项目" });
       await search.fill(queryLabel);
