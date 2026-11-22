@@ -354,6 +354,8 @@ export async function aggregateBindingDashboardHotspots(
     and ($5::text[] is null or b.project_id = any($5::text[]))`;
   // The array key keeps the null module group joinable without conflating it with a real module ID.
   // Count distinct actors at group grain so contributors shared by multiple bindings count once.
+  // Activity and workflow keys are subsets of inventory. Full joins let PostgreSQL
+  // use a hash or merge join even when it estimates one row from the binding view.
   const rows = await db.transaction(async tx => {
     await disableBindingReadJit(tx);
     return tx.query<RawHotspotRow>(
@@ -425,8 +427,8 @@ export async function aggregateBindingDashboardHotspots(
               coalesce(activity.contributors_all_time, 0) as contributors_all_time,
               activity.last_changed_at
        from inventory
-       left join activity using (group_key)
-       left join workflow using (group_key)
+       full join activity using (group_key)
+       full join workflow using (group_key)
        order by inventory.title asc`,
       [input.organizationId, input.windowStart, input.windowEnd, input.projectId, input.authorizedProjectIds ?? null]
     );
