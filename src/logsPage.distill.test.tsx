@@ -15,9 +15,10 @@ afterEach(() => {
   window.history.replaceState(null, "", "/");
 });
 
-function renderLogsPage() {
+async function renderLogsPage() {
   window.history.replaceState(null, "", "/logs");
   render(<App initialAppState={userState} />);
+  await screen.findByRole("complementary", { name: "历史日志记录" });
 }
 
 function selectCompleteLog() {
@@ -27,7 +28,7 @@ function selectCompleteLog() {
 
 describe("LogsPage · 沉淀为知识", () => {
   it("Complete 日志从报告沉淀后交接到 /knowledge 草稿详情(预填结论标题与来源关联)", async () => {
-    renderLogsPage();
+    await renderLogsPage();
     selectCompleteLog();
     expect(screen.getByRole("tab", { name: "报告", selected: true })).toBeInTheDocument();
 
@@ -49,8 +50,8 @@ describe("LogsPage · 沉淀为知识", () => {
     expect(within(detail).getByText(/由日志分析记录沉淀/)).toBeInTheDocument();
   });
 
-  it("Processing 日志不显示报告操作", () => {
-    renderLogsPage();
+  it("Processing 日志不显示报告操作", async () => {
+    await renderLogsPage();
 
     const history = screen.getByRole("complementary", { name: "历史日志记录" });
     fireEvent.click(within(history).getByRole("button", { name: /charging_thermal_trace/ }));

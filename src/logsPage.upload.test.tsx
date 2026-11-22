@@ -825,10 +825,10 @@ describe("LogsPage deep link", () => {
 });
 
 describe("LogsPage · 上传日志对话框", () => {
-  it("打开时焦点进入对话框并设置 aria-modal", () => {
+  it("打开时焦点进入对话框并设置 aria-modal", async () => {
     renderApp({ path: "/logs", initialAppState: userState });
 
-    fireEvent.click(screen.getByRole("button", { name: /上传新日志/ }));
+    fireEvent.click(await screen.findByRole("button", { name: /上传新日志/ }));
 
     const dialog = screen.getByRole("dialog", { name: "上传日志" });
     expect(dialog).toHaveAttribute("aria-modal", "true");
@@ -836,19 +836,20 @@ describe("LogsPage · 上传日志对话框", () => {
     expect(dialog).toHaveFocus();
   });
 
-  it("restricts mock file input to the shared text-log accept list", () => {
+  it("restricts mock file input to the shared text-log accept list", async () => {
     renderApp({ path: "/logs", initialAppState: userState });
 
-    fireEvent.click(screen.getByRole("button", { name: /上传新日志/ }));
+    fireEvent.click(await screen.findByRole("button", { name: /上传新日志/ }));
 
     expect(screen.getByTestId("file-drop-zone-input")).toHaveAttribute("accept", ".log,.txt,.csv,.json");
   });
 
-  it.each(["fresh.json", "fresh.csv"])("treats %s as a supported mock upload", (fileName) => {
-    vi.useFakeTimers();
+  it.each(["fresh.json", "fresh.csv"])("treats %s as a supported mock upload", async (fileName) => {
     renderApp({ path: "/logs", initialAppState: userState });
 
-    fireEvent.click(screen.getByRole("button", { name: /上传新日志/ }));
+    const upload = await screen.findByRole("button", { name: /上传新日志/ });
+    vi.useFakeTimers();
+    fireEvent.click(upload);
     fireEvent.change(screen.getByTestId("file-drop-zone-input"), { target: { files: [new File(["x"], fileName)] } });
 
     act(() => {
@@ -859,11 +860,12 @@ describe("LogsPage · 上传日志对话框", () => {
     expect(screen.queryByText(/格式不支持/)).not.toBeInTheDocument();
   });
 
-  it("未选择文件时禁用开始分析，选择支持格式后立即可提交并新增 Processing 日志", () => {
-    vi.useFakeTimers();
+  it("未选择文件时禁用开始分析，选择支持格式后立即可提交并新增 Processing 日志", async () => {
     renderApp({ path: "/logs", initialAppState: userState });
 
-    fireEvent.click(screen.getByRole("button", { name: /上传新日志/ }));
+    const upload = await screen.findByRole("button", { name: /上传新日志/ });
+    vi.useFakeTimers();
+    fireEvent.click(upload);
     expect(screen.getByRole("button", { name: "开始分析" })).toBeDisabled();
     fireEvent.change(screen.getByTestId("file-drop-zone-input"), { target: { files: [new File(["x"], "fresh.log")] } });
     expect(screen.getByRole("button", { name: "开始分析" })).toBeEnabled();
@@ -878,11 +880,12 @@ describe("LogsPage · 上传日志对话框", () => {
     expect(screen.queryByRole("dialog", { name: "上传日志" })).not.toBeInTheDocument();
   });
 
-  it("上传时可输入可选问题，新建分析任务展示该问题", () => {
-    vi.useFakeTimers();
+  it("上传时可输入可选问题，新建分析任务展示该问题", async () => {
     renderApp({ path: "/logs", initialAppState: userState });
 
-    fireEvent.click(screen.getByRole("button", { name: /上传新日志/ }));
+    const upload = await screen.findByRole("button", { name: /上传新日志/ });
+    vi.useFakeTimers();
+    fireEvent.click(upload);
     fireEvent.change(screen.getByTestId("file-drop-zone-input"), { target: { files: [new File(["x"], "question.log")] } });
     fireEvent.change(screen.getByLabelText("分析问题（可选）"), {
       target: { value: "为什么充电后段降频？" }
@@ -898,11 +901,12 @@ describe("LogsPage · 上传日志对话框", () => {
     expect(screen.getByText("为什么充电后段降频？")).toBeInTheDocument();
   });
 
-  it("选择不支持格式后显示警示，仍然上传会创建 Failed 日志", () => {
-    vi.useFakeTimers();
+  it("选择不支持格式后显示警示，仍然上传会创建 Failed 日志", async () => {
     renderApp({ path: "/logs", initialAppState: userState });
 
-    fireEvent.click(screen.getByRole("button", { name: /上传新日志/ }));
+    const upload = await screen.findByRole("button", { name: /上传新日志/ });
+    vi.useFakeTimers();
+    fireEvent.click(upload);
     fireEvent.change(screen.getByTestId("file-drop-zone-input"), { target: { files: [new File(["x"], "thermal.bin")] } });
 
     act(() => {
@@ -921,10 +925,10 @@ describe("LogsPage · 上传日志对话框", () => {
     expect(pageAlert).toHaveTextContent(/格式不支持/);
   });
 
-  it("Failed 日志点击重新上传会打开 UploadLogDialog", () => {
+  it("Failed 日志点击重新上传会打开 UploadLogDialog", async () => {
     renderApp({ path: "/logs", initialAppState: userState });
 
-    const history = screen.getByRole("complementary", { name: "历史日志记录" });
+    const history = await screen.findByRole("complementary", { name: "历史日志记录" });
     fireEvent.click(within(history).getByRole("button", { name: /thermal_snapshot/ }));
     fireEvent.click(screen.getByRole("button", { name: /重新上传/ }));
 

@@ -89,6 +89,7 @@ it("replaces legacy module bookmarks and restores governance tabs on browser Bac
   window.history.replaceState(null, "", "/parameter-admin/modules/queue?q=power");
   const historyLength = window.history.length;
   render(<App runtimeMode="mock" initialAppState={adminState} />);
+  await screen.findByRole("tab", { name: "来源识别" }, { timeout: 4_000 });
   await waitFor(() => expect(window.location.pathname + window.location.search).toBe("/parameter-admin/modules?q=power&tab=queue"));
   expect(window.history.length).toBe(historyLength);
   expect(screen.getByRole("tab", { name: "来源识别" })).toHaveAttribute("aria-selected", "true");
@@ -542,7 +543,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
   it.each(["/log-admin/skills/skill-charging", "/log-admin/skills/skill-charging/"])("leaves %s with its own workspace header", async (path) => {
     window.history.replaceState(null, "", path);
     render(<App runtimeMode="mock" initialAppState={adminState} />);
-    expect(await screen.findByRole("heading", { name: "充电诊断", level: 1 })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "充电诊断", level: 1 }, { timeout: 4_000 })).toBeInTheDocument();
     const topbar = screen.getByRole("banner", { name: "页面栏" });
     expect(topbar.querySelector(".topbar-title")).not.toBeInTheDocument();
     expect(topbar.querySelector(".topbar-subtitle")).not.toBeInTheDocument();
@@ -596,13 +597,15 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     expect(document.querySelector(".xiaoze-chat-toggle-anchor")).not.toBeInTheDocument();
   });
 
-  it("renders the WiseEff platform homepage on the home route", () => {
+  it("renders the WiseEff platform homepage on the home route after loading", async () => {
     window.history.replaceState(null, "", "/");
 
     renderAppForCurrentPath();
 
+    expect(screen.getByRole("status", { name: "正在加载页面…" })).toBeVisible();
+    expect(await screen.findByRole("main", { name: "雷泽首页" })).toBeInTheDocument();
+    expect(screen.queryByRole("status", { name: "正在加载页面…" })).not.toBeInTheDocument();
     const homeRoot = document.querySelector(".linear-template-home");
-    expect(screen.getByRole("main", { name: "雷泽首页" })).toBeInTheDocument();
     expect(screen.getAllByRole("main")).toHaveLength(1);
     expect(homeRoot).toBeInTheDocument();
     expect(homeRoot).toHaveClass("light-homepage");
@@ -3769,14 +3772,15 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
-  it("opens the log upload dialog only after upload simulation", () => {
+  it("opens the log upload dialog only after upload simulation", async () => {
     window.history.replaceState(null, "", "/logs");
 
     renderAppForCurrentPath();
 
+    const upload = await screen.findByRole("button", { name: /上传新日志/ });
     expect(screen.queryByRole("dialog", { name: "上传日志" })).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: /上传新日志/ }));
+    fireEvent.click(upload);
 
     expect(screen.getByRole("dialog", { name: "上传日志" })).toBeInTheDocument();
   });

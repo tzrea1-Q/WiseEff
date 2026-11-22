@@ -515,7 +515,7 @@ describe("/debugging-admin 节点元数据", () => {
   it("在调试管理页通过统一编辑弹窗保存节点路径与访问模式字段", async () => {
     renderApp({ path: "/debugging-admin/nodes", initialAppState: adminState, runtimeMode: "mock" });
 
-    const firstRow = screen.getByRole("row", { name: /充电输入限流/ });
+    const firstRow = await screen.findByRole("row", { name: /充电输入限流/ });
     await userEvent.click(within(firstRow).getByRole("button", { name: "编辑", exact: true }));
     fireEvent.change(screen.getByLabelText("HDC 节点路径"), {
       target: { value: "/sys/class/power_supply/battery/test_node" }

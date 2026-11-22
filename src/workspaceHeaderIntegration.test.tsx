@@ -11,7 +11,7 @@ afterEach(() => {
 });
 
 describe("normalized workspace headers", () => {
-  it("keeps log overview actions in its local toolbar without a duplicate page title", () => {
+  it("keeps log overview actions in its local toolbar without a duplicate page title", async () => {
     window.history.replaceState(null, "", "/log-admin");
 
     render(<App initialAppState={adminState} runtimeMode="mock" />);
@@ -20,14 +20,14 @@ describe("normalized workspace headers", () => {
 
     expect(within(topbar).queryByRole("button", { name: "前往智能分析" })).not.toBeInTheDocument();
     expect(within(topbar).queryByRole("button", { name: "刷新" })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "前往智能分析" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "前往智能分析" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "刷新" })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { level: 1, name: "日志分析管理后台" })).not.toBeInTheDocument();
     expect(document.querySelector(".workspace-header")).not.toBeInTheDocument();
     expect(screen.getByTestId("log-admin-overview")).toHaveAccessibleName("日志概览");
   });
 
-  it("keeps parameter admin bulk import in the topbar without a duplicate page title", () => {
+  it("keeps parameter admin bulk import in the topbar without a duplicate page title", async () => {
     window.history.replaceState(null, "", "/parameter-admin");
 
     render(<App initialAppState={adminState} runtimeMode="mock" />);
@@ -36,31 +36,31 @@ describe("normalized workspace headers", () => {
 
     expect(topbar.querySelector(".topbar-title")).toHaveTextContent("参数管理后台");
     expect(topbar.querySelector(".topbar-subtitle")).toHaveTextContent("参数定义管理");
-    expect(within(topbar).getByRole("button", { name: "打开项目值批量导入" })).toBeInTheDocument();
+    expect(await within(topbar).findByRole("button", { name: "打开项目值批量导入" }, { timeout: 4_000 })).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "项目值批量导入" })).not.toBeInTheDocument();
     expect(document.querySelector(".workspace-header")).not.toBeInTheDocument();
   });
 
-  it("keeps the node summary in the directory without duplicating topbar metrics", () => {
+  it("keeps the node summary in the directory without duplicating topbar metrics", async () => {
     window.history.replaceState(null, "", "/debugging-admin/nodes");
 
     render(<App initialAppState={adminState} runtimeMode="mock" />);
 
     const debuggingTopbar = document.querySelector(".topbar") as HTMLElement;
     expect(debuggingTopbar.querySelector(".debug-admin-strip--topbar")).not.toBeInTheDocument();
-    const summary = screen.getByLabelText("节点目录概览");
+    const summary = await screen.findByLabelText("节点目录概览");
     expect(summary).toHaveTextContent("节点总数");
     expect(summary).toHaveTextContent("已启用");
     expect(summary).not.toHaveTextContent("最近保存");
   });
 
-  it("keeps parameter-debug admin scope without node-catalog topbar strip", () => {
+  it("keeps parameter-debug admin scope without node-catalog topbar strip", async () => {
     window.history.replaceState(null, "", "/debugging-admin");
 
     render(<App initialAppState={adminState} runtimeMode="mock" />);
 
     const debuggingTopbar = document.querySelector(".topbar") as HTMLElement;
     expect(debuggingTopbar.querySelector(".debug-admin-strip--topbar")).not.toBeInTheDocument();
-    expect(screen.getByRole("navigation", { name: "调试后台范围" })).toBeInTheDocument();
+    expect(await screen.findByRole("navigation", { name: "调试后台范围" })).toBeInTheDocument();
   });
 });

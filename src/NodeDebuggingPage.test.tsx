@@ -1636,6 +1636,7 @@ describe("/node-debugging", () => {
   it("names the operation in status badges with distinct status classes", async () => {
     renderApp({ initialAppState: userState, runtimeMode: "mock" });
 
+    await screen.findByText(mockStoryConnectedLabel);
     await within(findRowByText("charger.input_current_limit_ma")).findByText("读取成功");
     const successBadge = within(findRowByText("charger.input_current_limit_ma")).getByText("读取成功");
     const unavailableBadge = within(findRowByText("charger.trickle_switch_soc")).getByText("不可用");
