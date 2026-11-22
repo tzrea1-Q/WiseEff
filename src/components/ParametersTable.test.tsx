@@ -1,3 +1,5 @@
+import { selectControlOption } from "@/test/selectControlOption";
+import * as parameterValueKind from "@/parameterValueKind";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -90,7 +92,7 @@ function setup(overrides: Partial<ParametersTableProps> = {}) {
   const onSelectedIdsChange = vi.fn();
   const onFocusRow = vi.fn();
 
-  render(
+  const result = render(
     <ParametersTable
       rows={rows}
       selectedIds={new Set()}
@@ -101,7 +103,7 @@ function setup(overrides: Partial<ParametersTableProps> = {}) {
     />
   );
 
-  return { onFocusRow, onSelectedIdsChange };
+  return { ...result, onFocusRow, onSelectedIdsChange };
 }
 
 function visibleParameterNames() {
@@ -121,7 +123,7 @@ describe("ParametersTable", () => {
     expect(screen.getByText("unset（未分配）")).toHaveClass("module-tone-2");
     expect(screen.getByText("fast_charge_current_limit_ma")).toBeInTheDocument();
   });
-  it("shows all rows by default with the visible count", () => {
+  it("shows all rows of a small result with the visible count", () => {
     setup();
 
     expect(screen.getByText(/显示\s+3\s+\/\s+3\s+个参数/)).toBeInTheDocument();
@@ -443,4 +445,85 @@ describe("ParametersTable", () => {
 
     expect(source).not.toContain("<ColumnFilter {...providedFilter}");
   });
+});
+
+function largeFixture(count: number) {
+  return Array.from({ length: count }, (_, index) => ({
+    ...rows[0],
+    id: `large-${index + 1}`,
+    name: `fixture_parameter_${index + 1}`,
+    configFormat: `fixture_parameter_${index + 1}=3200`
+  }));
+}
+
+it("pages 250 rows at sizes 100, 200, and 50", async () => {
+  const { container } = setup({ rows: largeFixture(250) });
+  const count = () => container.querySelectorAll("tbody tr").length;
+  const pager = within(screen.getByRole("navigation", { name: "参数分页" }));
+  expect(count()).toBe(100);
+
+  await selectControlOption(pager.getByRole("combobox", { name: "每页条数" }), "200");
+  expect(count()).toBe(200);
+  fireEvent.click(pager.getByRole("button", { name: "下一页" }));
+  expect(count()).toBe(50);
+  expect(pager.getByText("第 2 / 2 页")).toBeInTheDocument();
+  fireEvent.click(pager.getByRole("button", { name: "上一页" }));
+  expect(count()).toBe(200);
+
+  await selectControlOption(pager.getByRole("combobox", { name: "每页条数" }), "50");
+  expect(count()).toBe(50);
+});
+
+it("resets to the first page on query, filter, and sort changes", () => {
+  const { container } = setup({ rows: largeFixture(101) });
+  const pager = within(screen.getByRole("navigation", { name: "参数分页" }));
+  const next = () => fireEvent.click(pager.getByRole("button", { name: "下一页" }));
+  const headers = within(container.querySelector("thead")!);
+  const query = screen.getByPlaceholderText("搜索参数名、描述、模块或路径");
+  next();
+  fireEvent.change(query, { target: { value: "fixture" } });
+  expect(pager.getByText("第 1 / 2 页")).toBeInTheDocument();
+  next();
+  fireEvent.click(headers.getByRole("button", { name: "筛选重要性" }));
+  fireEvent.click(headers.getByRole("checkbox", { name: "High" }));
+  expect(pager.getByText("第 1 / 2 页")).toBeInTheDocument();
+  next();
+  fireEvent.click(headers.getByRole("button", { name: "按 参数名称 排序" }));
+  expect(pager.getByText("第 1 / 2 页")).toBeInTheDocument();
+});
+
+it("jumps to off-page focus and only renders the old and new focused rows on the same page", () => {
+  const props = {
+    rows: largeFixture(250),
+    selectedIds: new Set<string>(),
+    onSelectedIdsChange: vi.fn(),
+    onFocusRow: vi.fn()
+  };
+  const { rerender } = render(<ParametersTable {...props} focusedId={null} />);
+  rerender(<ParametersTable {...props} focusedId="large-180" />);
+  expect(screen.getByText("第 2 / 3 页")).toBeInTheDocument();
+  expect(screen.getByText("fixture_parameter_180").closest("tr")).toHaveClass("parameters-table-row-focused");
+  const rowRender = vi.spyOn(parameterValueKind, "shouldSummarizeComplexParameter");
+  try {
+    rerender(<ParametersTable {...props} focusedId="large-181" onFocusRow={vi.fn()} />);
+    expect(rowRender.mock.calls.map(([record]) => record.configFormat)).toEqual([
+      "fixture_parameter_180=3200",
+      "fixture_parameter_181=3200"
+    ]);
+    rowRender.mockClear();
+    rerender(<ParametersTable {...props} focusedId="large-181" targetValues={new Map([["large-181", "3400"]])} />);
+    expect(rowRender.mock.calls.map(([record]) => record.configFormat)).toEqual(["fixture_parameter_181=3200"]);
+  } finally {
+    rowRender.mockRestore();
+  }
+});
+
+it("renders 100 of 4000 matches and selects modified matches across pages", () => {
+  const fixture = largeFixture(4000);
+  const modifiedIds = new Set(["large-1", "large-180", "large-4000"]);
+  const { container, onSelectedIdsChange } = setup({ rows: fixture, modifiedIds });
+  expect(container.querySelectorAll("tbody tr")).toHaveLength(100);
+  expect(screen.getByText("第 1 / 40 页")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("checkbox", { name: "全选已修改项" }));
+  expect(onSelectedIdsChange).toHaveBeenCalledWith(modifiedIds);
 });
