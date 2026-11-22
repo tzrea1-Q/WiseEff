@@ -5,7 +5,7 @@ import type { ParameterRecord } from "@/domain/parameters/types";
 import type { TreeFilterNode } from "@/domain/tree-filter/treeFilter";
 import { getParameterValueSummary, shouldSummarizeComplexParameter } from "@/parameterValueKind";
 import { HorizontalDragScroll } from "@/components/HorizontalDragScroll";
-import { SelectControl } from "@/components/common/SelectControl";
+import { ParameterTablePager } from "@/components/ParameterTablePager";
 import { SearchField } from "@/components/common/SearchField";
 import { createSearchIndex, formatMatchHint } from "@/lib/search";
 import { parameterRecordSearchProfile } from "@/lib/search/profiles";
@@ -498,26 +498,8 @@ export function ParametersTable({
       </HorizontalDragScroll>
 
       {visibleRows.length > 50 ? (
-        <nav className="parameters-table-pagination" aria-label="参数分页">
-          <label>
-            每页条数
-            <SelectControl
-              value={String(pageSize)}
-              ariaLabel="每页条数"
-              onValueChange={(value) => setPageSize(Number(value))}
-              size="filter"
-              compactControl="pagination"
-              options={[50, 100, 200].map((size) => ({ value: String(size), label: size }))}
-            />
-          </label>
-          <span>第 {page} / {pageCount} 页</span>
-          <div>
-            <button type="button" className="button subtle" disabled={page === 1}
-              onClick={() => setPagination({ ...pagination, page: page - 1 })}>上一页</button>
-            <button type="button" className="button subtle" disabled={page === pageCount}
-              onClick={() => setPagination({ ...pagination, page: page + 1 })}>下一页</button>
-          </div>
-        </nav>
+        <ParameterTablePager page={page} pageCount={pageCount} pageSize={pageSize}
+          onPageSizeChange={setPageSize} onPageChange={(next) => setPagination({ ...pagination, page: next })} />
       ) : null}
 
       {visibleRows.length === 0 ? (
