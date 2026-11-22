@@ -1,3 +1,4 @@
+import { expectEligibleBindingsToMatch } from "../../parameter-bindings/queries/currentManagedBindings.testHelpers";
 import { expect, it } from "vitest";
 import { createPostgresDatabase, type Database } from "../../../shared/database/client";
 import { applyMigrations, migrationsDir, withTempDatabase } from "../../../testing/tempDatabase";
@@ -45,8 +46,16 @@ it("upgrades suspension reads without changing existing runtime authority", asyn
         has_table_privilege(current_user,'parameter_catalog.source_binding_suspension_receipts','SELECT,INSERT,UPDATE,DELETE') as receipts,
         has_function_privilege(current_user,$1,'EXECUTE') as visibility`, [visibility])).rows)
         .toEqual([{ receipts: false, visibility: true }]);
+      const batchVisibility = "parameter_catalog.current_source_binding_suspensions(text)";
+      expect((await db.query(
+        "select has_function_privilege('catalog_baseline_reader_role',$1,'EXECUTE') as visibility", [batchVisibility],
+      )).rows).toEqual([{ visibility: false }]);
+      expect((await api.query("select has_function_privilege(current_user,$1,'EXECUTE') as visibility", [batchVisibility])).rows)
+        .toEqual([{ visibility: true }]);
       for (const role of [runtime.workerRole, runtime.managerRole]) {
         expect((await db.query("select has_function_privilege($1,$2,'EXECUTE') as visibility", [role, visibility])).rows)
+          .toEqual([{ visibility: false }]);
+        expect((await db.query("select has_function_privilege($1,$2,'EXECUTE') as visibility", [role, batchVisibility])).rows)
           .toEqual([{ visibility: false }]);
       }
     } finally {
@@ -65,6 +74,7 @@ it("reuses proof planning for an existing binding with an approved suspension re
     expect((await f.db.query(`select count(*)::integer as count from parameter_catalog.source_binding_suspension_receipts`)).rows)
       .toEqual([{ count: 0 }]);
     const scope = [f.organizationId, f.projectId, binding!.id];
+    await expectEligibleBindingsToMatch(f.api, f.organizationId);
     const optimized = (await f.db.query<{ definition: string }>("select pg_get_functiondef($1::regprocedure) as definition", [visibility])).rows[0]!.definition;
     // Reinstall the exact historical implementation in this disposable fixture,
     // then restore 0332 on the same API connection and populated schema.
@@ -86,6 +96,10 @@ it("reuses proof planning for an existing binding with an approved suspension re
     await setSourceRevisionRegistrationStatus(f.db, { ...registration, status: "active" });
     expect((await f.db.query(`select count(*)::integer as count from parameter_catalog.source_binding_suspension_receipts`)).rows)
       .toEqual([{ count: 1 }]);
+    await expectEligibleBindingsToMatch(f.api, f.organizationId);
+    expect((await f.api.query(
+      "select * from parameter_catalog.current_source_binding_suspensions($1)", [f.organizationId],
+    )).rows).toEqual([{ project_id: f.projectId, binding_id: binding!.id }]);
     const timings: number[] = [];
     for (const definition of definitions) {
       await f.db.query(definition);
@@ -100,6 +114,13 @@ it("reuses proof planning for an existing binding with an approved suspension re
     console.info("Suspension lookup upgrade (124 approved-receipt reads)", { beforeMs, afterMs });
     // Compare on the same server instead of imposing a fixed hardware budget.
     expect(afterMs).toBeLessThan(beforeMs / 2);
+    await (await f.stage(
+      `${sourceAdminText.replace("<36>", "<42>")}\n/* reconcile latest source */`, "susp-perf-resumption",
+    )).apply();
+    await expectEligibleBindingsToMatch(f.api, f.organizationId);
+    expect((await f.api.query(
+      "select * from parameter_catalog.current_source_binding_suspensions($1)", [f.organizationId],
+    )).rows).toEqual([]);
   } finally {
     await f.close();
   }

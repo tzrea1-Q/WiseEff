@@ -802,7 +802,7 @@ export async function listCanonicalInitializationBindingCandidates(
   if (input.projectIds.length === 0) return [];
 
   const values: unknown[] = [input.organizationId, [...input.projectIds]];
-  const conditions = ["b.organization_id = $1", "b.project_id = any($2::text[])", currentManagedSourceBindingPredicate("b")];
+  const conditions = ["b.organization_id = $1", "b.project_id = any($2::text[])", currentManagedSourceBindingPredicate("b", 1)];
 
   if (input.bindingIds?.length) {
     values.push([...input.bindingIds]);
@@ -1095,7 +1095,7 @@ async function readBoundedCatalogParameters(
          on placement.registration_id = b.registration_id and placement.organization_id = b.organization_id
        left join public.parameter_modules module on module.id = placement.module_id and module.organization_id = b.organization_id
        where b.organization_id = $1 and b.project_id = $2 and b.id > $3
-         and ${currentManagedSourceBindingPredicate("b")}
+         and ${currentManagedSourceBindingPredicate("b", 1)}
          and value.source_ref <> 'canonical-binding-identity'
          and ($5::text[] is null or placement.module_id = any($5::text[]))
          and ($6::text is null or module.name = $6)
@@ -1145,6 +1145,7 @@ export async function listCatalogBindingRowsForProject(
   let destroy = false;
   try {
     await client.query("begin isolation level repeatable read read only");
+    await client.query("set local jit = off");
     const rows = await listCatalogBindingRowsInSnapshot(catalogReadTransaction(client, pool), auth, input);
     await client.query("commit");
     return rows;
@@ -1484,7 +1485,7 @@ export async function listCatalogBindingsForImport(
     join parameter_catalog.project_value_source_pins pin on pin.project_value_id=v.id and pin.binding_id=b.id
     where b.organization_id = $1
       and b.project_id = $2
-      and ${currentManagedSourceBindingPredicate("b")}
+      and ${currentManagedSourceBindingPredicate("b", 1)}
       and v.source_ref <> 'canonical-binding-identity'
       and (
         d.property_key = any($3::text[])

@@ -63,7 +63,7 @@ export async function readProjectProtectedParameters(
             registration_id, subject_id, definition_id, effective_revision_id, current_value_id
        from parameter_catalog.current_project_parameter_bindings binding
       where organization_id = $1 and project_id = $2
-        and ${currentManagedSourceBindingPredicate("binding")}
+        and ${currentManagedSourceBindingPredicate("binding", 1)}
       order by id`,
     [parameterOrganizationId(auth), projectId]
   );

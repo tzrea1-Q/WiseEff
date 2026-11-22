@@ -100,6 +100,11 @@ function trendBucketsSql(granularity: "day" | "week") {
  * Bootstrap identity placeholders and values without a matching source pin
  * never enter these aggregates.
  */
+const DASHBOARD_PLACEMENTS = `with dashboard_placements as materialized (
+  select registration_id, organization_id, module_id
+  from parameter_catalog.registration_effective_module where organization_id = $1
+)`;
+
 const ACTIVE_SOURCE_BACKED_BINDINGS = `
   from parameter_catalog.current_project_parameter_bindings b
   join parameter_catalog.project_parameter_values value
@@ -117,13 +122,13 @@ const ACTIVE_SOURCE_BACKED_BINDINGS = `
    and source_pin.source_occurrence_id = b.source_occurrence_id
    and source_pin.config_revision_id = value.config_revision_id
   join public.projects p on p.id = b.project_id and p.organization_id = b.organization_id
-  left join parameter_catalog.registration_effective_module placement
+  left join dashboard_placements placement
     on placement.registration_id = b.registration_id and placement.organization_id = b.organization_id
   left join public.parameter_modules module on module.id = placement.module_id and module.organization_id = b.organization_id
   join parameter_catalog.parameter_definitions definition on definition.id = b.definition_id
   join parameter_catalog.definition_revisions revision
     on revision.id = b.effective_revision_id and revision.definition_id = b.definition_id
-   and ${currentManagedSourceBindingPredicate("b")}`;
+   and ${currentManagedSourceBindingPredicate("b", 1)}`;
 
 /** Tenant-wide inventory of displayable current source-backed Binding identities. */
 export async function countSourceBackedBindingsByProject(
@@ -131,7 +136,8 @@ export async function countSourceBackedBindingsByProject(
   organizationId: string,
 ): Promise<Map<string, number>> {
   const result = await db.query<{ project_id: string; parameter_count: string }>(
-    `select b.project_id, count(distinct b.id)::text as parameter_count
+    `${DASHBOARD_PLACEMENTS}
+      select b.project_id, count(distinct b.id)::text as parameter_count
        ${ACTIVE_SOURCE_BACKED_BINDINGS}
       where b.organization_id = $1
       group by b.project_id`,
@@ -150,7 +156,8 @@ export async function readBindingDashboardKpis(
     change_frequency: string;
     active_contributors: string;
   }>(
-    `select
+    `${DASHBOARD_PLACEMENTS}
+      select
        (select count(distinct b.id) ${ACTIVE_SOURCE_BACKED_BINDINGS}
          where true ${scopeSql("b")}) as total_bindings,
        (select count(distinct b.definition_id) ${ACTIVE_SOURCE_BACKED_BINDINGS}
@@ -302,7 +309,8 @@ export async function readUserBindingTrend(
 
 export async function listProjectsWithSourceBackedBindings(db: Database, input: BindingDashboardScope) {
   const rows = await db.query<{ project_id: string; project_code: string; project_name: string }>(
-    `select p.id as project_id, p.code as project_code, p.name as project_name
+    `${DASHBOARD_PLACEMENTS}
+      select p.id as project_id, p.code as project_code, p.name as project_name
        ${ACTIVE_SOURCE_BACKED_BINDINGS}
       where true ${scopeSql("b")}
       group by p.id, p.code, p.name
@@ -352,44 +360,48 @@ export async function aggregateBindingDashboardHotspots(
   input: BindingDashboardHotspotInput
 ): Promise<BindingDashboardHotspotGroup[]> {
   const grouping = hotspotGrouping(input.dimension);
-  const rows = await db.query<RawHotspotRow>(
-    `select ${grouping.select},
-       count(distinct request.id) filter (where request.created_at >= $2 and request.created_at < $3) as related_request_count,
-       count(distinct history.id) as history_events_in_window,
-       count(distinct b.id) filter (where exists (
-         select 1 from parameter_catalog.binding_history_events modified_history
-          join parameter_catalog.project_parameter_values old_value
-            on old_value.id = modified_history.old_current_value_id
-           and old_value.binding_id = b.id
-           and old_value.source_ref <> 'canonical-binding-identity'
-          where modified_history.binding_id = b.id
-       )) as modified_param_count,
-       count(distinct request.id) filter (where request.status = 'pending') as open_request_count,
-       count(distinct request.id) filter (
-         where request.status = 'rejected' and request.updated_at >= $2 and request.updated_at < $3
-       ) as returned_in_window,
-       count(distinct history_audit.actor_user_id) filter (where history_audit.actor_user_id is not null) as contributors_in_window,
-       count(distinct all_time_audit.actor_user_id) filter (where all_time_audit.actor_user_id is not null) as contributors_all_time,
-       max(history.created_at) as last_changed_at
-       ${ACTIVE_SOURCE_BACKED_BINDINGS}
-       left join parameter_catalog.binding_history_events history
-         on history.binding_id = b.id and history.created_at >= $2 and history.created_at < $3
-       left join public.audit_events history_audit
-         on history_audit.id = history.success_audit_ref
-        and history_audit.organization_id = b.organization_id and history_audit.project_id = b.project_id
-       left join parameter_catalog.binding_history_events all_history on all_history.binding_id = b.id
-       left join public.audit_events all_time_audit
-         on all_time_audit.id = all_history.success_audit_ref
-        and all_time_audit.organization_id = b.organization_id and all_time_audit.project_id = b.project_id
-       left join public.project_parameter_value_change_requests request
-         on request.organization_id = b.organization_id and request.project_id = b.project_id and request.binding_id = b.id
-      where b.organization_id = $1
-        and ($4::text is null or b.project_id = $4)
-        and ($5::text[] is null or b.project_id = any($5::text[]))
-      group by ${grouping.groupBy}
-      order by ${grouping.orderBy}`,
-    [input.organizationId, input.windowStart, input.windowEnd, input.projectId, input.authorizedProjectIds ?? null]
-  );
+  const rows = await db.transaction(async tx => {
+    await tx.query("set local jit = off");
+    return tx.query<RawHotspotRow>(
+      `${DASHBOARD_PLACEMENTS}
+        select ${grouping.select},
+         count(distinct request.id) filter (where request.created_at >= $2 and request.created_at < $3) as related_request_count,
+         count(distinct history.id) as history_events_in_window,
+         count(distinct b.id) filter (where exists (
+           select 1 from parameter_catalog.binding_history_events modified_history
+            join parameter_catalog.project_parameter_values old_value
+              on old_value.id = modified_history.old_current_value_id
+             and old_value.binding_id = b.id
+             and old_value.source_ref <> 'canonical-binding-identity'
+            where modified_history.binding_id = b.id
+         )) as modified_param_count,
+         count(distinct request.id) filter (where request.status = 'pending') as open_request_count,
+         count(distinct request.id) filter (
+           where request.status = 'rejected' and request.updated_at >= $2 and request.updated_at < $3
+         ) as returned_in_window,
+         count(distinct history_audit.actor_user_id) filter (where history_audit.actor_user_id is not null) as contributors_in_window,
+         count(distinct all_time_audit.actor_user_id) filter (where all_time_audit.actor_user_id is not null) as contributors_all_time,
+         max(history.created_at) as last_changed_at
+         ${ACTIVE_SOURCE_BACKED_BINDINGS}
+         left join parameter_catalog.binding_history_events history
+           on history.binding_id = b.id and history.created_at >= $2 and history.created_at < $3
+         left join public.audit_events history_audit
+           on history_audit.id = history.success_audit_ref
+          and history_audit.organization_id = b.organization_id and history_audit.project_id = b.project_id
+         left join parameter_catalog.binding_history_events all_history on all_history.binding_id = b.id
+         left join public.audit_events all_time_audit
+           on all_time_audit.id = all_history.success_audit_ref
+          and all_time_audit.organization_id = b.organization_id and all_time_audit.project_id = b.project_id
+         left join public.project_parameter_value_change_requests request
+           on request.organization_id = b.organization_id and request.project_id = b.project_id and request.binding_id = b.id
+        where b.organization_id = $1
+          and ($4::text is null or b.project_id = $4)
+          and ($5::text[] is null or b.project_id = any($5::text[]))
+        group by ${grouping.groupBy}
+        order by ${grouping.orderBy}`,
+      [input.organizationId, input.windowStart, input.windowEnd, input.projectId, input.authorizedProjectIds ?? null]
+    );
+  });
   return rows.rows.map((row) => ({
     groupId: row.group_id,
     kind: grouping.kind,

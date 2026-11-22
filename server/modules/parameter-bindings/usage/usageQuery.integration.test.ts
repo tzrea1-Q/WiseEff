@@ -30,6 +30,7 @@ import { IDENTITY_PLACEHOLDER_SOURCE } from "../values/repositories";
 import { appendSourceCommittedValue, createSourceBackedBindingService } from "../binding/__fixtures__/sourceBackedBinding";
 
 import { createUsageQueries } from "./index";
+import { expectEligibleBindingsToMatch } from "../queries/currentManagedBindings.testHelpers";
 
 const databaseAvailable = await isTestDatabaseAvailable();
 if (!databaseAvailable) {
@@ -192,6 +193,10 @@ describe("CATFIX-QUERY usage summaries", () => {
       expect(binding.ok).toBe(true);
       if (!binding.ok) throw new Error("binding failed");
       let expectedTip = binding.value.binding.currentValueId;
+      expect((await pool.query(`select source_ref from parameter_catalog.${VALUES_RELATION}
+        where binding_id=$1 and source_ref=$2`, [binding.value.binding.id, IDENTITY_PLACEHOLDER_SOURCE])).rows)
+        .toEqual([{ source_ref: IDENTITY_PLACEHOLDER_SOURCE }]);
+      await expectEligibleBindingsToMatch(pool, ORG);
       for (const magnitude of [1, 2]) {
         const appended = await appendSourceCommittedValue(pool, {
           snapshot,
