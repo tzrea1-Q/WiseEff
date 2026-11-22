@@ -329,6 +329,7 @@ describe("canonical dashboard repository", () => {
     ];
     const historyCounts = new Map<string, number>();
     const bindingIds = new Map<string, string[]>();
+    const unsubmittedDrafts = new Map<string, string>();
     const moduleIds = new Map<string, string>();
     for (const organizationId of new Set(projects.map((project) => project.organizationId))) {
       const context = makeTestAuthContext({ organizationId, userId: `${organizationId}-author` });
@@ -390,6 +391,8 @@ describe("canonical dashboard repository", () => {
             requestId: `${projectId}-submit`, refusalSink: createTrustedRefusalAuditSink(db)
           });
           expect(request.status).toBe("pending");
+        } else {
+          unsubmittedDrafts.set(projectId, draft.id);
         }
       }
       let historyCount = 0;
@@ -478,6 +481,76 @@ describe("canonical dashboard repository", () => {
     for (const endpoint of ["summary", "hotspots"]) {
       const denied = await requestJson(server, `/api/v1/parameters/dashboard/${endpoint}?projectId=${foreign.projectId}`);
       expect(denied.status, denied.bodyText).toBe(404);
+    }
+
+    for (const { organizationId, projectId } of projects) {
+      const author = makeTestAuthContext({ organizationId, userId: `${organizationId}-author` });
+      const reviewer = makeTestAuthContext({
+        organizationId, userId: `${organizationId}-reviewer`, roles: [{ projectId, roleId: "software-committer" }]
+      });
+      const refusalSink = createTrustedRefusalAuditSink(db);
+      const submitted = await submitCanonicalValueChange(db, author, {
+        projectId, draftId: unsubmittedDrafts.get(projectId)!, invocation: createUserInvocation(author),
+        requestId: `${projectId}-submit-for-rejection`, refusalSink
+      });
+      const rejected = await reviewCanonicalValueChange(db, reviewer, {
+        projectId, requestId: submitted.id, decision: "reject"
+      }, { invocation: createUserInvocation(reviewer), traceId: `${projectId}-reject`, refusalSink });
+      expect(rejected.status).toBe("rejected");
+
+      await db.query(
+        `insert into audit_events(id, organization_id, project_id, actor_user_id, actor_type, app, kind, action, severity, trace_id)
+         values ($3 || '-shared', $1, $2, $4, 'user', 'parameters', 'parameter', 'fixture', 'info', $3),
+                ($3 || '-older', $1, $2, $5, 'user', 'parameters', 'parameter', 'fixture', 'info', $3),
+                ($3 || '-actorless', $1, $2, null, 'system', 'parameters', 'parameter', 'fixture', 'info', $3)`,
+        [organizationId, projectId, `${projectId}-metrics`, reviewer.user.id, author.user.id]
+      );
+      await db.query(
+        `insert into parameter_catalog.binding_history_events
+           (id, binding_id, old_current_value_id, reason, success_audit_ref, catalog_release_id, created_at)
+         select b.id || '-' || event.name, b.id, b.current_value_id, 'dashboard metrics fixture',
+                $2 || '-' || event.name, b.catalog_release_id, event.at
+           from parameter_catalog.project_parameter_bindings b
+           cross join (values ('shared', '2020-01-02'::timestamptz),
+                              ('actorless', '2020-01-03'::timestamptz),
+                              ('older', '2019-12-31'::timestamptz)) event(name, at)
+          where b.id = any($1::text[])`,
+        [bindingIds.get(projectId), `${projectId}-metrics`]
+      );
+    }
+
+    for (const authorizedProjectIds of [null, [first.projectId, foreign.projectId]]) {
+      const visibleIds = authorizedProjectIds ? [first.projectId] : [first.projectId, second.projectId];
+      for (const dimension of ["project", "module", "parameter"] as const) {
+        const scope = { organizationId: first.organizationId, projectId: null, authorizedProjectIds, dimension };
+        const groups = await aggregateHotspotGroups(db, {
+          ...scope, windowStart: "2020-01-01T00:00:00Z", windowEnd: "2020-02-01T00:00:00Z"
+        });
+        const expectedIds = dimension === "project" ? visibleIds : dimension === "module"
+          ? [moduleIds.get(first.organizationId)!] : visibleIds.flatMap((id) => bindingIds.get(id)!);
+        expect(groups.map((group) => group.groupId).sort()).toEqual([...expectedIds].sort());
+        const parameterCount = dimension === "project" ? 2 : dimension === "module" ? 2 * visibleIds.length : 1;
+        for (const group of groups) {
+          expect(group).toMatchObject({
+            parameterCount, definitionCount: 1, historyEventsInWindow: 2 * parameterCount,
+            modifiedParamCount: parameterCount, contributorsInWindow: 1, contributorsAllTime: 2,
+            relatedRequestCount: 0, returnedInWindow: 0, lastChangedAt: "2020-01-03T00:00:00.000Z"
+          });
+        }
+
+        const workflow = await aggregateHotspotGroups(db, {
+          ...scope, windowStart: "2000-01-01T00:00:00Z", windowEnd: "2999-01-01T00:00:00Z"
+        });
+        for (const group of workflow) {
+          const projectCount = dimension === "module" ? visibleIds.length : 1;
+          const pending = dimension !== "parameter" || bindingIds.get(group.projectId!)?.[0] === group.groupId;
+          expect(group).toMatchObject({
+            openRequestCount: pending ? projectCount : 0,
+            returnedInWindow: dimension !== "parameter" || !pending ? projectCount : 0,
+            relatedRequestCount: parameterCount
+          });
+        }
+      }
     }
   }, 120_000);
 });
