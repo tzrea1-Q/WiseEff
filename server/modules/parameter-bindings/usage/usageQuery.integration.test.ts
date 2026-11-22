@@ -180,6 +180,7 @@ describe("CATFIX-QUERY usage summaries", () => {
     const seed = async (logicalNodeId: string, projectId: string) => {
       const binding = await createSourceBackedBindingService(pool, {
         sourceRef: `config-set:${logicalNodeId}`,
+        keepPlaceholder: true,
       }).stabilize({
         snapshot,
         organizationId: ORG,
