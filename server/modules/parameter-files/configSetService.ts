@@ -5,6 +5,7 @@ import { createUserInvocation, type TrustedInvocationContext } from "../auth/tru
 import { asAuditTx, writeAuditEventInTx, type AuditTx } from "../audit/auditedWrite";
 import type { AuditCorrelationContext } from "../audit/types";
 import type { AuthContext } from "../auth/types";
+import { requireActiveOrganization } from "../auth/organizationLifecycle";
 import { canAdminParameters, canViewParameters } from "../parameter-kernel/policy";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
@@ -288,21 +289,27 @@ export async function removeConfigSetFile(
 export async function updateConfigSet(
   db: Database,
   auth: AuthContext,
-  input: { configSetId: string; name?: string; description?: string | null; derivedFromId?: string | null },
+  input: { configSetId: string; projectId?: string; name?: string; description?: string | null; derivedFromId?: string | null },
   context: ConfigSetServiceContext = {}
 ): Promise<ConfigSetDto> {
   requireParameterFileAdmin(auth);
 
   return db.transaction(async (tx) => {
+    await requireActiveOrganization(tx, parameterOrganizationId(auth), true);
+    await tx.query("select id from dts_config_set where id=$1 and organization_id=$2 for update",
+      [input.configSetId, parameterOrganizationId(auth)]);
     const existing = await getConfigSetById(tx, {
       organizationId: parameterOrganizationId(auth),
       configSetId: input.configSetId
     });
-    if (!existing) {
+    if (!existing || (input.projectId !== undefined && existing.projectId !== input.projectId)) {
       throw new ApiError("NOT_FOUND", "Config set not found.", { configSetId: input.configSetId });
     }
 
     const nextName = input.name ?? existing.name;
+    if (existing.name === DEFAULT_CONFIG_SET_NAME || nextName === DEFAULT_CONFIG_SET_NAME) {
+      throw new ApiError("CONFLICT", "The built-in default config set is reserved.");
+    }
     const nextDescription =
       input.description === undefined ? existing.description : input.description === null ? undefined : input.description;
     const nextDerivedFromId =
@@ -346,5 +353,10 @@ export async function updateConfigSet(
     );
 
     return updated;
+  }).catch((error: unknown) => {
+    if (typeof error === "object" && error && "constraint" in error && error.constraint === "dts_config_set_project_id_name_key") {
+      throw new ApiError("CONFLICT", "A config set with this name already exists in the project.");
+    }
+    throw error;
   });
 }

@@ -3793,6 +3793,26 @@ td small {
   font-size: var(--text-base);
 }
 
+.parameters-table-pagination {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-top: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  line-height: var(--leading-sm);
+}
+
+.parameters-table-pagination > label,
+.parameters-table-pagination > div {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
 .parameters-table-scroll {
   min-width: 0;
   max-width: 100%;
@@ -9103,6 +9123,39 @@ td small {
 .parameter-text-content {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+
+.definition-example-list {
+  min-width: 0;
+  contain: inline-size;
+  display: grid;
+  gap: var(--space-2);
+}
+
+.definition-example-list pre.definition-example-source,
+.definition-editor__field textarea.definition-example-source {
+  font-family: var(--font-code);
+  white-space: pre;
+  overflow-wrap: normal;
+  overflow: auto;
+}
+
+.definition-example-list pre.definition-example-source {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunken);
+  font-size: var(--text-sm);
+}
+
+.definition-example-list > strong {
+  font-size: var(--text-base);
+}
+
+.definition-example-list pre.definition-example-source > code {
+  font: inherit;
+  white-space: inherit;
+  overflow-wrap: normal;
 }
 
 .parameter-value-content:focus-visible {
@@ -21305,47 +21358,7 @@ body.xiaoze-popup-drag-active {
   background: var(--surface-raised);
 }
 
-/* ── Parameter workspace format switcher (DTS / JSON tabs) ── */
-.parameter-workspace-format-switch {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
-  padding: var(--space-1);
-  background: var(--surface-sunken);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-}
-
-.parameter-workspace-format-switch__tab {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  min-height: var(--space-8);
-  padding: 0 var(--space-3);
-  color: var(--text-muted);
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: var(--radius-md);
-  font: inherit;
-  font-size: var(--text-sm);
-  font-weight: 600;
-  cursor: pointer;
-  transition: color var(--duration-fast) var(--ease-out), background var(--duration-fast) var(--ease-out), box-shadow var(--duration-fast) var(--ease-out);
-}
-
-.parameter-workspace-format-switch__tab:hover:not(:disabled) {
-  color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 6%, transparent);
-}
-
-.parameter-workspace-format-switch__tab.is-active,
-.parameter-workspace-format-switch__tab[aria-selected="true"] {
-  color: var(--accent);
-  background: var(--surface);
-  border-color: var(--border);
-  box-shadow: var(--shadow-1);
-}
-
+/* ── Parameter workspace format counts ── */
 .parameter-workspace-format-switch__badge {
   display: inline-flex;
   align-items: center;
@@ -21358,11 +21371,6 @@ body.xiaoze-popup-drag-active {
   font-weight: 700;
   background: color-mix(in srgb, var(--text-muted) 12%, transparent);
   color: inherit;
-}
-
-.parameter-workspace-format-switch__tab.is-active .parameter-workspace-format-switch__badge {
-  background: color-mix(in srgb, var(--accent) 12%, transparent);
-  color: var(--accent);
 }
 
 /* ── JSON Parameter Workbench ── */
@@ -22270,6 +22278,30 @@ button.dts-topology-navigator__disclosure:focus-visible {
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 4;
   overflow: hidden;
+}
+
+.dts-parameter-workbench-table__value-summary {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.dts-parameter-workbench-table__row [data-label="当前值"] .dts-parameter-workbench-table__value-summary code {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  white-space: inherit;
+  text-overflow: ellipsis;
+}
+
+.dts-parameter-workbench-table__value-summary small {
+  flex: none;
+}
+
+.dts-parameter-workbench-table__value-summary small {
+  color: var(--text-muted);
 }
 
 .dts-parameter-workbench-table__location {

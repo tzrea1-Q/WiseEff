@@ -162,6 +162,15 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     deferralReason: "Browser workflow requires an isolated real local-auth API lane; HMAC and OIDC lanes skip this local-password interaction."
   },
   {
+    id: "ORG-MEMBER-BRIDGE-CORRECTION-001", priority: "P1", area: "platform", coverage: "conditional",
+    route: "/organization/members → /organization/bridges → /node-debugging", roles: ["Platform Admin", "Org Admin"],
+    action: "Correct a local login name, profile email and Bridge display name with the selected Organization, and confirm the persisted names and retained account and Bridge identity.",
+    acceptanceIds: ["ORG-MEMBER-BRIDGE-CORRECTION-001"],
+    specFiles: ["e2e/acceptance/organization-resources.acceptance.spec.ts", "server/modules/users/usernameCorrection.integration.test.ts", "server/modules/deviceBridge/administration.integration.test.ts"],
+    assertions: ["ui", "api", "screenshot"],
+    deferralReason: "Browser workflow requires an isolated local-auth API lane."
+  },
+  {
     id: "PCAT-REGISTRATION-INITIALIZE-001", priority: "P1", area: "parameters", coverage: "future",
     route: "/parameter-admin/modules", roles: ["Org Admin"],
     action: "Choose an explicit business parent and destination name, confirm atomic typed-module initialization and subject registration; retain tenant, release, idempotency and rollback guards.",
@@ -306,6 +315,18 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     acceptanceIds: ["PFB-ADMIN-001"],
     specFiles: ["e2e/acceptance/product-feedback.acceptance.spec.ts"],
     assertions: ["ui", "api", "db", "audit", "screenshot"]
+  },
+  {
+    id: "PFB-CATEGORY-CORRECTION-001",
+    priority: "P1",
+    area: "product-feedback",
+    route: "/feedback-admin",
+    roles: ["Platform Admin"],
+    action: "Correct the processing category, filter by it, and verify its counts, the original submission, denied writes, and one scoped audit after retry.",
+    coverage: "automated",
+    acceptanceIds: ["PFB-CATEGORY-CORRECTION-001"],
+    specFiles: ["e2e/acceptance/business-record-corrections.acceptance.spec.ts"],
+    assertions: ["ui", "api", "audit", "screenshot"]
   },
   {
     id: "PFB-AUTHZ-001",
@@ -458,6 +479,18 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     acceptanceIds: ["KB-XREF-001"],
     specFiles: ["e2e/acceptance/knowledge-canonical-definition.acceptance.spec.ts"],
     assertions: ["ui", "api", "db", "audit"]
+  },
+  {
+    id: "KB-ARCHIVED-REFERENCE-CORRECTION-001",
+    priority: "P1",
+    area: "knowledge",
+    route: "/knowledge-admin",
+    roles: ["Platform Admin"],
+    action: "Add and remove exact Catalog Definition links in a selected organization's archive and verify denied writes, idempotence, unchanged history, retrieval exclusion, and scoped audit.",
+    coverage: "automated",
+    acceptanceIds: ["KB-ARCHIVED-REFERENCE-CORRECTION-001"],
+    specFiles: ["e2e/acceptance/business-record-corrections.acceptance.spec.ts"],
+    assertions: ["ui", "api", "audit", "screenshot"]
   },
   {
     id: "SHELL-DIAG-001",
@@ -1079,6 +1112,18 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     specFiles: ["e2e/acceptance/log-skill-knowledge.acceptance.spec.ts", "src/features/log-skills/KnowledgeSection.test.tsx"],
     assertions: ["ui", "api", "db", "audit", "screenshot"],
     deferralReason: "The focused browser spec is authored, but mandatory 1440x900 browser evidence remains pending: native Chromium bootstrap failed with MachPortRendezvous PermissionDenied, and CUA origin approval was explicitly user-declined. No browser interactions or screenshots were obtained. Actual retrieved revision provenance is asserted by PostgreSQL integration tests, not a deterministic browser model."
+  },
+  {
+    id: "LOG-SKILL-CORRECTIONS-001",
+    priority: "P1",
+    area: "logs",
+    route: "/log-admin/skills/:skillId",
+    roles: ["Admin", "Platform Admin"],
+    action: "Preview sourceVersion resolution and correct source labels and integration credential names in the selected organization.",
+    coverage: "automated",
+    acceptanceIds: ["LOG-SKILL-CORRECTIONS-001"],
+    specFiles: ["e2e/acceptance/log-skill-corrections.acceptance.spec.ts", "server/modules/logs/sourceSnapshotRestore.integration.test.ts", "server/modules/logs/integrationCredentials.integration.test.ts"],
+    assertions: ["ui", "api", "db", "audit"]
   },
   {
     id: "LOG-DOMAIN-KNOWLEDGE-001",

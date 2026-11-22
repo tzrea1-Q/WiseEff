@@ -103,6 +103,8 @@ curl --fail-with-body "$WISEEFF_API/api/v1/log-files" \
 
 可选字段 `sourceVersion` 为源码快照版本标签（去除首尾空白后 1–200 字符），用于选择钉住技能所属的匹配快照。匹配快照即使仍在排队、索引中或索引失败，也会被选中；只有快照就绪时才向 Agent 提供源码工具。没有匹配标签或未传标签时，使用钉住版本的默认快照。未知标签会记录在报告来源中，并在该处附上简短回退说明。JSON 上传、multipart 上传以及从已有文件创建记录的 `POST /api/v1/logs` 均接受此字段。`GET /api/v1/log-skills` 返回 `hasSourceSnapshots` 和 `readySourceVersions`；后者是就绪快照版本标签数组，不含快照元数据。上传对话框提供这些标签及默认快照选项；集成 API 仍接受自由填写的版本标签。
 
+管理员更正版本标签后，请在后续上报中使用新标签。旧标签按当前匹配和回退规则处理。既有报告和按原版本重新分析继续使用原运行选中的快照 ID。
+
 `GET /api/v1/log-skills/{skillId}/source-versions` 仅返回技能所属组织内就绪快照的标签，如 `{ "items": ["v2.4.0"] }`。持有 `logs:view`，或账号有效且持有 `logs:upload` 的用户均可访问，包含仅有上传权限的客户端；其他组织的技能返回 `404`。此接口不暴露快照 id、状态、文件清单或源码内容。
 
 成功时返回 `201 { fileObject, log, job }`。将 `log.id` 保存为 `LOG_ID`，无需再创建记录。`POST /api/v1/logs` 是从已有存储文件创建记录的另一途径，不是上传后的下一步。

@@ -74,11 +74,12 @@ describe("R2-SCOPE actual role bindings → root HTTP → PostgreSQL usage", () 
       client.query = function (this: PoolClient, ...args: unknown[]) {
         const input = args[0];
         const sql = typeof input === "string" ? input : input && typeof input === "object" && "text" in input ? String(input.text) : "";
+        const isUsageSummary = /count\(distinct binding\.project_id\)::text as project_count/.test(sql);
         const recognitionOperation = classifyOrganizationRecognitionQuery(sql);
         if (measuring && recognitionOperation) recognitionSql.push({ operation: recognitionOperation, sql, parameters: args[1] });
         if (measuring && !recognitionOperation && /parameter_catalog\.(organization_subject_registrations|subject_placements|parameter_review_evidence|parameter_review_items|current_project_parameter_bindings|project_parameter_bindings|project_parameter_values)\b/.test(sql)) {
           businessSql.push(sql);
-          if (/from parameter_catalog\.current_project_parameter_bindings binding/.test(sql)) {
+          if (isUsageSummary) {
             const values = args[1] as unknown;
             usageParameters.push({ definitions: Array.isArray(values) ? values[1] : undefined, projects: Array.isArray(values) ? values[3] : undefined });
           }
@@ -89,7 +90,7 @@ describe("R2-SCOPE actual role bindings → root HTTP → PostgreSQL usage", () 
           pause.reached();
           return pause.resume.then(() => Reflect.apply(query, this, args));
         }
-        if (pauseListUsage && /from parameter_catalog\.current_project_parameter_bindings binding/.test(sql)) {
+        if (pauseListUsage && isUsageSummary) {
           const pause = pauseListUsage;
           pauseListUsage = undefined;
           pause.reached();
@@ -270,7 +271,8 @@ describe("R2-SCOPE actual role bindings → root HTTP → PostgreSQL usage", () 
     expect(body.items).toHaveLength(3);
     expect(body.items.filter((item: { projectId: string }) => item.projectId === "scope-project-b")).toHaveLength(2);
     const instances = body.items.filter((item) => item.kind === "instance");
-    expect(instances.every((item) => item.valuePreview === "<1001>")).toBe(true);
+    // Previews keep each pinned source spelling of the same value 1001.
+    expect(instances.map((item) => item.valuePreview).sort()).toEqual(["<(1000 + 1)>", "<0x3e9>", "<0x3e9>"]);
     const bindingId = instances[0]!.bindingId;
     const selected = await fetch(`${baseUrl}/api/v2/catalog/definitions/${definitionId}/project-configurations?selectedBindingId=${bindingId}&limit=1`, {
       headers: { authorization: "Bearer scope-only-a" },
@@ -463,6 +465,21 @@ describe("R2-SCOPE actual role bindings → root HTTP → PostgreSQL usage", () 
         .toEqual({ configuredProjectCount: retired ? 0 : 2, configuredInstanceCount: retired ? 0 : 3 });
       expect(catalogProjectConfigurationsResponseSchema.parse(summaryB.body).summary)
         .toEqual({ configuredProjectCount: 1, configuredInstanceCount: 4 });
+      for (const [headers, projectCount, currentValueCount, configuredProjects, configuredInstances] of [
+        [a, 2, 3, retired ? 0 : 2, retired ? 0 : 3],
+        [b, 1, 4, 1, 4],
+      ] as const) {
+        const list = await read("/api/v2/catalog/definitions?limit=50", headers);
+        const detail = await read(`/api/v2/catalog/definitions/${definitionId}`, headers);
+        const item = catalogDefinitionListResponseSchema.parse(list.body).items.find((entry) => entry.id === definitionId);
+        const single = catalogDefinitionResponseSchema.parse(detail.body).item;
+        expect(item?.usageSummary).toEqual(single.usageSummary);
+        expect(single.usageSummary).toEqual({ policyCount: null, projectCount, currentValueCount });
+        expect(item?.configurationSummary).toEqual(single.configurationSummary);
+        expect(single.configurationSummary).toEqual({
+          configuredProjectCount: configuredProjects, configuredInstanceCount: configuredInstances,
+        });
+      }
       expect((await read(compare, a)).status).toBe(retired ? 404 : 200);
     };
     await check(false);

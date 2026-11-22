@@ -17,6 +17,7 @@ import { DefinitionLifecycleDialog } from "./DefinitionLifecycleDialog";
 // The publication gate needs a ready domain state, matching the existing
 // PublicationDialog harness.
 const domainState = deriveCatalogDomainState({ document: readyCatalogDocument });
+const lifecyclePermissions = ["catalog:author", "catalog:review-high-risk"];
 
 function renderDialog(
   intent: "retire-definition" | "restore-definition",
@@ -29,7 +30,7 @@ function renderDialog(
       open
       intent={intent}
       actor="org-admin"
-      sessionPermissions={["catalog:author", "catalog:publish"]}
+      sessionPermissions={lifecyclePermissions}
       domainState={domainState}
       catalog={ports.catalog}
       catalogReleaseId={CATALOG_RELEASE_ID}
@@ -65,7 +66,7 @@ describe("DefinitionLifecycleDialog", () => {
     const close = vi.fn();
     const definitions = batch ? [activeDefinition, { ...activeDefinition, id: "second", propertyKey: "second-key" }] : undefined;
     render(<DefinitionLifecycleDialog open intent={intent} actor="org-admin"
-      sessionPermissions={["catalog:author", "catalog:publish"]} domainState={domainState} catalog={ports.catalog}
+      sessionPermissions={lifecyclePermissions} domainState={domainState} catalog={ports.catalog}
       catalogReleaseId={CATALOG_RELEASE_ID} mode={batch ? "batch" : "single"} definitions={definitions ?? [activeDefinition]}
       onRefreshEvidence={refresh} onOpenChange={close} />);
     if (!batch) await user.type(screen.getByLabelText("原因"), "退役原因");
@@ -88,7 +89,7 @@ describe("DefinitionLifecycleDialog", () => {
     } });
     const close = vi.fn();
     render(<DefinitionLifecycleDialog open intent="retire-definition" actor="org-admin"
-      sessionPermissions={["catalog:author", "catalog:publish"]} domainState={domainState} catalog={ports.catalog}
+      sessionPermissions={lifecyclePermissions} domainState={domainState} catalog={ports.catalog}
       catalogReleaseId={CATALOG_RELEASE_ID} mode="batch" definitions={[activeDefinition]}
       onRefreshEvidence={async () => { throw new Error("unavailable"); }} onOpenChange={close} />);
     await user.click(screen.getByRole("button", { name: "预演影响" }));
@@ -107,7 +108,7 @@ describe("DefinitionLifecycleDialog", () => {
     const publish = vi.spyOn(ports.catalog, "publishPublicationCandidate");
     const second = { ...activeDefinition, id: "second", propertyKey: "second-key", usageSummary: { policyCount: 2, projectCount: 3, currentValueCount: 4 } };
     render(<DefinitionLifecycleDialog open intent="retire-definition" actor="org-admin"
-      sessionPermissions={["catalog:author", "catalog:publish"]} domainState={domainState}
+      sessionPermissions={lifecyclePermissions} domainState={domainState}
       catalog={ports.catalog} catalogReleaseId={CATALOG_RELEASE_ID} mode="batch"
       definitions={[activeDefinition, second]} onOpenChange={vi.fn()} />);
     expect(screen.getByRole("heading", { name: "退役 2 个参数定义" })).toBeInTheDocument();
@@ -132,13 +133,13 @@ describe("DefinitionLifecycleDialog", () => {
   it("allows a batch without a reason and blocks it in mock mode", async () => {
     const ports = createMockCatalogPorts({ scenario: "ready" });
     const view = render(<DefinitionLifecycleDialog open intent="restore-definition" actor="org-admin"
-      sessionPermissions={["catalog:author", "catalog:publish"]} domainState={domainState} catalog={ports.catalog}
+      sessionPermissions={lifecyclePermissions} domainState={domainState} catalog={ports.catalog}
       catalogReleaseId={CATALOG_RELEASE_ID} mode="batch" definitions={[activeDefinition]}
       runtimeMode="mock" onOpenChange={vi.fn()} />);
     expect(screen.getByText("模拟模式不支持，请使用 API 模式。")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "预演影响" })).toBeDisabled();
     view.rerender(<DefinitionLifecycleDialog open intent="restore-definition" actor="org-admin"
-      sessionPermissions={["catalog:author", "catalog:publish"]} domainState={domainState} catalog={ports.catalog}
+      sessionPermissions={lifecyclePermissions} domainState={domainState} catalog={ports.catalog}
       catalogReleaseId={CATALOG_RELEASE_ID} mode="batch" definitions={[activeDefinition]}
       runtimeMode="api" onOpenChange={vi.fn()} />);
     expect(screen.getByRole("button", { name: "预演影响" })).toBeEnabled();

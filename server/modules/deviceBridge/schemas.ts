@@ -29,6 +29,7 @@ export const bridgeIdParamsSchema = z.object({
 export const renameBridgeBodySchema = z.object({
   machineLabel: nonEmptyString
 });
+export const renameOrganizationBridgeBodySchema = renameBridgeBodySchema.extend({ machineLabel: z.string().trim().min(1) }).strict();
 
 export const revokeOrganizationBridgeBodySchema = z.object({ reason: z.string().trim().min(1).max(500) }).strict();
 export const organizationBridgeItemSchema = z.object({

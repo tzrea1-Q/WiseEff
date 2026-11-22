@@ -202,11 +202,13 @@ export interface DefinitionLifecycleCounts {
 
 export interface CatalogSubjectDetailSnapshot extends CatalogSubjectSnapshot {
   readonly aliases: readonly SubjectAliasSnapshot[];
+  readonly publishedAliases?: readonly SubjectAliasSnapshot[];
   readonly definitionCounts: DefinitionLifecycleCounts;
 }
 
 export interface DefinitionContent {
   readonly lifecycle: DefinitionLifecycle;
+  readonly successorDefinitionId?: string;
   readonly displayName: string;
   readonly description: OptionalValue<string>;
   readonly documentation: OptionalValue<string>;
@@ -215,6 +217,7 @@ export interface DefinitionContent {
   readonly unit: OptionalValue<UnitDescriptor>;
   readonly schemaDefault: OptionalValue<ParameterValue>;
   readonly examples: readonly ParameterValue[];
+  readonly dtsExamples?: readonly string[];
   readonly matching: DefinitionMatchingMetadata;
 }
 
@@ -480,7 +483,9 @@ export type InstallPublishedReleaseCommand =
       readonly authorizationId: PublicationAuthorizationId;
       readonly expectedCurrent: CatalogReleasePin;
       readonly fencingToken: number;
+      readonly activationDeadlineMs?: number;
       readonly trustedActor: TrustedInvocationContext;
+      readonly refreshTrustedActor?: () => Promise<TrustedInvocationContext | null>;
       readonly impactFacts?: ImpactFacts;
     }
   | {

@@ -608,7 +608,7 @@ export async function rerunLogAnalysis(db: Database, auth: LogAccessContext, inp
       : await currentSkillRevisionId(tx, organizationId(auth), logDomainId ?? current.logDomainId);
     const job = await createRerunWithJob(tx, {
       skillRevisionId,
-      preserveLegacyKnowledgeScope: input.revisionPolicy === "pinned",
+      preserveRunPins: input.revisionPolicy === "pinned",
       runId: randomUUID(),
       jobId: randomUUID(),
       organizationId: organizationId(auth),

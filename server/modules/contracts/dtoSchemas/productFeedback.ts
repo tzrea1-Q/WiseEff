@@ -36,6 +36,7 @@ export const productFeedbackUserDtoSchema = z.object({
 }).strict();
 const assignee = z.object({ id: z.string(), name: z.string(), username: z.string().nullable() });
 export const productFeedbackAdminDtoSchema = productFeedbackUserDtoSchema.extend({
+  effectiveFeedbackType: z.enum(feedbackTypes),
   submitterUserId: z.string().nullable(), submitter: assignee.extend({ id: z.string().nullable() }),
   adminNote: z.string().nullable(), priority: z.enum(feedbackPriorities),
   assigneeUserId: z.string().nullable(), assignee: assignee.nullable(),
@@ -60,7 +61,8 @@ export const productFeedbackDtoSchemaCatalog = {
   ProductFeedbackAttachmentCleanupResponse: z.object({ pendingAttachmentCleanupCount: z.number().int().nonnegative() }),
   ProductFeedbackAttachmentDeletionResponse: z.object({ item: z.union([productFeedbackAdminDtoSchema,productFeedbackUserDtoSchema]), pendingAttachmentCleanupCount: z.number().int().nonnegative() }),
   ProductFeedbackAssigneesResponse: z.object({ items: z.array(assignee) }),
-  ProductFeedbackStatsResponse: z.object({ total: z.number(), open: z.number(), inProgress: z.number(), resolved: z.number(), closed: z.number() }),
+  ProductFeedbackStatsResponse: z.object({ total: z.number(), open: z.number(), inProgress: z.number(), resolved: z.number(), closed: z.number(),
+    byType: z.object({ experience: z.number(), data: z.number(), export_submit: z.number(), feature: z.number() }) }),
   DeleteProductFeedbackDraftResponse: z.object({ ok: z.literal(true) })
 };
 

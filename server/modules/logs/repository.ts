@@ -948,7 +948,8 @@ export async function getLogWorkerRunSnapshot(db: Queryable, jobId: string) {
       run.skill_revision_id, sr.spec as skill_revision_spec, run.legacy_knowledge_entry_ids,
       source.id as source_snapshot_id, source.status as source_snapshot_status, source.version_label as source_snapshot_version_label,
       run.requested_source_version,
-      case when matched.id is not null then 'matched_version' when source.id is not null then 'default' else 'none' end as source_snapshot_selection
+      coalesce(run.source_snapshot_selection,
+        case when matched.id is not null then 'matched_version' when source.id is not null then 'default' else 'none' end) as source_snapshot_selection
     from jobs job
     inner join log_analysis_runs run
       on run.id = job.target_id
@@ -966,8 +967,9 @@ export async function getLogWorkerRunSnapshot(db: Queryable, jobId: string) {
       where s.organization_id = run.organization_id and s.skill_id = sr.skill_id
         and s.version_label = run.requested_source_version and s.status <> 'archived'
       limit 1
-    ) matched on true
-    left join log_source_snapshots source on source.id = coalesce(matched.id, sr.spec->>'defaultSourceSnapshotId')
+    ) matched on run.source_snapshot_selection is null
+    left join log_source_snapshots source on source.id = case when run.source_snapshot_selection is not null
+      then run.source_snapshot_id else coalesce(matched.id, sr.spec->>'defaultSourceSnapshotId') end
       and source.organization_id = run.organization_id and (source.skill_id = sr.skill_id or source.skill_id is null)
     left join log_domains ld
       on ld.id = lr.log_domain_id
@@ -1391,7 +1393,7 @@ export async function createRerunWithJob(
     analysisQuestion?: string;
     logDomainId?: string;
     skillRevisionId: string | null;
-    preserveLegacyKnowledgeScope?: boolean;
+    preserveRunPins?: boolean;
     relatedParameterSnapshot?: RelatedParameterRunSnapshot;
   }
 ): Promise<LogAnalysisJobDto> {
@@ -1399,21 +1401,20 @@ export async function createRerunWithJob(
     `
     insert into log_analysis_runs (
       id, organization_id, log_record_id, status, current_stage, progress, related_parameter_snapshot, skill_revision_id, legacy_knowledge_entry_ids, requested_source_version,
-      skill_name_snapshot,skill_revision_number_snapshot
+      skill_name_snapshot,skill_revision_number_snapshot,source_snapshot_id,source_snapshot_selection
     )
-    values ($1, $2, $3, 'queued', 'parse', 0, $4::jsonb, $5,
-      case when $6::boolean then (select old.legacy_knowledge_entry_ids from log_records record
-        join log_analysis_runs old on old.id = record.current_run_id and old.organization_id = record.organization_id
-        where record.organization_id = $2 and record.id = $3) end,
-      (select prior.requested_source_version from log_records lr join log_analysis_runs prior
-        on prior.id = lr.current_run_id and prior.organization_id = lr.organization_id
-        where lr.id = $3 and lr.organization_id = $2),
+    select $1, $2, $3, 'queued', 'parse', 0, $4::jsonb, $5,
+      case when $6::boolean then prior.legacy_knowledge_entry_ids end, prior.requested_source_version,
       (select d.name from log_skill_revisions r join log_domains d on d.id=r.skill_id and d.organization_id=r.organization_id where r.organization_id=$2 and r.id=$5),
-      (select revision_number from log_skill_revisions where organization_id=$2 and id=$5))
+      (select revision_number from log_skill_revisions where organization_id=$2 and id=$5),
+      case when $6::boolean then prior.source_snapshot_id end,
+      case when $6::boolean then coalesce(prior.source_snapshot_selection, case when prior.source_snapshot_id is not null then 'default' end) end
+    from log_records lr left join log_analysis_runs prior on prior.id=lr.current_run_id and prior.organization_id=lr.organization_id
+    where lr.id=$3 and lr.organization_id=$2
     returning id, log_record_id, status, current_stage, progress, error_message, updated_at
     `,
     [input.runId, input.organizationId, input.logId, input.relatedParameterSnapshot ? jsonb(input.relatedParameterSnapshot) : null, input.skillRevisionId,
-      Boolean(input.preserveLegacyKnowledgeScope)]
+      Boolean(input.preserveRunPins)]
   );
   const job = await createLogAnalysisJob(db, {
     id: input.jobId,

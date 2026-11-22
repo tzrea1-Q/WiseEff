@@ -732,21 +732,26 @@ describe("module structure export", () => {
         }
       });
     }
+    await db.query("update parameter_catalog.organization_subject_registrations set display_alias='Source child display alias' where id=$1",
+      [`${sourceOrg}-csub_acme_charger`]);
     const server = (organizationId: string) => createWiseEffServer({ db: api, auth: { mode: "production", verifier: { verify: async () =>
       makeTestAuthContext({ organizationId, userId: `admin-${organizationId}` }) } } });
     const source = server(sourceOrg), target = server(targetOrg), fresh = server(freshOrg);
     const exported = await requestJson(source, `/api/v2/organizations/${sourceOrg}/module-structure/exports`, { method: "POST", body: "{}" });
     expect(exported.status, exported.bodyText).toBe(200);
     expect(exported.body).toMatchObject({ subjects: expect.arrayContaining([
-      expect.objectContaining({ subjectId: "csub_acme_charger", ownerSubjectId: "csub_acme_sensor" })]) });
+      expect.objectContaining({ subjectId: "csub_acme_charger", ownerSubjectId: "csub_acme_sensor", displayAlias: "Source child display alias" })]) });
     const path = `/api/v2/organizations/${targetOrg}/module-structure`;
     const input = { mode: "copy", document: exported.body, mappings: { [sourceModule]: targetModule }, resolutions: {} };
     const conflict = await requestJson(target, `${path}/previews`, { method: "POST", body: JSON.stringify(input) });
     expect(conflict.status, conflict.bodyText).toBe(200);
-    expect(conflict.body).toMatchObject({ conflicts: [expect.objectContaining({ key: "subject:csub_acme_charger:ownerSubjectId", file: "csub_acme_sensor", current: "csub_acme_power" })] });
+    expect(conflict.body).toMatchObject({ conflicts: [
+      expect.objectContaining({ key: "subject:csub_acme_charger:ownerSubjectId", file: "csub_acme_sensor", current: "csub_acme_power" }),
+      expect.objectContaining({ key: "subject:csub_acme_charger:displayAlias", file: "Source child display alias", current: null }),
+    ] });
     const childIdentity = (await db.query<{ id: string; current_placement_id: string }>("select id,current_placement_id from parameter_catalog.organization_subject_registrations where organization_id=$1 and subject_id='csub_acme_charger'", [targetOrg])).rows[0]!;
     for (const choice of ["current", "file"] as const) {
-      const selected = { ...input, resolutions: { "subject:csub_acme_charger:ownerSubjectId": choice } };
+      const selected = { ...input, resolutions: { "subject:csub_acme_charger:ownerSubjectId": choice, "subject:csub_acme_charger:displayAlias": choice } };
       const preview = await requestJson(target, `${path}/previews`, { method: "POST", body: JSON.stringify(selected) });
       expect(preview.status, preview.bodyText).toBe(200);
       expect(preview.body).toMatchObject({ conflicts: [] });
@@ -755,6 +760,10 @@ describe("module structure export", () => {
       expect(applied.status, applied.bodyText).toBe(200);
       expect((await db.query("select id,current_placement_id,owner_subject_id from parameter_catalog.organization_subject_registrations where id=$1", [childIdentity.id])).rows[0])
         .toEqual({ ...childIdentity, owner_subject_id: choice === "file" ? "csub_acme_sensor" : null });
+      const targetExport = await requestJson(target, `${path}/exports`, { method: "POST", body: "{}" });
+      expect(targetExport.body).toMatchObject({ subjects: expect.arrayContaining([
+        expect.objectContaining({ subjectId: "csub_acme_charger", displayAlias: choice === "file" ? "Source child display alias" : null, placement: null }),
+      ]) });
     }
     const stale = await requestJson(target, `${path}/previews`, { method: "POST", body: JSON.stringify(input) });
     expect(stale.status, stale.bodyText).toBe(200);
@@ -769,8 +778,8 @@ describe("module structure export", () => {
     const freshApply = await requestJson(fresh, `${freshPath}/applies`, { method: "POST", body: JSON.stringify({ ...freshInput,
       token: (freshPreview.body as { token: string }).token, idempotencyKey: "copy-owner-fresh", reason: "Copy organization owners" }) });
     expect(freshApply.status, freshApply.bodyText).toBe(200);
-    expect((await db.query("select owner_subject_id from parameter_catalog.organization_subject_registrations where organization_id=$1 and subject_id='csub_acme_charger'", [freshOrg])).rows)
-      .toEqual([{ owner_subject_id: "csub_acme_sensor" }]);
+    expect((await db.query("select owner_subject_id, display_alias from parameter_catalog.organization_subject_registrations where organization_id=$1 and subject_id='csub_acme_charger'", [freshOrg])).rows)
+      .toEqual([{ owner_subject_id: "csub_acme_sensor", display_alias: "Source child display alias" }]);
     expect((await db.query("select owner_subject_id from parameter_catalog.catalog_subjects where id='csub_acme_charger'")).rows)
       .toEqual([{ owner_subject_id: "csub_acme_power" }]);
   });
@@ -888,9 +897,51 @@ describe("module structure export", () => {
     const unsupported = await requestJson(targetApp, `${path}/previews`, { method: "POST", body: JSON.stringify({ ...input,
       document: { ...document, subjects: [{ subjectId: "unsupported" }] } }) });
     expect(unsupported.status).toBe(400);
-    await db.query("delete from parameter_modules where id=$1", [childId]);
-    const missing = await requestJson(targetApp, `${path}/previews`, { method: "POST", body: JSON.stringify(input) });
-    expect(missing.status).toBe(409);
+    await db.query(`insert into parameter_modules(id,organization_id,name,path,kind,origin)
+      values ('copy-corrected',$1,'Corrected','copy-corrected','business','curated'),
+             ('copy-final',$1,'Final','copy-final','business','curated')`, [target]);
+    const correct = (targetId: string, revision: number) => ({ ...input,
+      mappingCorrections: { "copy-child": { targetId, revision } } });
+    const previewCopy = (body: unknown) => requestJson<z.infer<typeof moduleStructurePreviewResponseSchema>>(targetApp,
+      `${path}/previews`, { method: "POST", body: JSON.stringify(body) });
+    const confirmCopy = (body: object, token: string, idempotencyKey: string) => requestJson(targetApp,
+      `${path}/applies`, { method: "POST", body: JSON.stringify({ ...body, token, idempotencyKey, reason: "Correct saved mapping" }) });
+    const correction = correct("copy-corrected", 1);
+    const review = await previewCopy(correction);
+    expect(review.status, review.bodyText).toBe(200);
+    expect(review.body).toMatchObject({
+      mappings: expect.arrayContaining([expect.objectContaining({ ref: "copy-child", selected: "copy-corrected", history: [expect.objectContaining({ moduleId: childId, available: true })] })]),
+      changes: expect.arrayContaining([{ moduleId: "copy-child", field: "mapping", before: childId, after: "copy-corrected" }]),
+      conflicts: expect.arrayContaining([expect.objectContaining({ key: "copy-child:parentRef", file: "copy-existing", current: null })]),
+    });
+    const settled = { ...correction, resolutions: { "copy-child:parentRef": "current", "copy-child:name": "current" } };
+    const live = await previewCopy(settled);
+    expect(live.body.conflicts).toEqual([]);
+    expect((await confirmCopy(settled, live.body.token, "correct-mapping-live")).status).toBe(200);
+    expect((await confirmCopy(settled, live.body.token, "correct-mapping-live")).status).toBe(200);
+    expect((await confirmCopy(settled, live.body.token, "stale-mapping")).status).toBe(409);
+    expect((await previewCopy(settled)).body.changes).toEqual([]);
+    await db.query("delete from parameter_modules where id=any($1::text[])", [[childId, "copy-corrected"]]);
+    const missing = await previewCopy(input);
+    expect(missing.status, missing.bodyText).toBe(200);
+    expect(missing.body).toMatchObject({
+      mappings: expect.arrayContaining([expect.objectContaining({ ref: "copy-child", history: [
+        expect.objectContaining({ moduleId: childId, available: false }), expect.objectContaining({ moduleId: "copy-corrected", available: false }),
+      ] })]),
+      conflicts: [expect.objectContaining({ key: "mapping:copy-child", current: "copy-corrected" })],
+    });
+    expect((await previewCopy(correct("export-root", 2))).status).toBe(409);
+    const fixDeleted = { ...correct("copy-final", 2), resolutions: settled.resolutions };
+    const repaired = await previewCopy(fixDeleted);
+    expect(repaired.body.conflicts).toEqual([]);
+    expect((await confirmCopy(fixDeleted, repaired.body.token, "correct-mapping-deleted")).status).toBe(200);
+    const final = await previewCopy(input);
+    expect(final.body).toMatchObject({ changes: [], conflicts: [], mappings: expect.arrayContaining([expect.objectContaining({ ref: "copy-child", selected: "copy-final",
+      history: [expect.objectContaining({ moduleId: childId }), expect.objectContaining({ moduleId: "copy-corrected" }), expect.objectContaining({ moduleId: "copy-final" })] })]) });
+    expect((await previewCopy(resolved)).body).toMatchObject({ changes: [], conflicts: [], mappings: expect.arrayContaining([
+      expect.objectContaining({ ref: "copy-child", selected: "copy-final" }),
+    ]) });
+    expect((await previewCopy(settled)).status).toBe(409);
     const cross = await requestJson(targetApp, `/api/v2/organizations/${org}/module-structure/previews`, { method: "POST", body: JSON.stringify(input) });
     expect(cross.status).toBe(403);
   });

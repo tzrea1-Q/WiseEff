@@ -13,8 +13,9 @@ import {
   getJob,
   getReceiptByJobId,
   insertReceipt,
+  sha256DigestOfBytes,
 } from "../../catalog-publication/persistence/store";
-import type { CatalogActivationReceiptRecord } from "../../catalog-publication/persistence/types";
+import type { CatalogActivationReceiptRecord, ReleaseArtifactRecord } from "../../catalog-publication/persistence/types";
 import {
   CatalogActivationReceiptId,
   CatalogMaterializationFingerprint,
@@ -52,6 +53,8 @@ import {
   type CatalogInstallOutcome,
 } from "./publicationTypes";
 import { isPublicationFrozen } from "../../catalog-publication/runtime/freeze";
+import { inspectSubjectRulesImpact } from "../../catalog-publication/subjectRulesImpact";
+import { subjectRulesProvenance } from "../compiler/subjectIdentity";
 
 export type PublicationActivationOptions = MaterializeReleaseOptions;
 
@@ -109,10 +112,19 @@ export const refuseRetiredOwnerDefinitionChanges = (compiled: CompiledCatalogRel
   }
 };
 
-export const asQueryable = (client: Pick<pg.Client, "query">): Queryable => ({
+export const asQueryable = (client: Pick<pg.Client, "query">, deadline?: number): Queryable => ({
   query: async (text, values = []) => {
-    const result = await client.query(text, values);
-    return { rows: result.rows, rowCount: result.rowCount };
+    remainingPublicationTime(deadline);
+    try {
+      const result = await client.query(text, values);
+      return { rows: result.rows, rowCount: result.rowCount };
+    } catch (error) {
+      // Keep cancellation in the activation error contract before stores classify SQL errors.
+      if (deadline !== undefined && isPublicationTimeoutError(error)) {
+        throw new PublicationActivationFailure({ kind: "activation-timeout" });
+      }
+      throw error;
+    }
   },
 });
 
@@ -158,6 +170,154 @@ const parseArtifactBundle = (
     });
   }
   return parsed as CatalogReleaseBundle;
+};
+
+type OnlinePublicationCommand = Extract<InstallPublishedReleaseCommand, { mode: "online-publication" }>;
+type ArtifactIdentity = Pick<ReleaseArtifactRecord, "id" | "artifactDigest" | "bytesChecksum" | "targetReleaseId" | "targetReleaseDigest">;
+type OnlinePublicationPreparation =
+  | { readonly kind: "prepared"; readonly artifact: ArtifactIdentity; readonly compiled: CompiledCatalogRelease }
+  | { readonly kind: "receipt" }
+  | { readonly kind: "failed"; readonly error: unknown };
+
+export function remainingPublicationTime(deadline: number | undefined): number | undefined {
+  if (deadline === undefined) return undefined;
+  const remaining = deadline - Date.now();
+  if (remaining <= 0) throw new PublicationActivationFailure({ kind: "activation-timeout" });
+  return Math.min(Math.ceil(remaining), 2_147_483_647);
+}
+
+export const isPublicationTimeoutError = (error: unknown): boolean =>
+  error instanceof pg.DatabaseError && (error.code === "57014" || error.code === "25P03");
+
+export async function applyPublicationTimeouts(client: Pick<pg.Client, "query">, deadline: number | undefined): Promise<void> {
+  const remaining = remainingPublicationTime(deadline);
+  if (remaining === undefined) return;
+  await client.query(`select pg_catalog.set_config(name,
+      least($1::integer, coalesce(nullif(setting::integer, 0), $1::integer))::text || 'ms', true)
+    from pg_catalog.pg_settings
+    where name in ('statement_timeout', 'idle_in_transaction_session_timeout')`, [remaining]);
+}
+
+const requireOnlineJob = async (db: Queryable, command: OnlinePublicationCommand): Promise<void> => {
+  const job = await getJob(db, command.jobId);
+  if (!job.ok) {
+    throw new PublicationActivationFailure({
+      kind: "publication-not-authorized", reason: "publication-not-authorized", detail: "publication job not found",
+    });
+  }
+  if (job.value.candidateId !== command.candidateId || job.value.authorizationId !== command.authorizationId) {
+    throw new PublicationActivationFailure({
+      kind: "activation-receipt-mismatch", jobId: command.jobId,
+      detail: "command job/candidate/authorization tuple does not match the stored job",
+    });
+  }
+  if (job.value.fencingToken !== command.fencingToken) {
+    throw new PublicationActivationFailure({
+      kind: "fencing-token-mismatch", expected: command.fencingToken, actual: job.value.fencingToken,
+    });
+  }
+};
+
+const readOnlineArtifact = async (pool: pg.Pool, command: OnlinePublicationCommand): Promise<ReleaseArtifactRecord | null> => {
+  const client = await pool.connect();
+  let discard = false;
+  try {
+    await client.query("begin isolation level repeatable read read only");
+    await setSynchronizerRole(client);
+    await applyPublicationTimeouts(client, command.activationDeadlineMs);
+    const db = asQueryable(client, command.activationDeadlineMs);
+    await requireOnlineJob(db, command);
+    const receipt = await getReceiptByJobId(db, command.jobId);
+    if (receipt.ok) {
+      await client.query("commit");
+      return null;
+    }
+    const candidate = await getCandidate(db, command.candidateId);
+    if (!candidate.ok) {
+      throw new PublicationActivationFailure({
+        kind: "publication-not-authorized", reason: "candidate-stale", detail: "candidate not found",
+      });
+    }
+    const artifact = await getArtifactByDigest(db, candidate.value.artifactDigest);
+    if (!artifact.ok) {
+      throw new PublicationActivationFailure({ kind: "artifact-missing", detail: "candidate artifact bytes are missing" });
+    }
+    if (artifact.value.artifactDigest !== candidate.value.artifactDigest || artifact.value.id !== candidate.value.artifactId) {
+      throw new PublicationActivationFailure({
+        kind: "publication-not-authorized", reason: "candidate-tampered", detail: "artifact identity does not match the candidate",
+      });
+    }
+    await client.query("commit");
+    return artifact.value;
+  } catch (error) {
+    await client.query("rollback").catch(() => { discard = true; });
+    throw error;
+  } finally {
+    client.release(discard || undefined);
+  }
+};
+
+/** Prepare immutable artifact data after returning the read connection to the pool. */
+export const prepareOnlinePublication = async (
+  pool: pg.Pool,
+  command: OnlinePublicationCommand,
+  options?: PublicationActivationTestOptions,
+): Promise<OnlinePublicationPreparation> => {
+  try {
+    remainingPublicationTime(command.activationDeadlineMs);
+    const loaded = await readOnlineArtifact(pool, command);
+    if (loaded === null) return { kind: "receipt" };
+    remainingPublicationTime(command.activationDeadlineMs);
+    const { id, artifactDigest, bytesChecksum, targetReleaseId, targetReleaseDigest, artifactBytes } = loaded;
+    if (sha256DigestOfBytes(artifactBytes) !== bytesChecksum) {
+      throw new PublicationActivationFailure({
+        kind: "publication-not-authorized", reason: "candidate-tampered", detail: "candidate artifact checksum does not match its bytes",
+      });
+    }
+    let bundle: CatalogReleaseBundle;
+    try {
+      bundle = parseArtifactBundle(artifactBytes);
+    } catch (error) {
+      if (error instanceof PublicationActivationFailure) throw error;
+      throw new PublicationActivationFailure({ kind: "artifact-missing", detail: "stored artifact bytes are unreadable" });
+    }
+    remainingPublicationTime(command.activationDeadlineMs);
+    const compiled = compileCatalogRelease(bundle);
+    remainingPublicationTime(command.activationDeadlineMs);
+    if (!compiled.ok) throw new CatalogInstallFailure(compiled.error);
+    refuseUnsupportedConsumerCapability(compiled.value, options?.consumerCapability?.allowList ?? CATALOG_CAPABILITY_ALLOW_LIST);
+    remainingPublicationTime(command.activationDeadlineMs);
+    if (compiled.value.aggregateDigest !== artifactDigest ||
+        compiled.value.release.id !== targetReleaseId || compiled.value.release.digest !== targetReleaseDigest) {
+      throw new PublicationActivationFailure({
+        kind: "publication-not-authorized", reason: "candidate-tampered", detail: "compiled artifact does not match the stored release pins",
+      });
+    }
+    return { kind: "prepared", artifact: { id, artifactDigest, bytesChecksum: loaded.storageBytesChecksum ?? bytesChecksum, targetReleaseId, targetReleaseDigest }, compiled: compiled.value };
+  } catch (error) {
+    // A matching receipt or authoritative authorization failure can supersede this probe.
+    return { kind: "failed", error };
+  }
+};
+
+const requirePreparedArtifact = async (
+  client: Pick<pg.Client, "query">,
+  artifact: ArtifactIdentity,
+  candidate: { readonly artifactId: ReleaseArtifactRecord["id"]; readonly artifactDigest: string },
+): Promise<void> => {
+  const result = await client.query<{ present: boolean }>(
+    `select exists (
+       select 1 from catalog_publication.release_artifacts
+        where id = $1 and artifact_digest = $2 and bytes_checksum = $3
+          and target_release_id = $4 and target_release_digest = $5
+     ) as present`,
+    [candidate.artifactId, candidate.artifactDigest, artifact.bytesChecksum, artifact.targetReleaseId, artifact.targetReleaseDigest],
+  );
+  if (!result.rows[0]?.present || candidate.artifactId !== artifact.id || candidate.artifactDigest !== artifact.artifactDigest) {
+    throw new PublicationActivationFailure({
+      kind: "publication-not-authorized", reason: "candidate-stale", detail: "candidate artifact changed during preparation",
+    });
+  }
 };
 
 const receiptSummary = (
@@ -424,40 +584,16 @@ const evidenceMatches = (
 
 export const activateOnlinePublication = async (
   client: pg.PoolClient,
-  command: Extract<InstallPublishedReleaseCommand, { mode: "online-publication" }>,
+  command: OnlinePublicationCommand,
+  preparation: OnlinePublicationPreparation,
   options?: PublicationActivationTestOptions,
 ): Promise<CatalogInstallOutcome> => {
   await acquirePublicationGuardLock(client);
   if (options?.afterGuard) {
     await options.afterGuard(client);
   }
-  const db = asQueryable(client);
-
-  const job = await getJob(db, command.jobId);
-  if (!job.ok) {
-    throw new PublicationActivationFailure({
-      kind: "publication-not-authorized",
-      reason: "publication-not-authorized",
-      detail: "publication job not found",
-    });
-  }
-  if (
-    job.value.candidateId !== command.candidateId ||
-    job.value.authorizationId !== command.authorizationId
-  ) {
-    throw new PublicationActivationFailure({
-      kind: "activation-receipt-mismatch",
-      jobId: command.jobId,
-      detail: "command job/candidate/authorization tuple does not match the stored job",
-    });
-  }
-  if (job.value.fencingToken !== command.fencingToken) {
-    throw new PublicationActivationFailure({
-      kind: "fencing-token-mismatch",
-      expected: command.fencingToken,
-      actual: job.value.fencingToken,
-    });
-  }
+  const db = asQueryable(client, command.activationDeadlineMs);
+  await requireOnlineJob(db, command);
 
   const existingReceipt = await getReceiptByJobId(db, command.jobId);
   if (existingReceipt.ok) {
@@ -484,10 +620,14 @@ export const activateOnlinePublication = async (
     });
   }
 
+  const trustedActor = command.refreshTrustedActor ? await command.refreshTrustedActor() : command.trustedActor;
+  if (trustedActor === null) {
+    throw new PublicationActivationFailure({ kind: "publication-not-authorized", reason: "publication-capability-missing" });
+  }
   const authorized = await verifyAuthorizationForActivation(db, {
     candidateId: command.candidateId,
     authorizationId: command.authorizationId,
-    trustedActor: command.trustedActor,
+    trustedActor,
     impactFacts: command.impactFacts,
     lockMode: "publication-guard",
     consumerRevisions: options?.consumerCapability?.revisions,
@@ -500,64 +640,15 @@ export const activateOnlinePublication = async (
     });
   }
 
-  const candidate = await getCandidate(db, command.candidateId);
-  if (!candidate.ok) {
+  if (preparation.kind === "failed") throw preparation.error;
+  if (preparation.kind === "receipt") {
     throw new PublicationActivationFailure({
-      kind: "publication-not-authorized",
-      reason: "candidate-stale",
-      detail: "candidate not found",
+      kind: "activation-receipt-mismatch", jobId: command.jobId, detail: "prepared receipt is missing during activation",
     });
   }
-  const artifact = await getArtifactByDigest(db, candidate.value.artifactDigest);
-  if (!artifact.ok) {
-    throw new PublicationActivationFailure({
-      kind: "artifact-missing",
-      detail: "candidate artifact bytes are missing",
-    });
-  }
-  if (artifact.value.artifactDigest !== candidate.value.artifactDigest) {
-    throw new PublicationActivationFailure({
-      kind: "publication-not-authorized",
-      reason: "candidate-tampered",
-      detail: "artifact digest does not match the candidate",
-    });
-  }
-
-  let bundle: CatalogReleaseBundle;
-  try {
-    bundle = parseArtifactBundle(artifact.value.artifactBytes);
-  } catch (error) {
-    if (error instanceof PublicationActivationFailure) throw error;
-    throw new PublicationActivationFailure({
-      kind: "artifact-missing",
-      detail: "stored artifact bytes are unreadable",
-    });
-  }
-  const compiled = compileCatalogRelease(bundle);
-  if (!compiled.ok) {
-    throw new CatalogInstallFailure(compiled.error);
-  }
-  refuseUnsupportedConsumerCapability(
-    compiled.value,
-    options?.consumerCapability?.allowList ?? CATALOG_CAPABILITY_ALLOW_LIST,
-  );
-  if (compiled.value.aggregateDigest !== candidate.value.artifactDigest) {
-    throw new PublicationActivationFailure({
-      kind: "publication-not-authorized",
-      reason: "candidate-tampered",
-      detail: "compiled artifact digest does not match the candidate",
-    });
-  }
-  if (
-    compiled.value.release.id !== artifact.value.targetReleaseId ||
-    compiled.value.release.digest !== artifact.value.targetReleaseDigest
-  ) {
-    throw new PublicationActivationFailure({
-      kind: "publication-not-authorized",
-      reason: "candidate-tampered",
-      detail: "compiled release pin does not match the artifact target pin",
-    });
-  }
+  const { candidate } = authorized.value;
+  const { artifact, compiled } = preparation;
+  await requirePreparedArtifact(client, artifact, candidate);
 
   const pointer = await readCurrentCatalogPointer(client);
   const expectedCurrent = command.expectedCurrent;
@@ -569,45 +660,66 @@ export const activateOnlinePublication = async (
     throw new PublicationActivationFailure({
       kind: "needs-rebase",
       installed: pointer.kind === "installed" ? pointer.current : null,
-      target: identityFromCompiled(compiled.value),
+      target: identityFromCompiled(compiled),
       expectedCurrent,
     });
   }
   if (
-    compiled.value.predecessor === null ||
-    compiled.value.predecessor.id !== expectedCurrent.id ||
-    compiled.value.predecessor.digest !== expectedCurrent.digest ||
-    candidate.value.expectedBaseReleaseId !== expectedCurrent.id ||
-    candidate.value.expectedBaseReleaseDigest !== expectedCurrent.digest
+    compiled.predecessor === null ||
+    compiled.predecessor.id !== expectedCurrent.id ||
+    compiled.predecessor.digest !== expectedCurrent.digest ||
+    candidate.expectedBaseReleaseId !== expectedCurrent.id ||
+    candidate.expectedBaseReleaseDigest !== expectedCurrent.digest
   ) {
     throw new PublicationActivationFailure({
       kind: "needs-rebase",
       installed: pointer.current,
-      target: identityFromCompiled(compiled.value),
+      target: identityFromCompiled(compiled),
       expectedCurrent,
     });
   }
 
-  refuseRetiredOwnerDefinitionChanges(compiled.value);
-  await materializeCompiledRelease(client, compiled.value, options);
+  await applyPublicationTimeouts(client, command.activationDeadlineMs);
+  refuseRetiredOwnerDefinitionChanges(compiled);
+  const target = compiled.model.releases.find(release => release.release.id === compiled.release.id);
+  if (target?.documents.some(document => subjectRulesProvenance(document)?.reviewReference === compiled.release.id)) {
+    const review = candidate.identityAllocation.subjectRulesReview;
+    const organizationId = candidate.identityAllocation.authorOrganizationId;
+    const base = compiled.model.releases.find(release => release.release.id === expectedCurrent.id);
+    if (!review || typeof review !== "object" || Array.isArray(review) ||
+        !("subjectId" in review) || typeof review.subjectId !== "string" ||
+        !("fingerprint" in review) || typeof organizationId !== "string" || !base) {
+      throw new PublicationActivationFailure({ kind: "publication-not-authorized", reason: "candidate-tampered" });
+    }
+    const checked = await inspectSubjectRulesImpact(db, {
+      subjectId: review.subjectId, before: base.documents, after: target.documents,
+    });
+    if (checked.fingerprint !== review.fingerprint || checked.impact.conflictCounts.length) {
+      throw new PublicationActivationFailure({ kind: "needs-rebase", installed: pointer.current,
+        target: identityFromCompiled(compiled), expectedCurrent });
+    }
+  }
+  await materializeCompiledRelease(client, compiled, options);
   if (options?.afterMaterialize) {
     await options.afterMaterialize(client);
   }
 
-  const staged = await verifyStagedReleaseProjection(client, compiled.value);
+  await applyPublicationTimeouts(client, command.activationDeadlineMs);
+  const staged = await verifyStagedReleaseProjection(client, compiled);
   if (!staged.ok) {
     throw new CatalogInstallFailure(staged.error);
   }
   maybeFailStage(options, "staged-verify");
+  await applyPublicationTimeouts(client, command.activationDeadlineMs);
 
   const inserted = await insertReceipt(db, {
     id: CatalogActivationReceiptId(`crct_${randomUUID()}`),
     kind: "online-publication",
-    releaseId: compiled.value.release.id,
-    releaseDigest: compiled.value.release.digest,
-    predecessorReleaseId: candidate.value.expectedBaseReleaseId,
-    predecessorReleaseDigest: candidate.value.expectedBaseReleaseDigest,
-    verificationDigest: compiled.value.materializationFingerprint,
+    releaseId: compiled.release.id,
+    releaseDigest: compiled.release.digest,
+    predecessorReleaseId: candidate.expectedBaseReleaseId,
+    predecessorReleaseDigest: candidate.expectedBaseReleaseDigest,
+    verificationDigest: compiled.materializationFingerprint,
     publicationJobId: command.jobId,
     authorizationId: command.authorizationId,
     candidateId: command.candidateId,
@@ -625,17 +737,17 @@ export const activateOnlinePublication = async (
     actorPrincipalId: authorized.value.authorization.actorPrincipalId,
     action: "online-publication",
     receiptId: inserted.value.id,
-    releaseId: compiled.value.release.id,
-    releaseDigest: compiled.value.release.digest,
-    verificationDigest: compiled.value.materializationFingerprint,
+    releaseId: compiled.release.id,
+    releaseDigest: compiled.release.digest,
+    verificationDigest: compiled.materializationFingerprint,
     publicationJobId: command.jobId,
     candidateId: command.candidateId,
   });
   maybeFailStage(options, "receipt");
 
-  await restoreCurrentDefinitionHeads(client, compiled.value.release.id);
+  await restoreCurrentDefinitionHeads(client, compiled.release.id);
   maybeFailStage(options, "pointer");
-  await advanceCurrentPointer(client, compiled.value.release.id);
+  await advanceCurrentPointer(client, compiled.release.id);
   await client.query("set constraints all immediate");
   await markJobActivated(client, command.jobId, command.fencingToken);
   maybeFailStage(options, "job-status");
@@ -644,11 +756,11 @@ export const activateOnlinePublication = async (
     status: "installed",
     commandKind: "online-publication",
     previous: expectedCurrent,
-    current: identityFromCompiled(compiled.value),
+    current: identityFromCompiled(compiled),
     receipt: receiptSummary(inserted.value),
     currentness: "active",
-    materializationFingerprint: compiled.value.materializationFingerprint,
-    counts: compiled.value.counts,
+    materializationFingerprint: compiled.materializationFingerprint,
+    counts: compiled.counts,
   };
 };
 

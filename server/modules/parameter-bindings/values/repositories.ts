@@ -246,7 +246,7 @@ export async function loadSourceBindingCohortReadOnly(tx: Queryable, input: { or
 }
 
 /** Snapshot restore retains exact identities, including members retired since
- * that immutable revision. Replaced Definitions are never restoration targets. */
+ * that immutable revision. Superseded identities stay available for historical reads. */
 export async function loadConfigurationRestoreCohort(tx: Queryable, input: {
   organizationId: string; projectId: string; configSetId: string; snapshotRevisionId: string;
 }) {
@@ -269,6 +269,8 @@ export async function loadConfigurationRestoreCohort(tx: Queryable, input: {
     where binding.organization_id=$1 and binding.project_id=$2 and occurrence.config_set_id=$3
       and (active.id is not null or historical.id is not null)
       and not parameter_catalog.is_replaced_current_binding(binding.id)
+      and not exists(select 1 from parameter_catalog.json_instance_corrections correction
+        where correction.previous_occurrence_id=occurrence.id)
     order by binding.id`, [input.organizationId,input.projectId,input.configSetId,input.snapshotRevisionId])).rows;
 }
 
@@ -541,6 +543,21 @@ export const loadOwnedSourceRefs = async (
   );
   return result.rows.map((row) => row.source_ref);
 };
+
+export async function loadProjectValuesByIds(
+  client: ValueClient,
+  valueIds: readonly string[],
+): Promise<ProjectValueRow[]> {
+  if (!valueIds.length) return [];
+  const result = await client.query<ProjectValueRow>(
+    `select id, binding_id, definition_id, definition_revision_id,
+            source_ref, config_revision_id, value_digest, value_kind, value, value_state, created_at
+       from parameter_catalog.${projectParameterValues}
+      where id = any($1::text[])`,
+    [valueIds],
+  );
+  return result.rows;
+}
 
 export const loadHistoryByRevision = async (
   client: ValueClient,

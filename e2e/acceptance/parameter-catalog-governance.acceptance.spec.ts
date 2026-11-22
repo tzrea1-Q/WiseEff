@@ -364,5 +364,60 @@ test.describe("canonical parameter catalog governance interactions", () => {
     await page.reload();
     await expect(row).toContainText(targetName);
     await catalogScreenshot(page, testInfo, "http-placement-persisted-1440x900");
+
+    const openAliasEditor = async () => {
+      await row.getByRole("button", { name: /^编辑主体：/ }).press("Enter");
+      await dialog.getByRole("tab", { name: "归属", exact: true }).press("Enter");
+      return dialog.getByRole("textbox", { name: "展示别名" });
+    };
+    const alias = await openAliasEditor();
+    await expect(alias).toHaveValue("");
+    await alias.fill("长".repeat(129));
+    await expect(alias).toHaveAttribute("aria-invalid", "true");
+    await expect(dialog.getByRole("button", { name: "继续确认" })).toBeDisabled();
+    await alias.fill("组织内电源名称");
+    await catalogScreenshot(page, testInfo, "subject-display-alias-editor-1440x900");
+
+    const saveAlias = async () => {
+      await dialog.getByRole("button", { name: "继续确认" }).press("Enter");
+      const confirmation = page.getByRole("dialog", { name: "确认修改展示别名", exact: true });
+      await confirmation.getByRole("checkbox").press("Space");
+      const receipt = page.waitForResponse(response => response.status() === 200 &&
+        response.request().method() === "PATCH" && new URL(response.url()).pathname === path);
+      await confirmation.getByRole("button", { name: "确认修改展示别名" }).press("Enter");
+      await expect(dialog).toHaveCount(0);
+      return (await receipt).request();
+    };
+    const savedAlias = await saveAlias();
+    expect(savedAlias.postDataJSON()).toEqual({ displayAlias: { value: "组织内电源名称", registrationEtag: expect.any(String) } });
+    await expect(row).toContainText("组织内电源名称");
+    await expect(row).toContainText(subjectItem.canonicalName);
+    await page.reload();
+    await expect(row).toContainText("组织内电源名称");
+
+    const aliasWrite = { headers: { "X-WiseEff-Catalog-Release": fixture.chain.pinF.id,
+      "If-Match": persisted.headers.etag, "Idempotency-Key": savedAlias.headers()["idempotency-key"] }, data: savedAlias.postDataJSON() };
+    expect((await catalogJson(page.request, "PATCH", path, aliasWrite)).status).toBe(200);
+    const newKey = { ...aliasWrite, headers: { ...aliasWrite.headers, "Idempotency-Key": `alias-stale:${registrationId}` } };
+    expect((await catalogJson(page.request, "PATCH", path, newKey)).status).toBe(409);
+    expect((await catalogJson(page.request, "PATCH", path, { ...newKey, actor: "user" })).status).toBe(403);
+    expect((await catalogJson(page.request, "PATCH", path, { ...newKey, data: {} })).status).toBe(400);
+    const originalModuleId = (initial.body as { item: { moduleId: string } }).item.moduleId;
+    const staleCombinedWrite = await catalogJson(page.request, "PATCH", path, {
+      ...newKey, data: { ...newKey.data, placement: { mode: "use-default" }, destinationModuleId: originalModuleId }
+    });
+    expect(staleCombinedWrite.status).toBe(409);
+
+    await openAliasEditor();
+    await expect(alias).toHaveValue("组织内电源名称");
+    await alias.fill("");
+    await saveAlias();
+    await expect(row).not.toContainText("组织内电源名称");
+    const unchangedPlacement = await catalogJson(page.request, "GET", path);
+    expect(unchangedPlacement.body).toEqual(persisted.body);
+    expect(unchangedPlacement.headers.etag).toBe(persisted.headers.etag);
+    const audits = await fixture.pool.query(`select metadata->'requestedDisplayAlias' as alias from public.audit_events
+      where organization_id=$1 and target_id=$2 and action='registration-update-display-alias' order by created_at`, [fixture.organizationId, registrationId]);
+    expect(audits.rows).toEqual([{ alias: "组织内电源名称" }, { alias: null }]);
   });
 });

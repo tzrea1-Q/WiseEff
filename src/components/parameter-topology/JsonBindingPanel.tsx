@@ -1,6 +1,10 @@
+import { ParameterTablePager } from "@/components/ParameterTablePager";
+import { useWorkbenchPagination } from "./useWorkbenchPagination";
 import { NavigatorWorkbench } from "@/components/layout/NavigatorWorkbench";
+import { withOrganizationScope } from "@/infrastructure/http/organizationScope";
 import { SectionEmpty } from "@/components/common/SectionState";
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { DefinitionDocumentation } from "@/components/parameters/DefinitionDocumentation";
+import { memo, useCallback, useDeferredValue, useEffect, useId, useMemo, useRef, useState } from "react";
 import { ArrowUpRight, Boxes, CircleX, Download, FileCode } from "lucide-react";
 import type {
   CanonicalDtsDefinitionDetail,
@@ -58,6 +62,8 @@ export type PrimaryJsonSource = {
 
 export type JsonBindingPanelProps = {
   bindings: readonly ProjectParameterBinding[];
+  configSetId?: string;
+  organizationId?: string;
   requestedBindingId?: string;
   pendingDrafts?: readonly PendingBindingDraft[];
   requestedEditBindingId?: string;
@@ -166,6 +172,8 @@ function findEarliestJsonSourceLine(
 /** JSON bindings workbench matching DTS layout (Topology Navigator + Table + Modal Dialogs). */
 export function JsonBindingPanel({
   bindings,
+  configSetId,
+  organizationId,
   requestedBindingId,
   pendingDrafts,
   requestedEditBindingId,
@@ -386,37 +394,36 @@ export function JsonBindingPanel({
     if (!requestedEditBindingId || handledEditRequest.current === request
       || !jsonBindings.some((binding) => binding.id === requestedEditBindingId)) return;
     handledEditRequest.current = request;
+    setResultsMode("parameters");
+    setQuery("");
+    setSelectedNodeId(null);
     setViewingBindingId(requestedEditBindingId);
     setDetailTab("configuration");
-  }, [requestedEditBindingId, editRequestToken, jsonBindings]);
+  }, [requestedEditBindingId, editRequestToken, jsonBindings, setSelectedNodeId]);
 
   const subtreeBindingIds = useMemo(
     () => selectedSubtreeBindingIds(tree, effectiveSelectedNodeId),
     [effectiveSelectedNodeId, tree]
   );
 
+  const deferredQuery = useDeferredValue(query);
+  const bindingSearchFields = useMemo(() => new Map(jsonBindings.map((binding) => [binding.id, [
+    `${binding.propertyKey} ${binding.currentDisplayName ?? ""} ${binding.displayName ?? ""}`,
+    `${moduleLabel(binding)} ${binding.moduleId ?? ""} ${binding.driverModule ?? ""}`,
+    binding.instanceName ?? "",
+    binding.locator ?? "",
+    binding.rawValue ?? ""
+  ].map((field) => field.toLowerCase())])), [jsonBindings, moduleLabel]);
   const filteredBindings = useMemo(() => {
-    let result = jsonBindings;
-    if (subtreeBindingIds) {
-      result = result.filter((b) => subtreeBindingIds.has(b.id));
-    }
-    const q = query.trim().toLowerCase();
-    if (!q) return result;
-    return result.filter((binding) => {
-      const prop = `${binding.propertyKey} ${binding.currentDisplayName ?? ""} ${binding.displayName ?? ""}`.toLowerCase();
-      const mod = `${moduleLabel(binding)} ${binding.moduleId ?? ""} ${binding.driverModule ?? ""}`.toLowerCase();
-      const inst = (binding.instanceName ?? "").toLowerCase();
-      const loc = (binding.locator ?? "").toLowerCase();
-      const val = (binding.rawValue ?? "").toLowerCase();
-      return (
-        prop.includes(q) ||
-        mod.includes(q) ||
-        inst.includes(q) ||
-        loc.includes(q) ||
-        val.includes(q)
-      );
-    });
-  }, [jsonBindings, query, subtreeBindingIds, moduleLabel]);
+    const q = deferredQuery.trim().toLowerCase();
+    if (!q && !subtreeBindingIds) return jsonBindings;
+    return jsonBindings.filter((binding) =>
+      (!subtreeBindingIds || subtreeBindingIds.has(binding.id)) &&
+      (!q || bindingSearchFields.get(binding.id)?.some((field) => field.includes(q))));
+  }, [jsonBindings, deferredQuery, subtreeBindingIds, bindingSearchFields]);
+  const focusIndex = useMemo(() => filteredBindings.findIndex((binding) => binding.id === viewingBindingId), [filteredBindings, viewingBindingId]);
+  const { start, end, pager } = useWorkbenchPagination(filteredBindings.length,
+    JSON.stringify([configSetId, deferredQuery, effectiveSelectedNodeId]), viewingBindingId, focusIndex);
 
   const syntaxStatus = useMemo(() => {
     if (!draftRaw.trim()) return { valid: false, message: "请输入有效的 JSON 值；空字符串请填写双引号。" };
@@ -467,10 +474,10 @@ export function JsonBindingPanel({
       .finally(() => { if (request === historyRequest.current) setHistoryLoading(false); });
   };
 
-  const openDetail = (bindingId: string) => {
+  const openDetail = useCallback((bindingId: string) => {
     openerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     setViewingBindingId(bindingId);
-  };
+  }, []);
 
   const closeDialogs = () => {
     if (validating) return;
@@ -716,62 +723,17 @@ export function JsonBindingPanel({
                         </td>
                       </tr>
                     ) : (
-                      filteredBindings.map((binding) => {
-                        const isDraft = draftBindingIds?.has(binding.id) ?? false;
-                        const isSelected = viewingBindingId === binding.id;
-                        const rowModuleLabel = moduleLabel(binding);
-
-                        return (
-                          <tr
-                            key={binding.id}
-                            className={`json-parameter-workbench-table__row${isSelected ? " is-selected" : ""}${isDraft ? " is-draft" : ""}`}
-                            onClick={() => openDetail(binding.id)}
-                          >
-                            <td className="dts-parameter-workbench-table__property">
-                              <div className="json-parameter-workbench__property-cell">
-                                <strong>{binding.currentDisplayName || binding.displayName || binding.propertyKey}</strong>
-                                {(binding.currentDisplayName || binding.displayName) ? <small><code>{binding.propertyKey}</code></small> : null}
-                                {isDraft ? (
-                                  <span className="dts-parameter-workbench-table__draft-badge">草稿</span>
-                                ) : null}
-                              </div>
-                            </td>
-                            <td>
-                              <span className="dts-parameter-workbench-table__module">
-                                <strong>{rowModuleLabel}</strong>
-                              </span>
-                            </td>
-                            <td className="dts-parameter-workbench-table__identity">
-                              <div className="json-parameter-workbench__identity-cell">
-                                <strong>{binding.instanceName ?? "—"}</strong>
-                                {binding.locator ? <small>{binding.locator}</small> : null}
-                              </div>
-                            </td>
-                            <td>
-                              <code className="json-parameter-workbench-table__value-preview" title={binding.rawValue}>
-                                {binding.rawValue}
-                              </code>
-                            </td>
-                            <td className="json-parameter-workbench-table__th-actions" onClick={(e) => e.stopPropagation()}>
-                              <div className="dts-parameter-workbench-table__actions">
-                                <button
-                                  type="button"
-                                  className="button subtle dts-parameter-workbench-table__icon-action"
-                                  title="参数详情"
-                                  aria-label={`参数详情 ${binding.propertyKey}`}
-                                  onClick={() => openDetail(binding.id)}
-                                >
-                                  <ArrowUpRight size={15} strokeWidth={1.9} aria-hidden="true" />
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      })
+                      filteredBindings.slice(start, end).map((binding) => (
+                        <JsonBindingRow key={binding.id} binding={binding}
+                          isDraft={draftBindingIds?.has(binding.id) ?? false}
+                          isSelected={viewingBindingId === binding.id}
+                          moduleLabel={moduleLabel} openDetail={openDetail} />
+                      ))
                     )}
                   </tbody>
                 </table>
               </div>
+              {filteredBindings.length > 50 ? <ParameterTablePager {...pager} /> : null}
             </div>
           ) : jsonSource ? (
             <ProjectPrimaryDtsViewer
@@ -819,9 +781,12 @@ export function JsonBindingPanel({
                      {latestStatus === "error" ? <p role="status">最新目录说明暂不可用，当前展示项目固定修订。</p> : null}
                      {visibleLatestDefinition && visibleLatestDefinition.revisionId !== (activeViewBinding.effectiveRevisionId ?? activeViewBinding.parameterSpecVersionId) ?
                        <p role="status">当前目录定义 v{visibleLatestDefinition.revisionNumber} · 项目合同仍固定于 {activeViewBinding.effectiveRevisionId ?? activeViewBinding.parameterSpecVersionId}。说明来自最新目录，项目的校验规则与参数值未改变。</p> : null}
-                     {visibleLatestDefinition ? (visibleLatestDefinition.documentation ? <p>{visibleLatestDefinition.documentation}</p> : null)
-                       : activeViewBinding.description || activeViewBinding.documentation ? <p>{activeViewBinding.description || activeViewBinding.documentation}</p> : null}
-                     {visibleLatestDefinition?.examples?.length ? <div><strong>最新目录示例（仅供参考）</strong><pre>{JSON.stringify(visibleLatestDefinition.examples, null, 2)}</pre></div> : null}
+                     {visibleLatestDefinition?.recommendedDefinition ? <p>此定义已弃用。推荐使用 <a
+                       href={withOrganizationScope(`/parameters/definitions?${new URLSearchParams({ definitionId: visibleLatestDefinition.recommendedDefinition.id })}`, organizationId)}>
+                       {visibleLatestDefinition.recommendedDefinition.displayName}</a>。</p> : null}
+                     {!visibleLatestDefinition && activeViewBinding.description ? <p>{activeViewBinding.description}</p>
+                       : <DefinitionDocumentation documentation={visibleLatestDefinition ? visibleLatestDefinition.documentation : activeViewBinding.documentation} />}
+                     {visibleLatestDefinition?.examples?.length ? <div><strong>最新目录示例（仅供参考）</strong><pre>{visibleLatestDefinition.examples.map((example) => JSON.stringify(example)).join("\n")}</pre></div> : null}
                     <pre className="json-binding-card__preview-code">{prettyJson(activeViewBinding.rawValue)}</pre>
                     <p className="json-binding-detail__hint">类型：JSON · {activeViewBinding.schemaState === "valid" ? "有效配置" : "待校验"}</p>
                   </section>
@@ -902,3 +867,61 @@ export function JsonBindingPanel({
     </section>
   );
 }
+
+
+const JsonBindingRow = memo(function JsonBindingRow({
+  binding, isDraft, isSelected, moduleLabel, openDetail
+}: {
+  binding: ProjectParameterBinding;
+  isDraft: boolean;
+  isSelected: boolean;
+  moduleLabel: (binding: ProjectParameterBinding) => string;
+  openDetail: (id: string) => void;
+}) {
+  const rowModuleLabel = useMemo(() => moduleLabel(binding), [binding, moduleLabel]);
+  return (
+    <tr
+      className={`json-parameter-workbench-table__row${isSelected ? " is-selected" : ""}${isDraft ? " is-draft" : ""}`}
+      onClick={() => openDetail(binding.id)}
+    >
+      <td className="dts-parameter-workbench-table__property">
+        <div className="json-parameter-workbench__property-cell">
+          <strong>{binding.currentDisplayName || binding.displayName || binding.propertyKey}</strong>
+          {(binding.currentDisplayName || binding.displayName) ? <small><code>{binding.propertyKey}</code></small> : null}
+          {isDraft ? (
+            <span className="dts-parameter-workbench-table__draft-badge">草稿</span>
+          ) : null}
+        </div>
+      </td>
+      <td>
+        <span className="dts-parameter-workbench-table__module">
+          <strong>{rowModuleLabel}</strong>
+        </span>
+      </td>
+      <td className="dts-parameter-workbench-table__identity">
+        <div className="json-parameter-workbench__identity-cell">
+          <strong>{binding.instanceName ?? "—"}</strong>
+          {binding.locator ? <small>{binding.locator}</small> : null}
+        </div>
+      </td>
+      <td>
+        <code className="json-parameter-workbench-table__value-preview" title={binding.rawValue}>
+          {binding.rawValue}
+        </code>
+      </td>
+      <td className="json-parameter-workbench-table__th-actions" onClick={(e) => e.stopPropagation()}>
+        <div className="dts-parameter-workbench-table__actions">
+          <button
+            type="button"
+            className="button subtle dts-parameter-workbench-table__icon-action"
+            title="参数详情"
+            aria-label={`参数详情 ${binding.propertyKey}`}
+            onClick={() => openDetail(binding.id)}
+          >
+            <ArrowUpRight size={15} strokeWidth={1.9} aria-hidden="true" />
+          </button>
+        </div>
+      </td>
+    </tr>
+  );
+});

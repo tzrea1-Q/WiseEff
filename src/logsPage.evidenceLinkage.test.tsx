@@ -51,35 +51,35 @@ describe("LogsPage · 证据与原始日志联动", () => {
     expect(within(chain).queryByText("建议处置")).not.toBeInTheDocument();
     expect(chain).not.toHaveTextContent("关联处置：");
   });
-  it("点击证据卡会聚焦对应原始日志行", () => {
+  it("点击证据卡会聚焦对应原始日志行", async () => {
     window.history.replaceState(null, "", `/logs?logId=${initialState.logs[0].id}`);
     render(<App initialAppState={userState} />);
 
-    fireEvent.click(screen.getByRole("button", { name: "证据 01 日志解析" }));
+    fireEvent.click(await screen.findByRole("button", { name: "证据 01 日志解析" }));
 
     expect(screen.getByTestId("rawlog-line-20")).toHaveClass("rawlog-line--anchor-focus");
   });
 
-  it("点击带证据的原始日志行会聚焦证据卡", () => {
+  it("点击带证据的原始日志行会聚焦证据卡", async () => {
     window.history.replaceState(null, "", `/logs?logId=${initialState.logs[0].id}`);
     render(<App initialAppState={userState} />);
 
-    const rawLog = screen.getByRole("region", { name: "原始日志" });
+    const rawLog = await screen.findByRole("region", { name: "原始日志" });
     fireEvent.click(within(rawLog).getByRole("button", { name: "跳转到第 25 行对应证据" }));
 
     expect(screen.getByRole("button", { name: "证据 02 模式匹配" })).toHaveClass("evidence-card--focused");
   });
 
-  it("悬停证据卡时高亮对应原始日志行", () => {
+  it("悬停证据卡时高亮对应原始日志行", async () => {
     window.history.replaceState(null, "", `/logs?logId=${initialState.logs[0].id}`);
     render(<App initialAppState={userState} />);
 
-    fireEvent.mouseEnter(screen.getByRole("button", { name: "证据 03 根因推断" }));
+    fireEvent.mouseEnter(await screen.findByRole("button", { name: "证据 03 根因推断" }));
 
     expect(screen.getByTestId("rawlog-line-30")).toHaveClass("rawlog-line--anchor-hover");
   });
 
-  it("links API-hydrated evidence line numbers to raw rows without mock-only ids", () => {
+  it("links API-hydrated evidence line numbers to raw rows without mock-only ids", async () => {
     const state = {
       ...initialState,
       activeRoleId: "user",
@@ -90,6 +90,7 @@ describe("LogsPage · 证据与原始日志联动", () => {
     window.history.replaceState(null, "", "/logs");
     const { container } = render(<App initialAppState={state} />);
 
+    await screen.findByRole("region", { name: "日志分析证据链" });
     const evidenceCard = container.querySelector(".evidence-card") as HTMLElement;
     expect(evidenceCard).not.toBeNull();
     expect(within(evidenceCard).getByText(/ASCII inference from API hydrated evidence/)).toBeInTheDocument();

@@ -119,6 +119,7 @@ describe("fresh database fixture policy", () => {
       "server/modules/catalog-kernel/security/retainedDismissedIdentities.integration.test.ts": ["retainedfresh:true", "retainedids:false"],
       "server/modules/catalog-publication/persistence/markdownSourceUpgrade.integration.test.ts": ["md_source_upgrade:false"],
       "server/modules/catalog-publication/persistence/schema.integration.test.ts": ["cp02pop:false"],
+      "server/modules/catalog-publication/previewGrowth.integration.test.ts": ["previewgrowth:false"],
       // The cleanup upgrade must create its API LOGIN before the erasure routines exist.
       "server/modules/catalog-publication/runtime/definitionCleanupUpgrade.integration.test.ts": ["cleanup_acl_upgrade:false"],
       "server/modules/catalog-publication/runtime/draftReadUpgrade.integration.test.ts": ["draft_acl_upgrade:false", "structure_baseline_upgrade:false"],
@@ -131,6 +132,8 @@ describe("fresh database fixture policy", () => {
       "server/modules/logs/webhookMigration.acl.integration.test.ts": ["whacl:false"],
       "server/modules/parameter-bindings/binding/propertyDeleteMigration.integration.test.ts": ["deleteupgrade:false"],
       "server/modules/parameter-bindings/binding/sourceOccurrenceMigration.integration.test.ts": ["src_occ_0151:false"],
+      // Seed the published Catalog before replaying the subject-identity migration.
+      "server/modules/parameter-catalog-api/publication/subjectIdentity.integration.test.ts": ["identity1577:false"],
       "server/modules/parameter-catalog-migration/sourceOccurrenceGuard.integration.test.ts": ["srcintegrityupgrade:false"],
       "server/modules/parameter-files/canonicalJsonSource.integration.test.ts": ["json_digest_upgrade:false"],
       "server/modules/parameter-files/memberAdditionIntentUpgrade.integration.test.ts": ["intentupgrade:false"],
@@ -166,7 +169,6 @@ describe("fresh database fixture policy", () => {
     });
     expect(manual.sort()).toEqual([
       "scripts/wayfinder/parameter-catalog-rehearsal.integration.test.ts",
-      "server/modules/parameter-files/canonicalReleaseReadinessHttp.integration.test.ts",
       "server/modules/parameter-specs/populatedUpgrade.integration.test.ts",
       "server/shared/database/migrations.test.ts",
       "server/testing/parameterCatalog/database.test.ts"

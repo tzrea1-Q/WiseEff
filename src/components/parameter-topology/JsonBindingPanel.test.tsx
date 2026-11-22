@@ -1,3 +1,4 @@
+import { selectControlOption } from "@/test/selectControlOption";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ProjectParameterBinding } from "@/domain/parameter-topology/types";
@@ -80,21 +81,59 @@ const moduleRegistry: ParameterModuleRegistry = {
   ]
 };
 
+function paginationBindings(count: number) {
+  return Array.from({ length: count }, (_, index) => ({
+    ...jsonBinding,
+    id: `paged-${index + 1}`,
+    propertyKey: `paged-${String(index + 1).padStart(4, "0")}`
+  }));
+}
+
+it("bounds the 4000-binding JSON fixture to 100 DOM rows", () => {
+  const { container } = render(<JsonBindingPanel bindings={paginationBindings(4000)} />);
+  expect(container.querySelectorAll("tbody tr")).toHaveLength(100);
+});
+
+it("pages JSON bindings and resets on search and config-set change", async () => {
+  const bindings = paginationBindings(250);
+  const view = render(<JsonBindingPanel bindings={bindings} configSetId="first" />);
+  const count = () => view.container.querySelectorAll("tbody tr").length;
+  expect(count()).toBe(100);
+  await selectControlOption(screen.getByRole("combobox", { name: "每页条数" }), "50");
+  expect(count()).toBe(50);
+  fireEvent.click(screen.getByRole("button", { name: "下一页" }));
+  fireEvent.change(screen.getByRole("searchbox", { name: "搜索 JSON 参数" }), { target: { value: "paged" } });
+  expect(screen.getByText("第 1 / 5 页")).toBeVisible();
+  fireEvent.click(screen.getByRole("button", { name: "下一页" }));
+  view.rerender(<JsonBindingPanel bindings={bindings} configSetId="second" />);
+  expect(screen.getByText("第 1 / 5 页")).toBeVisible();
+});
+
+it("lands a requested JSON binding on page two and highlights it", () => {
+  const { container } = render(<JsonBindingPanel bindings={paginationBindings(250)} requestedBindingId="paged-180" />);
+  expect(container.querySelector("tbody tr.is-selected")).toHaveTextContent("paged-0180");
+  expect(screen.getByText("第 2 / 3 页")).toBeInTheDocument();
+  expect(screen.getByRole("dialog")).toHaveTextContent("paged-0180");
+});
+
 describe("JsonBindingPanel", () => {
   it("shows latest published meaning while keeping a pinned JSON value", async () => {
     const loadLatestParameterSpec = vi.fn().mockResolvedValue({
       definitionId: "canonical-json", propertyKey: "charging-policy", revisionId: "rev-new",
       revisionNumber: 4, contentDigest: "sha256:rev-new", displayName: "最新 JSON 名称",
       documentation: "最新已发布的 JSON 说明", unit: null, examples: ["sample"],
+      recommendedDefinition: { id: "json-next", propertyKey: "next-policy", displayName: "推荐 JSON 参数" },
       valueShape: { kind: "json-schema", schema: { type: "object" } },
       constraints: { kind: "none" }, catalogReleaseId: "release-new"
     });
     render(<JsonBindingPanel bindings={[{ ...jsonBinding, definitionId: "canonical-json",
       effectiveRevisionId: "rev-old", documentation: "旧 JSON 说明" }]}
-      loadLatestParameterSpec={loadLatestParameterSpec} />);
+      loadLatestParameterSpec={loadLatestParameterSpec} organizationId="org-target" />);
     fireEvent.click(screen.getByRole("button", { name: "参数详情 charging-policy" }));
     const dialog = await screen.findByRole("dialog", { name: "最新 JSON 名称 参数详情" });
     expect(within(dialog).getByText("最新已发布的 JSON 说明")).toBeInTheDocument();
+    expect(within(dialog).getByRole("link", { name: "推荐 JSON 参数" })).toHaveAttribute("href",
+      "/parameters/definitions?definitionId=json-next&organizationId=org-target");
     expect(within(dialog).queryByText("旧 JSON 说明")).not.toBeInTheDocument();
     expect(within(dialog).getByText(/项目合同仍固定于 rev-old/)).toBeInTheDocument();
     expect(within(dialog).getByRole("region", { name: "当前配置" })

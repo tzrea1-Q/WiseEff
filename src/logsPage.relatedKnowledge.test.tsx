@@ -16,9 +16,10 @@ afterEach(() => {
   window.history.replaceState(null, "", "/");
 });
 
-function renderLogsPage(path = "/logs") {
+async function renderLogsPage(path = "/logs") {
   window.history.replaceState(null, "", path);
   render(<App initialAppState={userState} />);
+  await screen.findByRole("complementary", { name: "历史日志记录" });
 }
 
 function selectCompleteLog() {
@@ -68,7 +69,7 @@ describe("LogsPage · 相关知识", () => {
 
   it.each(["history", "deep-link"])("Complete 日志从 %s 在报告中展示相关已发布知识,深链进入条目详情", async (source) => {
     const log = initialState.logs.find((record) => record.fileName.includes("usb_pd_negotiation"))!;
-    renderLogsPage(source === "deep-link" ? `/logs?logId=${log.id}` : "/logs");
+    await renderLogsPage(source === "deep-link" ? `/logs?logId=${log.id}` : "/logs");
     if (source === "history") selectCompleteLog();
     expect(screen.getByRole("tab", { name: "报告", selected: true })).toBeInTheDocument();
 
@@ -93,8 +94,8 @@ describe("LogsPage · 相关知识", () => {
     expect(within(detail).getByText("已发布")).toBeInTheDocument();
   });
 
-  it("Processing 日志不渲染相关知识区块", () => {
-    renderLogsPage();
+  it("Processing 日志不渲染相关知识区块", async () => {
+    await renderLogsPage();
 
     const history = screen.getByRole("complementary", { name: "历史日志记录" });
     fireEvent.click(within(history).getByRole("button", { name: /charging_thermal_trace/ }));

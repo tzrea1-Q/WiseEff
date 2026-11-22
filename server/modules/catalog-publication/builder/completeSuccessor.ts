@@ -10,7 +10,7 @@ import {
   serializeContract,
   type ContractJsonValue,
 } from "../../parameter-catalog-contract/index";
-import { compileCatalogRelease } from "../../catalog-kernel/compiler/index";
+import { createCatalogReleaseDigestValidator, freezeCatalogJson, validateIdentityAppendDigest } from "../../catalog-kernel/compiler/index";
 import type {
   CatalogReleaseBundle,
   CatalogReleaseDefinitionDocument,
@@ -31,13 +31,17 @@ import type {
   JsonObject,
   PersistArtifactInput,
   PersistCandidateInput,
+  PreviewSnapshot,
 } from "../persistence/types";
 import {
   CATALOG_CAPABILITY_ALLOW_LIST,
   CATALOG_CAPABILITY_CONTRACT_REVISION,
   CATALOG_STANDALONE_SUBJECT_CAPABILITY_REVISION,
   CATALOG_SUBJECT_OWNER_CAPABILITY_REVISION,
+  CATALOG_SUBJECT_IDENTITY_CAPABILITY_REVISION,
+  CATALOG_SUBJECT_RULES_CAPABILITY_REVISION,
   validateSupportedDefinitionContent,
+  validateDtsExamples,
 } from "./capabilities";
 import {
   canonicalDigest,
@@ -67,6 +71,10 @@ import type {
   SupportedDefinitionContent,
 } from "./types";
 import { preparedPredecessorBundle } from "./preparedPredecessor";
+import { subjectIdentityProvenance } from "../../catalog-kernel/compiler/subjectIdentity";
+import { publicationHistoryCapabilities } from "./identitySnapshot";
+import { applySubjectIdentityChange } from "./subjectIdentity";
+import { applySubjectRulesChange } from "./subjectRules";
 
 const SHA256_DIGEST = /^sha256:[0-9a-f]{64}$/;
 const CREATE_DEFINITION_KEYS = new Set(["op", "subjectId", "propertyKey", "content"]);
@@ -80,7 +88,7 @@ const CREATE_SUBJECT_KEYS = new Set([
   "cardinality",
   "ownerSubjectId",
 ]);
-const REVISE_KEYS = new Set(["op", "definitionId", "class", "content"]);
+const REVISE_KEYS = new Set(["op", "definitionId", "class", "content", "successorDefinitionId", "reason"]);
 const LIFECYCLE_CHANGE_KEYS = new Set(["op", "definitionId", "class", "content", "reason"]);
 const SELECTOR_KEYS = new Set(["kind", "value"]);
 const DECLARE_OWNER_KEYS = new Set(["op", "subjectId", "ownerSubjectId"]);
@@ -104,7 +112,7 @@ const changeSortKey = (change: CatalogChange): string => {
     return `revise\0${change.definitionId}`;
   }
   if (change.op === "declare-subject-owner") return `zz-owner\0${change.subjectId}`;
-  return `subject\0${change.canonicalKey}`;
+  return "canonicalKey" in change ? `subject\0${change.canonicalKey}` : `identity\0${change.subjectId}`;
 };
 
 const ok = <T>(value: T): { readonly ok: true; readonly value: T } => ({ ok: true, value });
@@ -144,15 +152,20 @@ export function impactSummaryFromReport(impact: CatalogImpactReport): {
   };
 }
 
-const capabilityContract = (changeSet: readonly CatalogChange[], documents: readonly CatalogReleaseDocument[]): CapabilityContract => {
+const capabilityContract = (changeSet: readonly CatalogChange[], documents: readonly CatalogReleaseDocument[], hasSubjectRules: boolean, hasDtsExamples: boolean): CapabilityContract => {
   const identity = CATALOG_CAPABILITY_ALLOW_LIST;
-  const revision = documents.some((document) => document.kind === "subject" && document.content.ownerSubjectId)
+  const { maxDtsExamples, maxDtsExampleChars, ...legacyBudgets } = identity.budgets;
+  const budgets = hasDtsExamples ? { ...legacyBudgets, maxDtsExamples, maxDtsExampleChars } : legacyBudgets;
+  const revision = hasSubjectRules
+    ? CATALOG_SUBJECT_RULES_CAPABILITY_REVISION
+    : documents.some(subjectIdentityProvenance) ? CATALOG_SUBJECT_IDENTITY_CAPABILITY_REVISION
+    : documents.some((document) => document.kind === "subject" && document.content.ownerSubjectId)
     ? CATALOG_SUBJECT_OWNER_CAPABILITY_REVISION : changeSet.some((change) => change.op === "create-subject")
     ? CATALOG_STANDALONE_SUBJECT_CAPABILITY_REVISION : CATALOG_CAPABILITY_CONTRACT_REVISION;
   return {
     revision,
     allowListId: identity.id,
-    allowListDigest: canonicalDigest({ ...identity, revision } as unknown as ContractJsonValue),
+    allowListDigest: canonicalDigest({ ...identity, revision, budgets } as unknown as ContractJsonValue),
     valueTypes: [...identity.valueTypes],
     units: [...identity.units],
   };
@@ -166,6 +179,7 @@ const canonicalPublishedAt = (value: string): boolean => {
 
 const loadPredecessor = async (
   input: BuildCompleteSuccessorInput,
+  validateDigest: ReturnType<typeof createCatalogReleaseDigestValidator>,
 ): Promise<
   | {
       readonly ok: true;
@@ -185,17 +199,17 @@ const loadPredecessor = async (
     bundle = parsed.bundle;
   }
   // Reusing JSON never skips source, lineage or aggregate-digest validation.
-  const compiled = compileCatalogRelease(bundle);
-  if (!compiled.ok) {
-    return { ok: false, error: { kind: "predecessor-incomplete", cause: compiled.error } };
+  const validated = validateDigest(bundle);
+  if (!validated.ok) {
+    return { ok: false, error: { kind: "predecessor-incomplete", cause: validated.error } };
   }
-  if (compiled.value.aggregateDigest !== digest) {
+  if (validated.value.aggregateDigest !== digest) {
     return {
       ok: false,
       error: {
         kind: "artifact-digest-mismatch",
         expected: digest,
-        actual: compiled.value.aggregateDigest,
+        actual: validated.value.aggregateDigest,
       },
     };
   }
@@ -241,7 +255,7 @@ const readPredecessorBytes = async (
       error: { kind: "predecessor-incomplete", cause: { detail: parsed.detail } },
     };
   }
-  return { ok: true, bundle: parsed.bundle };
+  return { ok: true, bundle: freezeCatalogJson(parsed.bundle) };
 };
 
 const definitionDocuments = (
@@ -267,12 +281,14 @@ export const contentClassOf = (
     "/valueSchema": previous.valueSchema,
     "/matching": previous.matching,
     "/lifecycle": previous.lifecycle,
+    "/successorDefinitionId": previous.successorDefinitionId ?? null,
   });
   const nextSemantic = serializeContract({
     "/unit": next.unit ?? null,
     "/valueSchema": next.valueSchema,
     "/matching": next.matching,
     "/lifecycle": next.lifecycle,
+    "/successorDefinitionId": next.successorDefinitionId ?? null,
   });
   return previousSemantic === nextSemantic ? "documentation" : "semantic";
 };
@@ -372,13 +388,20 @@ const buildImpact = (
   };
 
   const subjects = delta(collectIds(predecessor, "subject"), collectIds(successor, "subject"));
-  const changedSubjectOwners = subjects.unchanged.filter((id) => {
+  const changedSubjects = subjects.unchanged.filter((id) => {
     const before = predecessor.documents.find((document) => document.kind === "subject" && document.content.id === id);
     const after = successor.documents.find((document) => document.kind === "subject" && document.content.id === id);
     return before?.kind === "subject" && after?.kind === "subject"
-      && before.content.ownerSubjectId !== after.content.ownerSubjectId;
+      && (before.content.ownerSubjectId !== after.content.ownerSubjectId ||
+        before.content.selector.value !== after.content.selector.value);
   });
   const aliases = delta(collectIds(predecessor, "alias"), collectIds(successor, "alias"));
+  const previousAliases = new Map(predecessor.documents.flatMap(doc => doc.kind === "alias" ? [[doc.content.id, doc.content] as const] : []));
+  const changedAliases = successor.documents.flatMap(doc => {
+    if (doc.kind !== "alias") return [];
+    const previous = previousAliases.get(doc.content.id);
+    return previous && (previous.subjectId !== doc.content.subjectId || previous.lifecycle !== doc.content.lifecycle) ? [doc.content.id] : [];
+  }).sort();
   const predSelectors = predecessor.documents.flatMap((document) => {
     if (document.kind === "subject") return [document.content.selector.value];
     if (document.kind === "alias") return [document.content.normalizedSelector];
@@ -412,13 +435,13 @@ const buildImpact = (
     definitions: { added, changed, unchanged },
     subjects: {
       added: subjects.added,
-      changed: changedSubjectOwners,
-      unchanged: subjects.unchanged.filter((id) => !changedSubjectOwners.includes(id)),
+      changed: changedSubjects,
+      unchanged: subjects.unchanged.filter((id) => !changedSubjects.includes(id)),
     },
     aliases: {
       added: aliases.added,
-      changed: [],
-      unchanged: aliases.unchanged,
+      changed: changedAliases,
+      unchanged: aliases.unchanged.filter(id => !changedAliases.includes(id)),
     },
     selectors: {
       added: selectorDelta.added,
@@ -427,7 +450,7 @@ const buildImpact = (
     },
     matcher: {
       existingMatchRulesChanged,
-      fallbackImpact: newNodeType || changedSubjectOwners.length > 0 || selectorDelta.added.length > 0 || selectorDelta.removed.length > 0,
+      fallbackImpact: newNodeType || changedSubjects.length > 0 || changedAliases.length > 0 || selectorDelta.added.length > 0 || selectorDelta.removed.length > 0,
       newMatchableProperties,
     },
     existingContractsTighten,
@@ -465,6 +488,7 @@ const buildDefinitionDocument = (
       selectorKind: subject.content.selector.kind,
     },
     ...(content.examples != null ? { examples: content.examples } : {}),
+    ...(content.dtsExamples != null ? { dtsExamples: content.dtsExamples } : {}),
     contentDigest: "sha256:" + "0".repeat(64),
   };
   revision.contentDigest = canonicalDigest(revisionContentModel(revision));
@@ -525,6 +549,10 @@ const applyCreateDefinition = (
   if (subject.content.lifecycle !== "active") {
     return { kind: "subject-not-active", subjectId: change.subjectId };
   }
+  const dtsExamples = validateDtsExamples(content.value.dtsExamples, `${path}.content.dtsExamples`, CATALOG_CAPABILITY_ALLOW_LIST, {
+    propertyKey: parsed.value, subjectKind: subject.content.kind, schema: content.value.valueSchema,
+  });
+  if (!dtsExamples.ok) return dtsExamples.error;
   const key = naturalKey(subject.content.id, parsed.value);
   if (claimedNaturalKeys.has(key)) {
     return {
@@ -546,10 +574,11 @@ export const revisedDefinitionContent = (
   current: CatalogReleaseDefinitionDocument["content"]["revision"],
   content: SupportedDefinitionContent,
 ) => {
-  const { description: oldDescription, unit: oldUnit, examples: oldExamples, ...retained } = current;
+  const { description: oldDescription, unit: oldUnit, examples: oldExamples, dtsExamples: oldDtsExamples, ...retained } = current;
   const description = content.description === undefined ? oldDescription : content.description;
   const unit = content.unit === undefined ? oldUnit : content.unit;
   const examples = content.examples === undefined ? oldExamples : content.examples;
+  const dtsExamples = content.dtsExamples === undefined ? oldDtsExamples : content.dtsExamples;
   return {
     ...retained,
     displayName: content.displayName,
@@ -558,8 +587,23 @@ export const revisedDefinitionContent = (
     ...(description != null ? { description } : {}),
     ...(unit != null ? { unit } : {}),
     ...(examples != null ? { examples } : {}),
+    ...(dtsExamples != null ? { dtsExamples } : {}),
   };
 };
+
+function validateRevisedDtsExamples(
+  current: CatalogReleaseDefinitionDocument, content: SupportedDefinitionContent, path: string,
+) {
+  const { propertyKey, revision } = current.content;
+  const { selectorKind } = revision.matching;
+  return validateDtsExamples(
+    content.dtsExamples === undefined ? revision.dtsExamples : content.dtsExamples,
+    `${path}.content.dtsExamples`, CATALOG_CAPABILITY_ALLOW_LIST,
+    { propertyKey,
+      subjectKind: selectorKind === "configuration-schema-id" ? "configuration-schema" : selectorKind === "driver-compatible" ? "driver" : "node-type",
+      schema: content.valueSchema },
+  );
+}
 
 /**
  * Apply one reversible lifecycle change. The new revision keeps the permanent
@@ -594,6 +638,8 @@ const applyDefinitionLifecycleChange = (
   if (!current) {
     return { kind: "invalid-input", reason: `definition not found:${change.definitionId}` };
   }
+  const dtsExamples = validateRevisedDtsExamples(current, content.value, path);
+  if (!dtsExamples.ok) return dtsExamples.error;
   if (current.content.revision.lifecycle === targetLifecycle) {
     return { kind: "noop", document: current };
   }
@@ -641,8 +687,12 @@ const applyReviseDefinition = (
   if (change.class !== "documentation" && change.class !== "semantic") {
     return { kind: "invalid-input", reason: "revise class must be documentation or semantic" };
   }
-  const content = validateSupportedDefinitionContent(change.content, `${path}.content`);
-  if (!content.ok) return content.error;
+  if (change.content === undefined && change.successorDefinitionId === undefined) {
+    return { kind: "invalid-input", reason: "revision-content-required" };
+  }
+  const content = change.content === undefined ? undefined :
+    validateSupportedDefinitionContent(change.content, `${path}.content`);
+  if (content && !content.ok) return content.error;
   const current = documents.find(
     (document): document is CatalogReleaseDefinitionDocument =>
       document.kind === "definition" && document.content.id === change.definitionId,
@@ -650,7 +700,26 @@ const applyReviseDefinition = (
   if (!current) {
     return { kind: "invalid-input", reason: `definition not found:${change.definitionId}` };
   }
-  const nextRevisionFields = revisedDefinitionContent(current.content.revision, content.value);
+  if (content?.ok) {
+    const dtsExamples = validateRevisedDtsExamples(current, content.value, path);
+    if (!dtsExamples.ok) return dtsExamples.error;
+  }
+  const revisionContent = current.content.revision;
+  if (change.successorDefinitionId === change.definitionId) {
+    return { kind: "invalid-input", reason: "definition-successor-invalid" };
+  }
+  if (change.successorDefinitionId !== undefined && revisionContent.lifecycle === "retired") {
+    return { kind: "invalid-input", reason: "definition-retired" };
+  }
+  const revised = content?.ok ? revisedDefinitionContent(revisionContent, content.value) : revisionContent;
+  const { successorDefinitionId: _previousSuccessor, ...withoutSuccessor } = revised;
+  const successorDefinitionId = change.successorDefinitionId;
+  const nextRevisionFields = successorDefinitionId === undefined ? revised : {
+    ...withoutSuccessor,
+    ...(successorDefinitionId === null
+      ? { lifecycle: "active" as const }
+      : { lifecycle: "deprecated" as const, successorDefinitionId }),
+  };
   const previousDigest = canonicalDigest(revisionContentModel(current.content.revision));
   const nextDigest = canonicalDigest(revisionContentModel(nextRevisionFields));
   if (previousDigest === nextDigest) {
@@ -755,6 +824,22 @@ export const persistSuccessorBuild = async (
 export async function buildCompleteSuccessor(
   input: BuildCompleteSuccessorInput,
 ): Promise<BuildCompleteSuccessorResult> {
+  return buildSuccessor(input);
+}
+
+export async function buildIdentitySuccessorFromSnapshot(input: BuildCompleteSuccessorInput, snapshot: PreviewSnapshot): Promise<BuildCompleteSuccessorResult> {
+  const [change] = input.changeSet;
+  if (input.changeSet.length !== 1 || (change.op !== "rename-subject" && change.op !== "set-subject-alias") ||
+      snapshot.target.manifest.release.digest !== input.predecessorArtifact.digest || input.persist) {
+    return fail({ kind: "invalid-input", reason: "invalid identity snapshot build" });
+  }
+  return buildSuccessor(input, snapshot);
+}
+
+async function buildSuccessor(
+  input: BuildCompleteSuccessorInput,
+  snapshot?: PreviewSnapshot,
+): Promise<BuildCompleteSuccessorResult> {
   const productPath = input.productPath ?? "m1";
   if (productPath !== "m1" && productPath !== "m2-core") {
     return fail({ kind: "invalid-input", reason: "productPath must be m1 or m2-core" });
@@ -765,7 +850,10 @@ export async function buildCompleteSuccessor(
       reason: "persist requires a session-bound Database.transaction()",
     });
   }
-  const predecessor = await loadPredecessor(input);
+  const validateDigest = createCatalogReleaseDigestValidator();
+  const predecessor = snapshot ? { ok: true as const, digest: input.predecessorArtifact.digest,
+    bundle: { schemaVersion: "1.0.0" as const, targetReleaseId: snapshot.target.manifest.release.id, releases: [snapshot.target] } }
+    : await loadPredecessor(input, validateDigest);
   if (!predecessor.ok) return fail(predecessor.error);
 
   const predecessorTarget = targetReleaseOf(predecessor.bundle);
@@ -817,6 +905,23 @@ export async function buildCompleteSuccessor(
     }
     if (productPath !== "m2-core" && change.op !== "create-definition") {
       return fail({ kind: "unsupported-change-op", op: change.op });
+    }
+    if (change.op === "rename-subject" || change.op === "set-subject-alias") {
+      if (input.changeSet.length !== 1) {
+        return fail({ kind: "invalid-input", reason: "subject identity corrections are published individually" });
+      }
+      const error = applySubjectIdentityChange(change, documents, frozen.releaseId);
+      if (error) return fail(error);
+      continue;
+    }
+    if (change.op === "set-driver-defaults" || change.op === "change-subject-owner" || change.op === "retire-subject" ||
+      change.op === "restore-subject" || change.op === "replace-subject-kind") {
+      if (input.changeSet.length !== 1) {
+        return fail({ kind: "invalid-input", reason: "subject corrections are published individually" });
+      }
+      const error = applySubjectRulesChange(change, documents, frozen.releaseId);
+      if (error) return fail(error);
+      continue;
     }
     if (change.op === "declare-subject-owner") {
       if (extraKeys(change as unknown as Record<string, unknown>, DECLARE_OWNER_KEYS).length
@@ -1134,18 +1239,37 @@ export async function buildCompleteSuccessor(
   const bundle: CatalogReleaseBundle = {
     schemaVersion: "1.0.0",
     targetReleaseId: successor.manifest.release.id,
-    releases: [...predecessor.bundle.releases, successor],
+    releases: snapshot ? [successor] : [...predecessor.bundle.releases, successor],
   };
-  const compiled = compileCatalogRelease(bundle);
-  if (!compiled.ok) {
+  const validated = snapshot ? validateIdentityAppendDigest(snapshot.target, successor) : validateDigest(bundle);
+  if (!validated.ok) {
     return fail({
       kind: "invalid-release",
-      phase: compiled.error.phase,
-      violations: compiled.error.violations,
+      phase: validated.error.phase,
+      violations: validated.error.violations,
     });
   }
+  // The compiler already proves the chain terminates at an active definition.
+  // Authoring also needs that definition's subject to be currently usable.
+  for (const change of input.changeSet) {
+    if (change.op !== "revise-definition" || !change.successorDefinitionId) continue;
+    let nextId: string | undefined = change.successorDefinitionId;
+    while (nextId) {
+      const definition = successor.documents.find(document => document.kind === "definition" && document.content.id === nextId);
+      if (definition?.kind !== "definition") break;
+      if (definition.content.revision.lifecycle === "active") {
+        const owner = successor.documents.find(document => document.kind === "subject" && document.content.id === definition.content.subjectId);
+        if (owner?.kind !== "subject" || owner.content.lifecycle !== "active") {
+          return fail({ kind: "invalid-input", reason: "definition-successor-terminal-invalid" });
+        }
+        break;
+      }
+      nextId = definition.content.revision.successorDefinitionId;
+    }
+  }
 
-  const contract = capabilityContract(input.changeSet, successor.documents);
+  const history = snapshot ?? publicationHistoryCapabilities(bundle);
+  const contract = capabilityContract(input.changeSet, successor.documents, history.hasSubjectRules, history.hasDtsExamples);
   const impact = { ...buildImpact(predecessorTarget, successor, requestedClasses), capabilityContractRevision: contract.revision };
   const impactReportDigest = canonicalDigest(impact as unknown as ContractJsonValue);
   const artifactBytes = encodeBundleBytes(bundle);
@@ -1176,13 +1300,14 @@ export async function buildCompleteSuccessor(
   });
   const proposal = input.proposal ?? null;
   const artifact = {
+    ...(snapshot ? { storageFormat: "successor-v1" as const } : {}),
     id: frozen.artifactId,
-    artifactDigest: compiled.value.aggregateDigest,
+    artifactDigest: validated.value.aggregateDigest,
     artifactBytes,
     bytesChecksum: sha256DigestOfBytes(artifactBytes),
     sourceKind: "typed-changeset" as const,
     targetReleaseId: CatalogReleaseId(successor.manifest.release.id),
-    targetReleaseDigest: CatalogReleaseDigest(compiled.value.aggregateDigest),
+    targetReleaseDigest: validated.value.aggregateDigest,
     predecessorReleaseId: CatalogReleaseId(predecessorTarget.manifest.release.id),
     predecessorReleaseDigest: CatalogReleaseDigest(predecessor.digest),
     toolchain,
@@ -1191,7 +1316,7 @@ export async function buildCompleteSuccessor(
   const candidate = {
     id: frozen.candidateId,
     artifactId: frozen.artifactId,
-    artifactDigest: compiled.value.aggregateDigest,
+    artifactDigest: validated.value.aggregateDigest,
     expectedBaseReleaseId: CatalogReleaseId(predecessorTarget.manifest.release.id),
     expectedBaseReleaseDigest: CatalogReleaseDigest(predecessor.digest),
     proposalId: proposal?.proposalId ?? null,

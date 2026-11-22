@@ -747,6 +747,7 @@ describe("canonical Catalog roles, grants, and guard reachability", () => {
 
     // Preserve the checksum-pinned 0180 list and the exact forward auth reads.
     // 0321 extends the capture reader for the owner-aware Catalog snapshot and epoch.
+    // 0345 lets the reader resolve an alias owner at its pinned release.
     const migration = await fs.readFile(path.join(migrationsDir, "0180_mod_d02_offline_capture.sql"), "utf8");
     expect(createHash("sha256").update(migration).digest("hex"))
       .toBe("3c7f39c3d5866b0a61be8ccd3b1a5f5c2d44514e9d77857634b303b7237caffb");
@@ -760,6 +761,8 @@ describe("canonical Catalog roles, grants, and guard reachability", () => {
       "public.parameter_modules.archived_at",
       "parameter_catalog.catalog_state.subject_owner_epoch",
       "parameter_catalog.catalog_subjects.owner_subject_id",
+      "parameter_catalog.catalog_release_subject_aliases.subject_id",
+      "parameter_catalog.catalog_release_subjects.rules_snapshot",
       "parameter_catalog.organization_subject_registrations.display_alias",
       "parameter_catalog.organization_subject_registrations.owner_subject_id",
       "parameter_catalog.registration_effective_module.organization_id",
@@ -844,6 +847,7 @@ describe("canonical Catalog roles, grants, and guard reachability", () => {
       "catalog_archive_writes",
       "definition_erasures",
       "definition_purge_rows",
+      "json_instance_corrections",
       "log_erasures",
       "module_structure_export_baselines",
       "module_structure_created_refs",

@@ -55,6 +55,8 @@ bundle 的任何变化都要发布新的不可变 Catalog Release，包括 defin
 
 正式 definition 的任意持久化内容变化都会铸造新的不可变 **DefinitionRevision**，包括 value shape、constraints、units、schema default、definition 级 lifecycle 或 matching metadata、展示文本、示例以及纯 documentation 修正。既有 revision 永不更新或删除。Documentation-only revision 会推进 ParameterDefinition head，但不会改变任何 Binding 的 `effective_revision_id`、创建或替换 Binding，也不会切换当前或历史 ProjectValue。只改变 release provenance、subject selector alias 等 release 层事实而未改变任何持久化 definition snapshot 时，不凭空制造 DefinitionRevision。
 
+Driver 和 NodeType 修订可用可选字段 `dtsExamples` 保存属性示例的 DTS 原文。该字段与 JSON `examples` 分开保存，按属性键和取值 schema 校验，仅在存在时参与修订摘要计算。仅修改 `dtsExamples` 属于文档修订。
+
 definition 的稳定身份仍是 typed formal subject 加永久 property key；opaque ID 与 relational current-head constraint 由 [ADR-0040](../../adr/0040-canonical-parameter-catalog-relational-model.md) 确定。Catalog Release 与 DefinitionRevision 使用不同版本时钟，但 release 是 synchronizer 铸造 revision 的唯一来源。
 
 ### 3. Alias 是 selector alias，不是另一个身份

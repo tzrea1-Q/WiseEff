@@ -206,7 +206,7 @@ async function loadEntryExtras(db: Queryable, auth: AuthContext, rows: Knowledge
     db,
     auth,
     rows.map((row) => row.id),
-    isRootDatabase(db) ? (definitionId) => readCatalogDefinitionForKnowledge(db, auth, definitionId) : undefined
+    isRootDatabase(db) ? (definitionId) => readCatalogDefinitionForKnowledge(db, auth, definitionId, undefined, knowledgeOrganizationId(auth)) : undefined
   );
 
   return rows.map((row) =>

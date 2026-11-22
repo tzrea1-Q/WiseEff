@@ -55,7 +55,19 @@ setup preflight 与 doctor 解析 `DATABASE_URL`：bootstrap 用户 `wiseeff` �
 
 API 设置 `WISEEFF_API_PROCESS=1`，日志 worker 设置 `LOG_WORKER_ENABLED=true`，两者都不加载 `.env.publication-manager`。管理入口要求 `WISEEFF_PUBLICATION_MANAGER=1`。
 
+### 激活超时与重试
+
+`WISEEFF_PUBLICATION_MANAGER_ACTIVATION_TIMEOUT_MS` 的默认值为 60 秒。到达此时间会记录 `activation-timeout`，并检查是否已有提交的激活回执。当前尝试可继续执行，宽限期等于配置的超时时间且最多 60 秒。有效租约至少覆盖超时、宽限期和 5 秒收尾余量。部署中已配置更长租约时，继续使用该值。
+
+目录包解析和编译在获取目录指针锁前完成。激活事务重新核对回执、发布基线、授权、执行令牌和产物身份。超时后，如果旧尝试还没有结束，管理进程等它提交或回滚。达到执行截止时间且未生效的尝试记录 `activation-timeout` 失败原因，并按 `WISEEFF_PUBLICATION_MANAGER_RETRY_BUDGET`（默认 5）进入重试或终态。
+
+处理长时间 `running` 时，按 Job ID 对照管理进程的 `claimed`、`activation-timeout`、`settled` 和 `activated` 事件。用该任务的激活回执确认是否已生效。管理员可以通过只读查询 `catalog_publication.publication_jobs.last_error_reason` 区分激活超时和其他执行故障。
+
 ### 预览和发布的内存预算
+
+共享主体改名和正式别名编辑可以使用当前固定版本的已验证快照生成预览。旧版本首次预览需要校验历史，耗时可能较长。满足快照条件后，每个候选存储本次新增的发布版本及其前序引用。激活和历史回放时会重建完整发布包。涉及快照之外的历史证据时，预览会走完整校验链路。
+
+滚动升级时，先执行数据库迁移并升级发布管理器及其他产物读取端，再启动会写入新格式的 API 实例。生成紧凑格式候选后，激活和历史回放均需要兼容的读取端，应用回滚时也应保留该读取能力。
 
 API 预览和管理进程激活都会编译 Catalog 数据。两个服务各自默认使用 2 GiB RAM
 上限、3 GiB RAM 与交换空间合计上限、1536 MiB V8 老生代堆上限。差额用于年轻代、
@@ -72,6 +84,31 @@ API 预览和管理进程激活都会编译 Catalog 数据。两个服务各自�
 保留其他 `NODE_OPTIONS`，并覆盖该变量中遗留的 `--max-old-space-size`。堆上限应低于
 RAM 上限。日志出现 `FATAL ERROR: ... JavaScript heap out of memory` 就属于 V8
 内存耗尽，即使 Docker 显示 `OOMKilled=false`。
+
+对于内存充足的专用主机（例如总内存 125 GiB、可用约 120 GiB），可将主 `.env`
+中的六项配置替换为：
+
+```dotenv
+WISEEFF_API_MEMORY_LIMIT=16g
+WISEEFF_API_MEMORY_SWAP_LIMIT=16g
+WISEEFF_API_MAX_OLD_SPACE_SIZE_MB=12288
+WISEEFF_PUBLICATION_MANAGER_MEMORY_LIMIT=16g
+WISEEFF_PUBLICATION_MANAGER_MEMORY_SWAP_LIMIT=16g
+WISEEFF_PUBLICATION_MANAGER_MAX_OLD_SPACE_SIZE_MB=12288
+```
+
+两个服务的 RAM 上限合计 32 GiB，各自给 V8 老生代以外的分配留出 4 GiB。
+RAM 和 RAM 加交换空间的上限相等，两个服务不使用交换空间。上限不会预先分配内存。
+数据库沿用现有配置，根据数据库的观测结果单独调优。
+
+在该配置下处理大目录发布时，可在 `.env.publication-manager` 中将激活超时阈值
+放宽到 3 分钟，并重建发布管理进程：
+
+```dotenv
+WISEEFF_PUBLICATION_MANAGER_ACTIVATION_TIMEOUT_MS=180000
+```
+
+收尾宽限期和有效租约按上文规则计算。此设置用于确认发布后，管理进程激活排队任务的阶段。
 
 应用代码修改按正常[升级流程](upgrade.zh-CN.md)部署。如果只是用当前运行镜像恢复
 资源配置，先更新 Compose 配置，然后在允许 API 短暂中断时执行以下命令。示例适用于
@@ -100,7 +137,7 @@ WISEEFF_APP_TAG="${wiseeff_app_image##*:}" \
 ```bash
 ./scripts/compose --env-file .env ps -a -q api publication-manager |
   xargs -r docker inspect --format \
-  '{{.Name}} memory={{.HostConfig.Memory}} memorySwap={{.HostConfig.MemorySwap}} command={{json .Config.Cmd}} restarts={{.RestartCount}}'
+  '{{.Name}} memory={{.HostConfig.Memory}} memorySwap={{.HostConfig.MemorySwap}} command={{json .Config.Cmd}} restarts={{.RestartCount}} oom={{.State.OOMKilled}}'
 ./scripts/compose --env-file .env exec -T api \
   curl -fsS http://127.0.0.1:8787/health/live
 ./scripts/compose --env-file .env exec -T publication-manager \
@@ -112,6 +149,11 @@ WISEEFF_APP_TAG="${wiseeff_app_image##*:}" \
 `--max-old-space-size=1536`。单独执行未携带该命令行参数的 `exec ... node -e`，得到的
 是新探针进程默认堆上限，而非运行中服务的堆上限。重试一次导入预览，确认成功且重启
 计数没有增加。健康检查通过不能代替导入与发布验收。
+使用 16 GiB 配置时，两个上限均应显示 `17179869184`，Node 参数应为
+`--max-old-space-size=12288`。若仍报错，记录失败请求的路径、状态码、耗时和响应
+请求 ID。预览请求 `POST /api/v2/catalog/publication-candidates` 由 API 处理。
+如果预览通过、确认发布后任务失败，按任务 ID 查看发布管理进程日志。结合容器的重启
+计数和 OOM 状态判断网关错误是否由内存不足引起。
 
 ## 2. 预检已有目录
 
@@ -171,12 +213,12 @@ npx tsx scripts/catalog-publication-ops.ts policy status
 
 ```bash
 npx tsx scripts/catalog-publication-ops.ts policy enable --actor <user-id> \
-  --confirmation ephemeral-test-only [--low-risk-single-actor]
+  --confirmation ephemeral-test-only
 npx tsx scripts/catalog-publication-ops.ts policy disable --actor <user-id> \
   --confirmation ephemeral-test-only
 ```
 
-仅当 `current_database()` 符合临时库名模式且确认口令匹配时才能走这条路径。`--low-risk-single-actor` 是独立选择，默认保持当前值，不与启用捆绑。
+仅当 `current_database()` 符合临时库名模式且确认口令匹配时才能走这条路径。旧版 `low_risk_single_actor_publish` 字段及其命令行选项为兼容保留。发布批准取决于候选风险和操作人权限。
 
 **非临时实例：** 必须先 check 再 execute，引脚来自刚读到的 status，不能套用过期确认。不要使用 ephemeral 确认口令。
 
@@ -187,8 +229,7 @@ npx tsx scripts/catalog-publication-ops.ts policy check enable --actor <user-id>
   --expected-digest sha256:... \
   --expected-policy-revision <n> \
   --expected-frozen true|false \
-  --expected-adopted true \
-  [--low-risk-single-actor|--no-low-risk-single-actor]
+  --expected-adopted true
 npx tsx scripts/catalog-publication-ops.ts policy enable --actor <user-id> \
   --expected-database-oid <oid> \
   --expected-id <crel_...> \
@@ -228,7 +269,7 @@ overlay **只覆盖网络/端口/拓扑**（loopback 端口、`host.docker.inter
 | 1. 升级后状态读取 | `./scripts/collect-catalog-publication-status.sh`（或 `compose ps`、镜像内 `curl` manager `/health/live`、`policy status`、`freeze status`） | 否 | 运行镜像/标签、角色、current Release、策略版本、freeze；JSON `pinsForPolicyCheck` | 已经跑过 `publication-manager` 的栈缺少专用 LOGIN |
 | 2. 源包与接管检查 | 只读 `inspect`；`adopt --check` | 否 | JSON 身份与源包一致 | 漂移、缺历史或缺 Artifact |
 | 3. 接管 + ACL + 能力 | `adopt --execute`；组织 Admin 默认已有 `catalog:author` / `catalog:publish` / `catalog:review-high-risk`。只给非 admin 发布人 grant | 是 | Receipt `adopted-preexisting`；组织 Admin 重新登录后可编写并自批 | 不用测试 capability；不要授给 platform-admin |
-| 4. 策略检查 / 启用 / 停用 | 用**最新** status 引脚 `policy check enable` 再 `policy enable`；可选 `--low-risk-single-actor` | 是 | `publication_enabled=true`；freeze 不变 | 陈旧引脚、未接管、在正式库名上使用 ephemeral 确认 |
+| 4. 策略检查 / 启用 / 停用 | 用**最新** status 引脚 `policy check enable` 再 `policy enable` | 是 | `publication_enabled=true`；freeze 不变 | 陈旧引脚、未接管、在正式库名上使用 ephemeral 确认 |
 | 5. 页面业务闭环 | `/parameter-admin/specs` 编写/预览/发布；工作台 `提交所选` | 是 | Receipt `effective`；正式值内容；重启后历史仍在 | 排队/执行中超时即失败；禁止手工 POST 保存 API |
 | 6. 异常停用 | `policy disable`；维护时 `freeze set`；恢复走升级 recovery | 是 | 发布关闭；Catalog 与项目值保留 | 不要删历史或再次 bootstrap |
 

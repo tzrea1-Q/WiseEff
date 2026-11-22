@@ -3,11 +3,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FileJson, SlidersHorizontal } from "lucide-react";
 import { NavigatorWorkbench } from "@/components/layout/NavigatorWorkbench";
 import { SectionEmpty } from "@/components/common/SectionState";
+import "@/components/ui/view-switch.css";
 import type {
   SubmitParameterChangesInput,
   WorkflowAssigneeCandidates
 } from "@/application/ports/ParameterRepository";
 import { resolveDtsStructuredRepository } from "@/application/parameters/dtsStructuredRuntime";
+import type { ParameterRuntimeActions } from "@/application/parameters/parameterRuntime";
 import { resolveParameterFileRepository } from "@/application/parameters/parameterFileRuntime";
 import { selectPrimaryProjectDtsFile } from "@/application/parameters/selectPrimaryProjectDtsFile";
 import { selectPrimaryProjectJsonFile } from "@/application/parameters/selectPrimaryProjectJsonFile";
@@ -73,6 +75,7 @@ import {
 
 export type ApiProjectTopologyWorkspaceProps = {
   projectId: string;
+  organizationId?: string;
   projectName?: string;
   requestedBindingId?: string;
   requestedConfigSetId?: string;
@@ -87,6 +90,7 @@ export type ApiProjectTopologyWorkspaceProps = {
   /** Test seam — inject parameter file repository instead of resolving from runtime mode. */
   parameterFileRepository?: ParameterFileRepository;
   canonicalRepository?: ParameterCatalogRepository;
+  loadProjectParameters?: ParameterRuntimeActions["loadProjectParameters"];
   listConfigSets?: (projectId: string) => Promise<Array<{ id: string; name: string }>>;
   listDrafts?: (projectId: string) => Promise<readonly TrayHydrationDraft[]>;
   /** Server-side draft delete; tray removal must not leave the draft alive on the server. */
@@ -329,6 +333,7 @@ async function loadWorkspace(
  */
 export function ApiProjectTopologyWorkspace({
   projectId,
+  organizationId,
   projectName,
   requestedBindingId,
   requestedConfigSetId,
@@ -340,6 +345,7 @@ export function ApiProjectTopologyWorkspace({
   moduleRegistryRepository,
   parameterFileRepository,
   canonicalRepository,
+  loadProjectParameters,
   listConfigSets,
   listDrafts,
   deleteDraft,
@@ -496,7 +502,7 @@ export function ApiProjectTopologyWorkspace({
     let cancelled = false;
     const resolveListDrafts = listDraftsRef.current;
     setValueDraftRead({ kind: "loading" });
-    void (resolveListDrafts?.(projectId) ?? Promise.resolve([])).then((drafts) => {
+    void (loadProjectParameters?.(projectId).drafts ?? resolveListDrafts?.(projectId) ?? Promise.resolve([])).then((drafts) => {
       if (!cancelled) setValueDraftRead({ kind: "ready", drafts });
     }).catch((error) => {
       if (!cancelled) setValueDraftRead({ kind: "error", message: presentError(error, "请稍后重试。") });
@@ -504,7 +510,7 @@ export function ApiProjectTopologyWorkspace({
     return () => {
       cancelled = true;
     };
-  }, [projectId, repository, runtimeMode, draftsReloadToken, valueDraftRetryToken]);
+  }, [projectId, repository, runtimeMode, draftsReloadToken, valueDraftRetryToken, loadProjectParameters]);
 
   useEffect(() => {
     let cancelled = false;
@@ -612,9 +618,11 @@ export function ApiProjectTopologyWorkspace({
       listConfigSetsRef.current ??
       ((id: string) => resolveDtsStructuredRepository(runtimeMode).listConfigSets(id));
 
-    loadWorkspace(projectId, repository, resolveConfigSets, preferredRevisionId, requestedConfigSetId)
+    // Strict Mode can dispose the first effect before the workspace starts.
+    void Promise.resolve().then(() => cancelled ? undefined
+      : loadWorkspace(projectId, repository, resolveConfigSets, preferredRevisionId, requestedConfigSetId))
       .then((next) => {
-        if (!cancelled) setLoadState(next);
+        if (!cancelled && next) setLoadState(next);
       })
       .catch((error: unknown) => {
         if (cancelled) return;
@@ -631,7 +639,14 @@ export function ApiProjectTopologyWorkspace({
     };
   }, [projectId, preferredRevisionId, repository, runtimeMode, reloadToken, requestedConfigSetId]);
 
+  const dtsBindingCount = loadState.kind === "ready" ? loadState.bindings.filter((b) => b.effectiveValue.kind !== "json").length : 0;
+  const needsProjectJson = Boolean(requestedBindingId) || protectedJson?.projectId === projectId ||
+    loadState.kind === "empty" ||
+    (loadState.kind === "error" && Boolean(loadProjectParameters || canonicalRepository?.listProtectedProjectBindings)) ||
+    (loadState.kind === "ready" && (activeFormatTab === "json" || dtsBindingCount === 0));
+
   useEffect(() => {
+    if (!needsProjectJson) return;
     let cancelled = false;
     const generation = projectGenerationRef.current;
     setProtectedJson((current) => current?.projectId === projectId && current.state === "ready"
@@ -639,6 +654,7 @@ export function ApiProjectTopologyWorkspace({
       : { projectId, state: "loading", bindings: [] });
     const read = canonicalRepository?.listProtectedProjectBindings;
     const request = Promise.resolve().then(() => {
+      if (loadProjectParameters) return loadProjectParameters(projectId).bindings;
       if (!read) throw new Error("当前未配置受保护项目 JSON 绑定读取能力");
       return read(projectId);
     });
@@ -658,12 +674,23 @@ export function ApiProjectTopologyWorkspace({
         : { projectId, state: "error", bindings: [], message });
     });
     return () => { cancelled = true; };
-  }, [canonicalRepository, projectId, reloadToken]);
+  }, [canonicalRepository, projectId, reloadToken, loadProjectParameters, needsProjectJson]);
+
+  const refreshProjectParameters = (id: string) => {
+    void loadProjectParameters?.(id, { force: true }).settled;
+  };
+  const retryWorkspace = () => {
+    refreshProjectParameters(projectId);
+    setReloadToken((token) => token + 1);
+  };
 
   const jsonState = protectedJson?.projectId === projectId ? protectedJson : null;
-  const jsonBindings = jsonState?.state === "ready" ? jsonState.bindings
-    : !canonicalRepository && loadState.kind === "ready"
-      ? loadState.bindings.filter((binding) => binding.effectiveValue.kind === "json") : [];
+  const legacyBindings = !canonicalRepository && loadState.kind === "ready" ? loadState.bindings : undefined;
+  const jsonBindings = useMemo(
+    () => jsonState?.state === "ready" ? jsonState.bindings
+      : legacyBindings?.filter((binding) => binding.effectiveValue.kind === "json") ?? [],
+    [jsonState, legacyBindings]
+  );
 
   useEffect(() => {
     if (!moduleRegistryRepo) {
@@ -768,6 +795,7 @@ export function ApiProjectTopologyWorkspace({
             : { targetValue }),
         reason: input.reason
       });
+      refreshProjectParameters(requestProjectId);
       if (!isCurrentProjectRequest(requestProjectId, requestGeneration)) {
         return {
           valid: false,
@@ -957,6 +985,7 @@ export function ApiProjectTopologyWorkspace({
         acknowledgeNonstandard: input.acknowledgeNonstandard,
         spellingOverride: input.spellingOverride
       });
+      refreshProjectParameters(requestProjectId);
       if (!isCurrentProjectRequest(requestProjectId, requestGeneration)) return;
 
       setPendingDrafts((current) => {
@@ -1028,6 +1057,7 @@ export function ApiProjectTopologyWorkspace({
     }
     try {
       await resolveDeleteDraft(draftId);
+      refreshProjectParameters(requestProjectId);
       if (!isCurrentProjectRequest(requestProjectId, requestGeneration)) return;
       const removed = pendingDraftsRef.current.find((draft) => draft.draftId === draftId);
       const remaining = pendingDraftsRef.current.filter((draft) => draft.draftId !== draftId);
@@ -1177,6 +1207,7 @@ export function ApiProjectTopologyWorkspace({
           }
           return { notification: message };
         } finally {
+          if (submittedCount > 0) refreshProjectParameters(input.projectId);
           releaseProjectMutation(input.projectId, "submit", mutationToken);
         }
         return undefined;
@@ -1363,7 +1394,10 @@ export function ApiProjectTopologyWorkspace({
     setEditRequest((current) => ({ bindingId, token: (current?.token ?? 0) + 1 }));
   };
   const draftReadNotices = [
-    { label: "参数值草稿", state: valueDraftRead, retry: () => setValueDraftRetryToken((token) => token + 1) },
+    { label: "参数值草稿", state: valueDraftRead, retry: () => {
+      refreshProjectParameters(projectId);
+      setValueDraftRetryToken((token) => token + 1);
+    } },
     { label: "节点启用草稿", state: enablementDraftRead, retry: () => setEnablementDraftRetryToken((token) => token + 1) }
   ].map(({ label, state, retry }) => state.kind === "error" ? (
     <div key={label} className="project-topology-workspace__error" role="alert" aria-label={`${label}加载失败`}>
@@ -1416,7 +1450,6 @@ export function ApiProjectTopologyWorkspace({
       <button type="button" className="button subtle" onClick={() => setPartialSubmitError(null)}>关闭提交错误提示</button>
     </div> : null}{currentDraftTray}</> : null;
 
-  const dtsBindingCount = loadState.kind === "ready" ? loadState.bindings.filter((b) => b.effectiveValue.kind !== "json").length : 0;
   const jsonBindingCount = jsonBindings.length;
   useEffect(() => {
     if (!requestedBindingId && (loadState.kind === "ready" || loadState.kind === "empty") && dtsBindingCount === 0 && jsonBindingCount > 0) {
@@ -1424,15 +1457,15 @@ export function ApiProjectTopologyWorkspace({
     }
   }, [projectId, dtsBindingCount, jsonBindingCount, loadState.kind, requestedBindingId]);
 
-  const formatSwitcher = jsonBindingCount > 0 ? (
-    <div className="parameter-workspace-format-switch" role="tablist" aria-label="参数配置格式">
+  const formatSwitcher = jsonBindingCount > 0 || Boolean(canonicalRepository) ? (
+    <div className="view-switch view-switch--tabs" role="tablist" aria-label="参数配置格式">
       <button
         type="button"
         role="tab"
         id="format-tab-dts"
         aria-selected={activeFormatTab === "dts"}
         aria-controls="format-panel-dts"
-        className={`parameter-workspace-format-switch__tab${activeFormatTab === "dts" ? " is-active" : ""}`}
+        className="view-switch__item"
         onClick={() => { pendingFormatFocus.current = activeFormatTab === "dts" ? null : "dts"; setActiveFormatTab("dts"); }}
       >
         <SlidersHorizontal size={14} aria-hidden="true" />
@@ -1445,12 +1478,13 @@ export function ApiProjectTopologyWorkspace({
         id="format-tab-json"
         aria-selected={activeFormatTab === "json"}
         aria-controls="format-panel-json"
-        className={`parameter-workspace-format-switch__tab${activeFormatTab === "json" ? " is-active" : ""}`}
+        className="view-switch__item"
         onClick={() => { pendingFormatFocus.current = activeFormatTab === "json" ? null : "json"; setActiveFormatTab("json"); }}
       >
         <FileJson size={14} aria-hidden="true" />
         <span>JSON 参数</span>
-        <span className="parameter-workspace-format-switch__badge">{jsonBindingCount}</span>
+        {jsonState?.state === "ready" || !canonicalRepository
+          ? <span className="parameter-workspace-format-switch__badge">{jsonBindingCount}</span> : null}
       </button>
     </div>
   ) : null;
@@ -1458,12 +1492,14 @@ export function ApiProjectTopologyWorkspace({
   const jsonContent = jsonState?.state === "error" && (canonicalRepository || loadState.kind !== "ready" || (requestedBindingId && !requestedBinding)) ? (
     <div className="project-topology-workspace__error" role="alert">
       {jsonState.message}
-      <button type="button" className="button subtle" onClick={() => setReloadToken((token) => token + 1)}>重试</button>
+      <button type="button" className="button subtle" onClick={retryWorkspace}>重试</button>
     </div>
   ) : jsonBindings.length > 0 ? (
     <JsonBindingPanel
       key={projectId}
+      organizationId={organizationId}
       bindings={jsonBindings}
+      configSetId={loadState.kind === "ready" ? loadState.configSetId : requestedConfigSetId}
       pendingDrafts={bindingDrafts}
       requestedEditBindingId={editRequest?.bindingId}
       editRequestToken={editRequest?.token}
@@ -1483,14 +1519,16 @@ export function ApiProjectTopologyWorkspace({
       toolbarActions={activeFormatTab === "json" ? formatSwitcher : undefined}
       notice={notice}
     />
-  ) : jsonState?.state === "loading" || !jsonState ? <p role="status">正在加载项目 JSON 绑定…</p> : null;
+  ) : needsProjectJson && (!jsonState || jsonState.state === "loading") ? <p role="status">正在加载项目 JSON 绑定…</p>
+    : activeFormatTab === "json" ? <p role="status">该项目暂无 JSON 参数。</p> : null;
   const unavailableBinding = requestedBindingId && !requestedBinding && jsonState?.state === "ready" && loadState.kind !== "loading" && !refreshingWorkspace
     ? <p role="status">关联参数在当前项目中不可用。</p> : null;
-  const jsonFormatPanel = jsonBindingCount > 0 ? (
+  const jsonFormatPanel = jsonBindingCount > 0 || (loadState.kind === "ready" && activeFormatTab === "json") ? (
     <div key="json" id="format-panel-json" role="tabpanel"
       aria-labelledby={loadState.kind === "ready" ? "format-tab-json" : undefined}
       aria-label={loadState.kind === "ready" ? undefined : "JSON 参数"}
       hidden={loadState.kind === "ready" && activeFormatTab !== "json"}>
+      {activeFormatTab === "json" && jsonBindingCount === 0 ? formatSwitcher : null}
       {jsonContent}
     </div>
   ) : null;
@@ -1506,7 +1544,7 @@ export function ApiProjectTopologyWorkspace({
           notice={notice || unavailableBinding ? <>{notice}{unavailableBinding}</> : undefined}
           taskState={loadState.kind === "empty" ? { kind: "empty", message: loadState.message }
             : { kind: "error", message: `${loadState.code === "NOT_FOUND" ? "未找到拓扑资源（404）。" : ""}${loadState.message}`,
-              onRetry: () => setReloadToken((token) => token + 1) }} />
+              onRetry: retryWorkspace }} />
       </section>
       )}
       {jsonFormatPanel ?? jsonContent}
@@ -1533,17 +1571,18 @@ export function ApiProjectTopologyWorkspace({
       {refreshingWorkspace ? <p role="status">正在更新参数版本，当前输入已保留…</p> : null}
       {workspaceRefreshError ? <div role="alert" className="project-topology-workspace__error">
         参数版本更新失败：{workspaceRefreshError}
-        <button type="button" className="button subtle" onClick={() => setReloadToken((token) => token + 1)}>重试更新</button>
+        <button type="button" className="button subtle" onClick={retryWorkspace}>重试更新</button>
       </div> : null}
       {jsonState?.state === "ready" && jsonState.message ? <div role="alert" className="project-topology-workspace__error">
         {jsonState.message}
-        <button type="button" className="button subtle" onClick={() => setReloadToken((token) => token + 1)}>重试 JSON 参数</button>
+        <button type="button" className="button subtle" onClick={retryWorkspace}>重试 JSON 参数</button>
       </div> : null}
       {jsonFormatPanel}
-        <div id="format-panel-dts" role="tabpanel" aria-labelledby="format-tab-dts" hidden={activeFormatTab === "json" && jsonBindingCount > 0}>
+        <div id="format-panel-dts" role="tabpanel" aria-labelledby="format-tab-dts" hidden={activeFormatTab === "json"}>
           <DtsParameterWorkbench
             key={projectId}
             projectId={projectId}
+            organizationId={organizationId}
             projectName={projectName}
             toolbarActions={activeFormatTab === "dts" ? formatSwitcher : undefined}
             notice={notice || unavailableBinding || jsonState?.state === "error" ? <>

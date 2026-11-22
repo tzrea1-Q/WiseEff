@@ -29,6 +29,7 @@ export async function loadCanonicalDtsDefinitionDetail(
     documentation: revision.documentation,
     unit: revision.unit?.symbol ?? null,
     examples: revision.examples,
+    ...(revision.dtsExamples !== undefined ? { dtsExamples: revision.dtsExamples } : {}),
     catalogReleaseId: revision.publishedInCatalogReleaseId
   };
 }
@@ -47,6 +48,7 @@ export async function loadCurrentCanonicalDtsDefinitionDetail(
   }
   return {
     definitionId: definition.id,
+    ...(definition.recommendedDefinition ? { recommendedDefinition: definition.recommendedDefinition } : {}),
     revisionId: revision.id,
     revisionNumber: revision.revisionNumber,
     propertyKey: definition.propertyKey,
@@ -57,6 +59,7 @@ export async function loadCurrentCanonicalDtsDefinitionDetail(
     documentation: revision.documentation,
     unit: revision.unit?.symbol ?? null,
     examples: revision.examples,
+    ...(revision.dtsExamples !== undefined ? { dtsExamples: revision.dtsExamples } : {}),
     catalogReleaseId: revision.publishedInCatalogReleaseId
   };
 }

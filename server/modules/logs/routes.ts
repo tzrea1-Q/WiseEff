@@ -10,7 +10,7 @@ import type { LogSkillBudgetCaps } from "./skillBudgets";
 import type { AuthContext } from "../auth/types";
 import type { IntegrationPrincipal } from "../auth/integrationPrincipal";
 import { isIntegrationAuthorization } from "../auth/integrationCredentialResolver";
-import { issueLogIntegrationCredentialBodySchema, issueIntegrationCredential, listIntegrationCredentials, revokeIntegrationCredential, rotateIntegrationCredential } from "./integrationCredentials";
+import { issueLogIntegrationCredentialBodySchema, issueIntegrationCredential, listIntegrationCredentials, renameIntegrationCredential, revokeIntegrationCredential, rotateIntegrationCredential } from "./integrationCredentials";
 import { createUserInvocation } from "../auth/trustedInvocation";
 import { resolveOperatingContext } from "../auth/operatingContext";
 import { withLogInvocation, type LogAccessContext } from "./principal";
@@ -55,8 +55,8 @@ import { previewLogSkillParsing, previewLogSkillExtractor, previewLogSkillFormat
 import { parsePreviewRequestSchema } from "./parsing/spec";
 import { extractorPreviewRequestSchema } from "./parsing/extractorBuilder";
 import { formatPreviewRequestSchema } from "./formatProfile";
-import { archiveSourceSnapshot, getSourceEvidence, listSourceSnapshots, restoreSourceSnapshot, retrySourceSnapshot, setDefaultSourceSnapshot, trySourceStatement, uploadSourceSnapshot } from "./sourceSnapshots";
-import { sourceSnapshotUploadSchema } from "./schemas";
+import { archiveSourceSnapshot, getSourceEvidence, listSourceSnapshots, previewSourceSnapshotLabel, restoreSourceSnapshot, retrySourceSnapshot, setDefaultSourceSnapshot, trySourceStatement, updateSourceSnapshotLabel, uploadSourceSnapshot } from "./sourceSnapshots";
+import { renameLogIntegrationCredentialBodySchema, sourceSnapshotLabelPreviewSchema, sourceSnapshotLabelUpdateSchema, sourceSnapshotUploadSchema } from "./schemas";
 import { recommendOrganizationLogSkills } from "./skillRecommendationService";
 import { logSkillRecommendationRequestSchema } from "./schemas";
 import type { LogAnalysisAdapter } from "./analyzer";
@@ -254,6 +254,14 @@ export function registerLogRoutes(
     const invocation = await credentialInvocation(requireDb(options.db), auth, request);
     return { status: 201, headers: { "Cache-Control": "no-store" }, body: await issueIntegrationCredential(requireDb(options.db), auth, body, invocation, { requestId: request.requestId }, invocation.operatingOrganization?.id ?? auth.organization.id) };
   });
+  router.patch("/api/v1/log-integration-credentials/:credentialId", async (request) => {
+    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const db = requireDb(options.db);
+    const invocation = await credentialInvocation(db, auth, request);
+    const { name } = parseWithSchema(renameLogIntegrationCredentialBodySchema, request.body);
+    return { status: 200, body: await renameIntegrationCredential(db, auth, request.params.credentialId, name,
+      invocation, { requestId: request.requestId }, invocation.operatingOrganization?.id ?? auth.organization.id) };
+  });
   router.post("/api/v1/log-integration-credentials/:credentialId/rotate", async (request) => {
     const auth = await getAuth(options.getCurrentAuthContext, request);
     const invocation = await credentialInvocation(requireDb(options.db), auth, request);
@@ -302,6 +310,18 @@ export function registerLogRoutes(
   router.get("/api/v1/log-skills/:skillId/source-snapshots", async (request) => {
     const auth = await getScopedAuth(options.getCurrentAuthContext, request, options.db);
     return { status: 200, body: await listSourceSnapshots(requireDb(options.db), auth, request.params.skillId) };
+  });
+  router.post("/api/v1/log-skills/:skillId/source-snapshots/:snapshotId/version-label/preview", async (request) => {
+    const auth = await getScopedAuth(options.getCurrentAuthContext, request, options.db);
+    const { versionLabel } = parseWithSchema(sourceSnapshotLabelPreviewSchema, request.body);
+    return { status: 200, body: await previewSourceSnapshotLabel(requireDb(options.db), auth, request.params.skillId, request.params.snapshotId, versionLabel) };
+  });
+  router.patch("/api/v1/log-skills/:skillId/source-snapshots/:snapshotId", async (request) => {
+    const auth = await getScopedAuth(options.getCurrentAuthContext, request, options.db);
+    const input = parseWithSchema(sourceSnapshotLabelUpdateSchema, request.body);
+    const item = await updateSourceSnapshotLabel(requireDb(options.db), auth, request.params.skillId, request.params.snapshotId, input,
+      auth.logInvocation!, { requestId: request.requestId });
+    return { status: 200, body: { item } };
   });
   router.post("/api/v1/log-skills/:skillId/source-snapshots", async (request) => {
     const auth = await getScopedAuth(options.getCurrentAuthContext, request, options.db);

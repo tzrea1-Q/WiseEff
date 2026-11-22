@@ -6,6 +6,7 @@ import { parseBundleBytes, targetReleaseOf } from "../builder/bundleCodec";
 import { planMarkdownImport, serializeMarkdownRevision } from "./markdownImport";
 import { DEFINITION_IMPORT_GUIDE, DEFINITION_IMPORT_TEMPLATE } from "../../../../src/domain/parameter-catalog/definitionImportTemplate";
 import { buildCreateDefinitionChangeSet, emptyPublicationDraft } from "../../../../src/features/parameter-catalog-governance/publicationState";
+import { compileLocalizedVendorCatalogSuccessor } from "../../../../scripts/compile-vendor-catalog-release";
 
 const document = `# Driver \`acme,power\`
 
@@ -27,6 +28,89 @@ const document = `# Driver \`acme,power\`
 `;
 
 describe("Definition import planner", () => {
+  const dtsDocument = "# Driver `acme,power`\n## `matrix` Matrix\n| 字段 | 值 |\n| --- | --- |\n| 类型 | array<array<integer>> |\n| 示例 | [[1,2]] |";
+  const dtsSection = (body: string) => `\n\n### DTS 示例\n${body}`;
+  const dtsFence = (source: string, fence = "```") => `${fence}dts\n${source}\n${fence}`;
+
+  it("keeps DTS bytes through revision export and supports omitted, cleared and replaced sections", async () => {
+    const predecessor = firstAcmePredecessor();
+    const source = "\tmatrix = <0x1 0x2>,\n\t\t/* Keep the groups\n```\n### Keep this comment too\n*/\n\t\t<0x3 0x4>;  ";
+    const input = dtsDocument + "\n\nDescription." + dtsSection(dtsFence(`\n${source}\n\t`, "````")) + "\n### Notes\nDetails.";
+    const parsed = planMarkdownImport(input.replaceAll("\n", "\r\n"), "matrix.md", predecessor.first);
+    expect(parsed.changeSet).toMatchObject([{ content: {
+      documentation: "Description.\n\n### Notes\nDetails.", examples: [[[1, 2]]], dtsExamples: [source],
+    } }]);
+    if (!parsed.changeSet) throw new Error(JSON.stringify(parsed.entries));
+    const built = await buildCompleteSuccessor({ changeSet: parsed.changeSet,
+      predecessorArtifact: { digest: predecessor.digest, bytes: predecessor.bytes }, frozenIdentity: frozenPageIdentity([allocationFor("matrix")]),
+    });
+    if (!built.ok || built.value.kind !== "successor") throw new Error(JSON.stringify(built));
+    const snapshot = targetReleaseOf(built.value.artifact.bundle)!;
+    const exported = serializeMarkdownRevision(snapshot, ["pdef_acme_power_matrix"]);
+    expect(exported.skipped).toEqual([]);
+    expect(exported.document).toContain(dtsFence(source, "````"));
+    expect(planMarkdownImport(exported.document, "export.md", snapshot).entries[0]?.outcome).toBe("skip");
+
+    const revision = `${dtsDocument.split("\n").slice(0, 4).join("\n")}\n| 操作 | 修订 |`;
+    expect(planMarkdownImport(revision, "keep.md", snapshot).entries[0]?.outcome).toBe("skip");
+    const wording = planMarkdownImport(`${revision}\n\nUpdated description.`, "wording.md", snapshot);
+    expect(wording.changeSet?.[0]).toMatchObject({ content: { documentation: "Updated description." } });
+    expect(wording.changeSet?.[0]).not.toHaveProperty("content.dtsExamples");
+    const cleared = planMarkdownImport(revision + dtsSection("-"), "clear.md", snapshot);
+    expect(cleared.changeSet?.[0]).toMatchObject({ content: { dtsExamples: null } });
+    expect(cleared.entries[0]).toMatchObject({ outcome: "revise", revisionClass: "documentation",
+      diffs: [{ field: "DTS 示例", oldValue: [source], newValue: null }],
+    });
+    const replaced = planMarkdownImport(revision + dtsSection(dtsFence("<0xF 0xA>")), "replace.md", snapshot);
+    expect(replaced.changeSet?.[0]).toMatchObject({ content: { dtsExamples: ["<0xF 0xA>"] } });
+    const narrowed = planMarkdownImport(`${revision}\n| 最多项数 | 1 |`, "narrow.md", snapshot);
+    expect(narrowed.entries[0]?.diagnostics).toContainEqual(expect.objectContaining({ field: "DTS 示例", message: expect.stringContaining("类型或约束") }));
+  });
+
+  it.each([
+    ["```json\n[1, 2]\n```", 9, "语言须为 dts"],
+    ["Some prose", 9, "只能填写"],
+    ["```dts\n<matrix", 9, "未闭合"],
+    [Array.from({ length: 9 }, () => dtsFence("<1>")).join("\n"), 33, "最多填写 8 个"],
+    [dtsFence("<1"), 10, "格式无效"],
+    [dtsFence("other = <1>;"), 10, "属性名"],
+    [dtsFence('"wrong shape"'), 10, "类型或约束"],
+    [dtsFence("<1>\u0007"), 10, "控制字符"],
+  ])("locates invalid DTS sections at their source line %#", (body, line, message) => {
+    const result = planMarkdownImport(dtsDocument + dtsSection(body), "invalid.md", firstAcmePredecessor().first);
+    expect(result.changeSet).toBeNull();
+    expect(result.entries[0]?.diagnostics).toContainEqual(expect.objectContaining({ line, field: "DTS 示例", message: expect.stringContaining(message) }));
+  });
+
+  it("rejects a DTS section for a configuration-schema definition", () => {
+    const input = dtsDocument.replace("Driver `acme,power`", "ConfigurationSchema `acme/power`");
+    const result = planMarkdownImport(input + dtsSection(dtsFence("<1>")), "config.md", firstAcmePredecessor().first);
+    expect(result.changeSet).toBeNull();
+    expect(result.entries[0]?.diagnostics).toContainEqual(expect.objectContaining({ line: 8, field: "DTS 示例", message: expect.stringContaining("仅适用于驱动和节点类型") }));
+  });
+
+  it("requires explicit confirmation for the Huawei short name in the selected organization", () => {
+    const snapshot = targetReleaseOf(compileLocalizedVendorCatalogSuccessor().bundle)!;
+    const shortName = "# Driver `direct_charger`\n## `support_series_bat_mode` 串联电池模式\n| 字段 | 值 |\n| --- | --- |\n| 类型 | boolean |";
+    const subjectId = "csub_drv_huawei_direct_charger";
+    const rules = new Map([["direct_charger", [subjectId]]]);
+    const unconfirmed = planMarkdownImport(shortName, "charger.md", snapshot, [], { rules });
+    expect(unconfirmed.changeSet).toBeNull();
+    expect(unconfirmed.entries[0]?.matchCandidates).toMatchObject([{ subjectId, source: "organization-compatible" }]);
+    const confirmed = planMarkdownImport(shortName, "charger.md", snapshot, [], {
+      rules, selections: [{ selector: "direct_charger", subjectId }],
+    });
+    expect(confirmed.changeSet).toMatchObject([{ op: "create-definition", subjectId, propertyKey: "support_series_bat_mode" }]);
+    expect(confirmed.entries[0]?.match).toMatchObject({ subjectId, source: "organization-compatible" });
+    const foreign = planMarkdownImport(shortName, "charger.md", snapshot);
+    expect(foreign.entries[0]?.diagnostics[0]?.message).toContain("nature 和 cardinality");
+    const ambiguous = planMarkdownImport(shortName, "charger.md", snapshot, [], {
+      rules: new Map([["direct_charger", [subjectId, "csub_drv_huawei_charging_core"]]]),
+    });
+    expect(ambiguous.changeSet).toBeNull();
+    expect(ambiguous.entries[0]?.matchCandidates?.map(candidate => candidate.subjectId).sort()).toEqual(["csub_drv_huawei_charging_core", subjectId]);
+  });
+
   it("does not invent format errors for valid revision clears when the target is missing", () => {
     const input = "# Driver `acme,power`\n## `missing` 缺失\n| 字段 | 值 |\n| --- | --- |\n| 操作 | 修订 |\n| 最小值 | - |\n| 最多项数 | - |\n| 示例 | - |";
     for (const document of [input, input + "\n| 类型 | integer |"]) {
@@ -506,7 +590,7 @@ describe("Definition import planner", () => {
     expect(plan.entries).toHaveLength(7);
     expect(plan.entries.every((entry) => entry.outcome === "create")).toBe(true);
     expect(plan.changeSet).toMatchObject([{ op: "create-subject-with-definitions", definitions: [
-      { content: { valueSchema: { type: "integer" } } },
+      { content: { valueSchema: { type: "integer" }, examples: [3000000], dtsExamples: ["current-limit =\n    <0x2dc6c0>; /* 3000000 uA */"] } },
       { content: { valueSchema: { type: "number" } } },
       { content: { valueSchema: { type: "string" } } },
       { content: { valueSchema: { type: "boolean" } } },

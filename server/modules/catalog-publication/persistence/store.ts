@@ -28,6 +28,9 @@
 
 import { createHash } from "node:crypto";
 import pg from "pg";
+import { catalogCompilerContractFingerprint, catalogCompilerDtsContract, catalogCompilerOwnerContractFingerprint } from "../../catalog-kernel/compiler/contract";
+import type { CatalogReleaseNode } from "../../catalog-kernel/compiler/types";
+import { encodeBundleBytes, parseBundleBytes } from "../builder/bundleCodec";
 
 import {
   CatalogActivationReceiptId,
@@ -42,6 +45,12 @@ import {
   PublicationPolicyRevision,
 } from "../../parameter-catalog-contract/index";
 import type { Queryable } from "../../../shared/database/client";
+import {
+  artifactByteChunkJoin,
+  artifactByteColumns,
+  assembleArtifactBytes,
+  type ArtifactByteChunkRow,
+} from "./artifactByteTransport";
 import type {
   ActivationReceiptKind,
   AppendAuthorizationInput,
@@ -56,6 +65,7 @@ import type {
   JsonObject,
   PersistArtifactInput,
   PersistCandidateInput,
+  PreviewSnapshot,
   PublicationAuthorizationEventKind,
   PublicationAuthorizationRecord,
   PublicationCandidateRecord,
@@ -150,14 +160,14 @@ const bytesEqual = (left: Uint8Array, right: Uint8Array): boolean => {
   if (left.byteLength !== right.byteLength) {
     return false;
   }
-  return Buffer.compare(Buffer.from(left), Buffer.from(right)) === 0;
+  return Buffer.compare(left, right) === 0;
 };
 
 type ArtifactRow = {
+  storage_format: "full" | "successor-v1";
   id: string;
   artifact_digest: string;
   bytes_checksum: string;
-  artifact_bytes: Buffer;
   source_kind: ArtifactSourceKind;
   target_release_id: string;
   target_release_digest: string;
@@ -167,11 +177,12 @@ type ArtifactRow = {
   created_at: Date | string;
 };
 
-const toArtifact = (row: ArtifactRow): ReleaseArtifactRecord => ({
+const toArtifact = (row: ArtifactRow, artifactBytes: Uint8Array): ReleaseArtifactRecord => ({
+  ...(row.storage_format === "successor-v1" ? { storageFormat: row.storage_format } : {}),
   id: CatalogArtifactId(row.id),
   artifactDigest: row.artifact_digest,
   bytesChecksum: row.bytes_checksum,
-  artifactBytes: new Uint8Array(row.artifact_bytes),
+  artifactBytes,
   sourceKind: row.source_kind,
   targetReleaseId: CatalogReleaseId(row.target_release_id),
   targetReleaseDigest: CatalogReleaseDigest(row.target_release_digest),
@@ -344,32 +355,125 @@ const toReceipt = (row: ReceiptRow): CatalogActivationReceiptRecord => ({
   createdAt: asIso(row.created_at),
 });
 
+async function readStoredArtifacts(
+  db: Queryable, scope?: { readonly digest: string; readonly includeLineage: boolean },
+): Promise<Map<string, ReleaseArtifactRecord>> {
+  // UNION deduplicates even a malformed cycle. Only lightweight pins enter
+  // the recursion; each required artifact is transported once in one snapshot.
+  const compactStorage = (await db.query<{ available: boolean }>(
+    "select to_regclass('catalog_publication.preview_snapshots') is not null as available",
+  )).rows[0]?.available;
+  const lineage = compactStorage && scope?.includeLineage ? `with recursive lineage(digest, base) as (
+    select artifact_digest, compact_base_digest from catalog_publication.release_artifacts where artifact_digest = $1
+    union
+    select a.artifact_digest, a.compact_base_digest from catalog_publication.release_artifacts a
+      join lineage l on l.base = a.artifact_digest
+  )` : "";
+  const { rows } = await db.query<ArtifactRow & ArtifactByteChunkRow>(
+    `${lineage} select id, artifact_digest, bytes_checksum, source_kind, ${compactStorage ? "storage_format" : "'full' as storage_format"},
+            target_release_id, target_release_digest, predecessor_release_id, predecessor_release_digest,
+            toolchain, created_at, ${artifactByteColumns}
+       from catalog_publication.release_artifacts as artifact
+       ${lineage ? "join lineage on lineage.digest = artifact.artifact_digest" : ""}
+       ${artifactByteChunkJoin}
+       ${scope && !lineage ? "where artifact_digest = $1" : ""}
+       order by created_at, id, chunk.byte_start`,
+    scope ? [scope.digest] : [],
+  );
+  const records = new Map<string, ReleaseArtifactRecord>();
+  for (let start = 0; start < rows.length;) {
+    const first = rows[start]!;
+    let end = start + 1;
+    while (rows[end]?.id === first.id) end += 1;
+    records.set(first.artifact_digest, toArtifact(first, assembleArtifactBytes(rows.slice(start, end))));
+    start = end;
+  }
+  return records;
+}
+
+function matchingTarget(record: ReleaseArtifactRecord, node?: CatalogReleaseNode): boolean {
+  return node?.manifest?.release?.id === record.targetReleaseId &&
+    node.manifest.release.digest === record.targetReleaseDigest &&
+    record.targetReleaseDigest === record.artifactDigest;
+}
+
 export async function getArtifactByDigest(
   db: Queryable,
   artifactDigest: string,
 ): Promise<CatalogPublicationStoreResult<ReleaseArtifactRecord>> {
-  const digestError = requireSha256(artifactDigest, "artifactDigest");
-  if (digestError) {
-    return fail(digestError);
-  }
+  return readArtifact(db, artifactDigest, true);
+}
+
+async function readArtifact(db: Queryable, digest: string, includeLineage: boolean): Promise<CatalogPublicationStoreResult<ReleaseArtifactRecord>> {
+  const invalid = requireSha256(digest, "artifactDigest");
+  if (invalid) return fail(invalid);
   try {
-    const result = await db.query<ArtifactRow>(
-      `select
-         id, artifact_digest, bytes_checksum, artifact_bytes, source_kind,
-         target_release_id, target_release_digest, predecessor_release_id,
-         predecessor_release_digest, toolchain, created_at
-       from catalog_publication.release_artifacts
-       where artifact_digest = $1`,
-      [artifactDigest],
-    );
-    const row = result.rows[0];
-    if (!row) {
-      return fail({ kind: "not-found", entity: "artifact" });
-    }
-    return ok(toArtifact(row));
+    const records = await readStoredArtifacts(db, { digest, includeLineage });
+    const first = records.get(digest);
+    if (!first) return fail({ kind: "not-found", entity: "artifact" });
+    return includeLineage && first.storageFormat ? hydrateArtifact(first, records) : ok(first);
   } catch (error) {
     return fail(mapWriteError(error));
   }
+}
+
+function hydrateArtifact(
+  first: ReleaseArtifactRecord,
+  records: ReadonlyMap<string, ReleaseArtifactRecord>,
+): CatalogPublicationStoreResult<ReleaseArtifactRecord> {
+  const suffix: CatalogReleaseNode[] = [];
+  const visited = new Set<string>();
+  let record = first;
+  while (true) {
+    if (visited.has(record.artifactDigest) || sha256DigestOfBytes(record.artifactBytes) !== record.bytesChecksum) {
+      return fail({ kind: "invalid-input", reason: "invalid-artifact-lineage" });
+    }
+    visited.add(record.artifactDigest);
+    const parsed = parseBundleBytes(record.artifactBytes);
+    if (!parsed.ok || !Array.isArray(parsed.bundle.releases) ||
+        parsed.bundle.targetReleaseId !== record.targetReleaseId) {
+      return fail({ kind: "invalid-input", reason: "invalid-artifact-bundle" });
+    }
+    const { bundle } = parsed;
+    if (!record.storageFormat) {
+      if (!matchingTarget(record, bundle.releases.find(node => node.manifest.release.id === bundle.targetReleaseId))) {
+        return fail({ kind: "invalid-input", reason: "invalid-artifact-base" });
+      }
+      const artifactBytes = encodeBundleBytes({
+        ...bundle, targetReleaseId: first.targetReleaseId, releases: [...bundle.releases, ...suffix.reverse()],
+      });
+      return ok({ ...first, storageFormat: undefined, artifactBytes, bytesChecksum: sha256DigestOfBytes(artifactBytes),
+        storageBytesChecksum: first.bytesChecksum });
+    }
+    const node = bundle.releases[0];
+    if (!node || bundle.releases.length !== 1 || !matchingTarget(record, node) ||
+        !record.predecessorReleaseDigest || node.manifest.release.predecessor?.digest !== record.predecessorReleaseDigest ||
+        node.manifest.release.predecessor.id !== record.predecessorReleaseId) {
+      return fail({ kind: "invalid-input", reason: "invalid-compact-artifact" });
+    }
+    suffix.push(node);
+    const base = records.get(record.predecessorReleaseDigest);
+    if (!base || base.targetReleaseId !== record.predecessorReleaseId) {
+      return fail({ kind: "invalid-input", reason: "invalid-artifact-base" });
+    }
+    record = base;
+  }
+}
+
+/** Read one database snapshot for permanent Definition erasure, including pending candidates. */
+export async function readArtifactsForErasure(db: Queryable): Promise<ReleaseArtifactRecord[]> {
+  const records = await readStoredArtifacts(db);
+  const result: ReleaseArtifactRecord[] = [];
+  for (const record of records.values()) {
+    if (!record.storageFormat) {
+      result.push(record);
+      continue;
+    }
+    const hydrated = hydrateArtifact(record, records);
+    if (!hydrated.ok) throw new Error(`Cannot read Catalog erasure lineage for ${record.id}`);
+    result.push(hydrated.value);
+  }
+  return result;
 }
 
 export async function persistArtifact(
@@ -386,12 +490,17 @@ export async function persistArtifact(
   if (input.artifactBytes.byteLength === 0) {
     return fail({ kind: "invalid-input", reason: "artifactBytes must be non-empty" });
   }
-  const bytesChecksum = sha256DigestOfBytes(input.artifactBytes);
-  const existing = await getArtifactByDigest(db, input.artifactDigest);
+  // Own the bytes before awaiting the lookup: the checksum, insert, and
+  // returned record must refer to the same snapshot.
+  const bytes = Buffer.from(input.artifactBytes);
+  const bytesChecksum = sha256DigestOfBytes(bytes);
+  // Existing callers compare full canonical bytes, including when the stored
+  // artifact has since been represented by a compact successor.
+  const existing = await readArtifact(db, input.artifactDigest, !input.storageFormat);
   if (existing.ok) {
     if (
-      existing.value.bytesChecksum === bytesChecksum &&
-      bytesEqual(existing.value.artifactBytes, input.artifactBytes)
+      existing.value.storageFormat === input.storageFormat && existing.value.bytesChecksum === bytesChecksum &&
+      bytesEqual(existing.value.artifactBytes, bytes)
     ) {
       return existing;
     }
@@ -406,39 +515,112 @@ export async function persistArtifact(
       `insert into catalog_publication.release_artifacts (
          id, artifact_digest, bytes_checksum, artifact_bytes, source_kind,
          target_release_id, target_release_digest, predecessor_release_id,
-         predecessor_release_digest, toolchain
-       ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb)
+         predecessor_release_digest, toolchain${input.storageFormat ? ", storage_format, compact_base_digest" : ""}
+       ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb${input.storageFormat ? ", $11, $9" : ""})
        returning
-         id, artifact_digest, bytes_checksum, artifact_bytes, source_kind,
+         id, artifact_digest, bytes_checksum, source_kind,
          target_release_id, target_release_digest, predecessor_release_id,
-         predecessor_release_digest, toolchain, created_at`,
+         predecessor_release_digest, toolchain, created_at, ${input.storageFormat ? "storage_format" : "'full' as storage_format"}`,
       [
         input.id,
         input.artifactDigest,
         bytesChecksum,
-        Buffer.from(input.artifactBytes),
+        bytes,
         input.sourceKind,
         input.targetReleaseId,
         input.targetReleaseDigest,
         input.predecessorReleaseId,
         input.predecessorReleaseDigest,
         JSON.stringify(input.toolchain),
+        ...(input.storageFormat ? [input.storageFormat] : []),
       ],
     );
     const row = inserted.rows[0];
     if (!row) {
       return fail({ kind: "not-found", entity: "artifact" });
     }
-    return ok(toArtifact(row));
+    return ok(toArtifact(row, new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength)));
   } catch (error) {
     const mapped = mapWriteError(error);
     if (mapped.kind === "conflict" && mapped.reason === "artifact-digest-bytes-mismatch") {
-      const raced = await getArtifactByDigest(db, input.artifactDigest);
-      if (raced.ok && bytesEqual(raced.value.artifactBytes, input.artifactBytes)) {
+      const raced = await readArtifact(db, input.artifactDigest, !input.storageFormat);
+      if (raced.ok && raced.value.storageFormat === input.storageFormat && bytesEqual(raced.value.artifactBytes, bytes)) {
         return raced;
       }
     }
     return fail(mapped);
+  }
+}
+
+/** Bump the algorithm revision for validation changes not captured by the compiler contracts. */
+const PREVIEW_VALIDATOR_VERSION = [
+  "catalog-subject-rename/v1", catalogCompilerContractFingerprint, catalogCompilerOwnerContractFingerprint,
+  catalogCompilerDtsContract(false).compilerFingerprint, catalogCompilerDtsContract(true).compilerFingerprint,
+].join("/");
+
+export async function getValidatedPreviewSnapshot(
+  db: Queryable, digest: string,
+): Promise<CatalogPublicationStoreResult<PreviewSnapshot>> {
+  try {
+    const result = await db.query<ArtifactByteChunkRow & {
+      target_release_id: string; target_checksum: string; has_subject_rules: boolean; has_dts_examples: boolean;
+    }>(
+      `select target_release_id, target_checksum, has_subject_rules, has_dts_examples, ${artifactByteColumns}
+         from (
+           select a.target_release_id, s.target_checksum, s.has_subject_rules, s.has_dts_examples,
+                  coalesce(s.target_bytes, a.artifact_bytes) as artifact_bytes
+           from catalog_publication.preview_snapshots s
+           join catalog_publication.release_artifacts a on a.id = s.artifact_id
+           where a.artifact_digest = $1 and a.target_release_digest = $1
+             and s.bytes_checksum = a.bytes_checksum and s.validator_version = $2
+         ) artifact
+         ${artifactByteChunkJoin}
+         order by chunk.byte_start`,
+      [digest, PREVIEW_VALIDATOR_VERSION],
+    );
+    const row = result.rows[0];
+    if (!row) return fail({ kind: "not-found", entity: "artifact" });
+    const bytes = assembleArtifactBytes(result.rows);
+    const parsed = parseBundleBytes(bytes);
+    const node = parsed.ok ? parsed.bundle.releases?.[0] : undefined;
+    if (sha256DigestOfBytes(bytes) !== row.target_checksum || !parsed.ok ||
+        parsed.bundle.releases?.length !== 1 || parsed.bundle.targetReleaseId !== row.target_release_id ||
+        !node || node.manifest?.release?.digest !== digest || node.manifest.release.id !== row.target_release_id) {
+      return fail({ kind: "invalid-input", reason: "invalid-preview-snapshot" });
+    }
+    return ok({ target: node, hasSubjectRules: row.has_subject_rules, hasDtsExamples: row.has_dts_examples });
+  } catch (error) {
+    return fail(mapWriteError(error));
+  }
+}
+
+export async function putValidatedPreviewSnapshot(
+  db: Queryable, digest: string, snapshot: PreviewSnapshot, storageFormat?: "successor-v1",
+): Promise<CatalogPublicationStoreResult<void>> {
+  const release = snapshot.target.manifest.release;
+  if (release.digest !== digest) return fail({ kind: "invalid-input", reason: "invalid-preview-snapshot" });
+  const targetBytes = storageFormat ? null : encodeBundleBytes({
+    schemaVersion: "1.0.0", targetReleaseId: release.id, releases: [snapshot.target],
+  });
+  try {
+    const inserted = await db.query<{ present: boolean }>(
+      `with source as (
+         select id, bytes_checksum from catalog_publication.release_artifacts
+         where artifact_digest = $1 and target_release_digest = $1 and target_release_id = $2
+           and ($7::boolean = false or storage_format = 'successor-v1')
+       ), saved as (
+         insert into catalog_publication.preview_snapshots
+           (artifact_id, artifact_digest, validator_version, bytes_checksum, has_subject_rules, target_bytes, target_checksum, has_dts_examples)
+         select id, $1, $3, bytes_checksum, $4, $5, coalesce($6, bytes_checksum), $8 from source
+         on conflict (artifact_id, validator_version) do nothing
+       )
+       select exists (select 1 from source) as present`,
+      [digest, release.id, PREVIEW_VALIDATOR_VERSION, snapshot.hasSubjectRules, targetBytes,
+        targetBytes ? sha256DigestOfBytes(targetBytes) : null, Boolean(storageFormat), snapshot.hasDtsExamples],
+    );
+    return inserted.rows[0]?.present ? ok(undefined) : fail({ kind: "not-found", entity: "artifact" });
+  } catch (error) {
+    return fail(mapWriteError(error));
   }
 }
 
@@ -884,6 +1066,10 @@ export async function updateJobExecution(
     values.push(patch.expectedFencingToken);
     where += ` and fencing_token = $${values.length}`;
   }
+  if (patch.expectedStatus !== undefined) {
+    values.push(patch.expectedStatus);
+    where += ` and status = $${values.length}`;
+  }
   try {
     const updated = await db.query<JobRow>(
       `update catalog_publication.publication_jobs
@@ -897,10 +1083,11 @@ export async function updateJobExecution(
     );
     const row = updated.rows[0];
     if (!row) {
-      if (patch.expectedFencingToken !== undefined) {
+      if (patch.expectedFencingToken !== undefined || patch.expectedStatus !== undefined) {
         const existing = await getJob(db, jobId);
         if (existing.ok) {
-          return fail({ kind: "conflict", reason: "fencing-token-mismatch" });
+          return fail({ kind: "conflict", reason: patch.expectedStatus !== undefined && existing.value.status !== patch.expectedStatus
+            ? "job-status-mismatch" : "fencing-token-mismatch" });
         }
         return existing;
       }

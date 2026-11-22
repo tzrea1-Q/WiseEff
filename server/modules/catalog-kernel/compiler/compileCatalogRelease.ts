@@ -13,15 +13,18 @@ import type {
   CatalogReleaseBundle,
   CatalogReleaseDocument,
   CatalogReleaseNode,
+  CompiledCatalogRelease,
   CompileCatalogReleaseResult,
   CompiledCatalogReleaseModel,
 } from "./types";
-import { catalogCompilerContractFingerprint, catalogCompilerOwnerContractFingerprint } from "./contract";
-import { ownerBundleContractArtifactDigest, s1BundleContractArtifactDigest } from "./contractArtifacts";
+import { catalogCompilerContractFingerprint, catalogCompilerDtsContract, catalogCompilerOwnerContractFingerprint } from "./contract";
+import { freezeCatalogJson, ownerBundleContractArtifactDigest, s1BundleContractArtifactDigest } from "./contractArtifacts";
 import {
+  createBuildPreparation,
   firstFailedPhase,
   isCatalogReleaseBundle,
   prepareForCompilation,
+  prepareIdentityAppend,
 } from "./validation";
 
 const compare = (left: string, right: string): number =>
@@ -58,16 +61,6 @@ const normalizeRelease = (node: CatalogReleaseNode) => ({
   ]),
 });
 
-const deepFreeze = <Value>(value: Value): Value => {
-  if (value !== null && typeof value === "object" && !Object.isFrozen(value)) {
-    for (const nested of Object.values(value)) {
-      deepFreeze(nested);
-    }
-    Object.freeze(value);
-  }
-  return value;
-};
-
 const targetCounts = (documents: readonly CatalogReleaseDocument[]) => {
   const subjects = documents.filter((document) => document.kind === "subject");
   const aliases = documents.filter((document) => document.kind === "alias");
@@ -84,12 +77,17 @@ const targetCounts = (documents: readonly CatalogReleaseDocument[]) => {
   };
 };
 
-export const compileCatalogRelease = (
+const validateCompilationInput = (
   bundle: CatalogReleaseBundle,
-): CompileCatalogReleaseResult => {
+  prepare = prepareForCompilation,
+): Extract<CompileCatalogReleaseResult, { ok: false }> | {
+  readonly ok: true;
+  readonly bundle: CatalogReleaseBundle;
+  readonly target: CatalogReleaseNode;
+} => {
   let prepared: ReturnType<typeof prepareForCompilation> | null = null;
   try {
-    prepared = prepareForCompilation(bundle);
+    prepared = prepare(bundle);
   } catch {
     prepared = null;
   }
@@ -127,7 +125,44 @@ export const compileCatalogRelease = (
     };
   }
 
-  const authoritativeBundle = prepared.bundle;
+  const target = prepared.bundle.releases.find(
+    (node) => node.manifest.release.id === prepared.bundle.targetReleaseId,
+  );
+  if (!target) throw new Error("validated target release disappeared");
+  return { ok: true, bundle: prepared.bundle, target };
+};
+
+/** Fully validate a bundle when the caller only needs its aggregate digest. */
+const validateDigest = (
+  bundle: CatalogReleaseBundle,
+  prepare = prepareForCompilation,
+): Extract<CompileCatalogReleaseResult, { ok: false }> | {
+  readonly ok: true;
+  readonly value: { readonly aggregateDigest: CompiledCatalogRelease["aggregateDigest"] };
+} => {
+  const validated = validateCompilationInput(bundle, prepare);
+  if (!validated.ok) return validated;
+  return { ok: true, value: { aggregateDigest: CatalogReleaseDigest(validated.target.manifest.release.digest) } };
+};
+
+export const validateCatalogReleaseDigest = (bundle: CatalogReleaseBundle) => validateDigest(bundle);
+
+export const validateIdentityAppendDigest = (base: CatalogReleaseNode, successor: CatalogReleaseNode) =>
+  validateDigest({ schemaVersion: "1.0.0", targetReleaseId: successor.manifest.release.id, releases: [base, successor] },
+    bundle => prepareIdentityAppend(bundle, base));
+
+export const createCatalogReleaseDigestValidator = () => {
+  const prepare = createBuildPreparation();
+  return (bundle: CatalogReleaseBundle) => validateDigest(bundle, prepare);
+};
+
+export const compileCatalogRelease = (
+  bundle: CatalogReleaseBundle,
+): CompileCatalogReleaseResult => {
+  const validated = validateCompilationInput(bundle);
+  if (!validated.ok) return validated;
+
+  const authoritativeBundle = validated.bundle;
   const releases = sorted(authoritativeBundle.releases, (node) => [
     node.manifest.release.sequence,
     node.manifest.release.id,
@@ -138,11 +173,14 @@ export const compileCatalogRelease = (
 
   if (!target) throw new Error("validated target release disappeared");
 
-  const compilerFingerprint = releases.some((release) => release.documents.some((document) =>
-    document.kind === "subject" && document.content.ownerSubjectId !== undefined))
-    ? catalogCompilerOwnerContractFingerprint : catalogCompilerContractFingerprint;
-  const schemaDigest = compilerFingerprint === catalogCompilerOwnerContractFingerprint
-    ? ownerBundleContractArtifactDigest : s1BundleContractArtifactDigest;
+  const owned = releases.some((release) => release.documents.some((document) =>
+    document.kind === "subject" && document.content.ownerSubjectId !== undefined));
+  const hasDtsExamples = releases.some((release) => release.documents.some((document) =>
+    document.kind === "definition" && document.content.revision.dtsExamples !== undefined));
+  const { compilerFingerprint, schemaDigest } = hasDtsExamples ? catalogCompilerDtsContract(owned) : {
+    compilerFingerprint: owned ? catalogCompilerOwnerContractFingerprint : catalogCompilerContractFingerprint,
+    schemaDigest: owned ? ownerBundleContractArtifactDigest : s1BundleContractArtifactDigest,
+  };
   const toolchainDigest = hash(
     serializeContract({
       compilerContractFingerprint: compilerFingerprint,
@@ -179,7 +217,7 @@ export const compileCatalogRelease = (
 
   return {
     ok: true,
-    value: deepFreeze({
+    value: freezeCatalogJson({
       release: {
         id: CatalogReleaseId(target.release.id),
         version: CatalogReleaseVersion(target.release.version),

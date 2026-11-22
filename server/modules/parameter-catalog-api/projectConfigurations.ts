@@ -3,6 +3,7 @@ import { ApiError } from "../../shared/http/errors";
 import type { WiseEffRouter } from "../../shared/http/router";
 import { payloadToBindingView } from "../parameter-bindings/catalogProjectValueSync";
 import { assertCurrentInstancesValid, currentInstancesCte } from "../parameter-bindings/queries/currentInstances";
+import { disableBindingReadJit } from "../parameter-bindings/readTransaction";
 import { readCurrentInstanceSourceValue } from "../parameter-bindings/queries/currentInstanceSource";
 import type { ObjectStore } from "../logs/objectStore";
 import type { ProjectValuePayload } from "../parameter-bindings/values";
@@ -64,7 +65,9 @@ function token(value: unknown): value is string {
 
 function present(row: Instance) {
   const unset = row.source_ref === "canonical-binding-identity";
-  const raw = unset ? "" : payloadToBindingView({ kind: row.value_kind, value: row.value } as ProjectValuePayload, row.source_format).rawValue;
+  const raw = unset ? "" : payloadToBindingView(
+    { kind: row.value_kind, value: row.value } as ProjectValuePayload, row.source_format, row.source_raw_text,
+  ).rawValue;
   return {
     kind: "instance" as const, bindingId: row.binding_id, projectId: row.project_id, projectName: row.project_name,
     configSetId: row.config_set_id, configSetName: row.config_set_name, sourceOccurrenceId: row.source_occurrence_id, sourceFormat: row.source_format,
@@ -102,6 +105,7 @@ export function registerProjectConfigurations(router: WiseEffRouter, db: Databas
     const organizationId = identity.scope.organizationId;
     const body = await db.transaction(async (tx) => {
       await tx.query("set transaction isolation level repeatable read read only");
+      await disableBindingReadJit(tx);
       const definition = await tx.query<{ id: string; subject_id: string }>(`select definition.id, definition.subject_id from parameter_catalog.parameter_definitions definition
         where definition.id = $1 and exists (select 1 from parameter_catalog.catalog_release_definition_heads head
           join parameter_catalog.catalog_materializations materialization on materialization.release_id = head.release_id

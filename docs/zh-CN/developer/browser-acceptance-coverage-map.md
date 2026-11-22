@@ -48,9 +48,13 @@
 
 `ORG-ACCOUNT-TRANSFER-001`：平台管理员在真实本地密码 API 模式、1440×900 的成员页预览源组织权限、凭据和待交接事项，明确配置目标组织角色，处理调动失败并重试。调动后旧会话和个人配对失效，原密码重新登录目标组织；源组织草稿、审核待办、历史署名及机器凭据保留。专属浏览器文件为 `e2e/acceptance/organization-account-transfer.acceptance.spec.ts`，真实 PostgreSQL 文件为 `server/modules/users/accountTransfer.integration.test.ts`。HMAC/OIDC 模式跳过本地密码交互，不作为本项本地登录验收。
 
+`ORG-MEMBER-BRIDGE-CORRECTION-001`：在隔离的本地认证 API 通道，以 1440×900 检查邮箱输入错误、登录名大小写冲突，以及更正后成员与设备两端的重读。浏览器文件为 `e2e/acceptance/organization-resources.acceptance.spec.ts`，PostgreSQL 集成用例覆盖授权、历史归属和凭据连续性。
+
 `ORG-OIDC-TRANSFER-001`：在隔离的受控 OIDC API 通道、1440×900 成员页预览所需组织声明，处理真实目标身份冲突，查看同步等待状态并重试失败的状态刷新；只有通过签名、组织声明和显式绑定校验的新登录才会完成同步。浏览器文件为 `e2e/acceptance/organization-oidc-transfer.acceptance.spec.ts`，真实签名认证及 PostgreSQL 文件为 `server/modules/users/oidcAccountTransfer.integration.test.ts`。其他认证通道跳过本条件用例；受控本地身份系统不代表部署身份系统验收。
 
 `LOG-REGISTER-001`：Admin 在 1440x900 的技能工作区编辑寄存器位段与映射，预览粘贴表格的有效行及逐行拒绝原因后导入，往返 YAML，并选择常驻样例面板中的日志行查看位条数值与枚举含义。组件和 PostgreSQL 集成测试已覆盖；协调者执行浏览器走查，专属浏览器自动化尚待补充，不记为已完成的自动化浏览器覆盖。
+
+`LOG-SKILL-CORRECTIONS-001`：平台管理员在 1440×900 的 API 模式下选择组织和技能，预览并更正源码版本标签和集成凭据名称，同时检查无权角色的页面行为。见 `e2e/acceptance/log-skill-corrections.acceptance.spec.ts`。
 
 `PCAT-REGISTRATION-INITIALIZE-001`：组织管理员明确选择业务父分类和目标名称，在同一事务创建对应类型目标并登记主体。组件及真实 PostgreSQL 并发、租户隔离、失败回滚已有专项覆盖；专属浏览器写入与审计回执仍待补，不记为已完成的自动化浏览器覆盖。
 
@@ -80,6 +84,7 @@
 - `NOTIF-READ-001`：通知可通过后端 mark-all-read API 标记已读（`e2e/acceptance/notifications.acceptance.spec.ts`）。
 - `PFB-SUBMIT-001`：活跃用户从侧边栏提交产品反馈，包含描述和可选截图；API 持久化，UI 展示成功提示（`e2e/acceptance/product-feedback.acceptance.spec.ts`）。
 - `PFB-ADMIN-001`：Admin 在 `/feedback-admin` 列表打开详情，将反馈从 `open` 推进到 `in_progress` 再到 `closed`，并写入处理备注（`e2e/acceptance/product-feedback.acceptance.spec.ts`）。
+- `PFB-CATEGORY-CORRECTION-001`：平台超级管理员在 1440×900 下更正所选组织的反馈处理分类，验证有效分类筛选和统计、原提交记录、拒绝越权写入及重复请求审计（`e2e/acceptance/business-record-corrections.acceptance.spec.ts`）。
 - `PFB-AUTHZ-001`：非 Admin 无法访问产品反馈管理 API 或 `/feedback-admin` 页面（`e2e/acceptance/product-feedback.acceptance.spec.ts`）。
 - `LOG-DOMAIN-001`：Admin 在 `/log-admin` 业务域治理区注册业务域（名称、描述、格式画像 JSON），上传时绑定该域，结论卡展示业务域标签（`e2e/acceptance/log-analysis.acceptance.spec.ts`）。
 - `LOG-DEGRADED-001`：模拟 provider 故障后分析降级到规则引擎，结果显著标注「降级分析 · 规则回退」与 provider-unavailable 原因，绝不静默冒充完整分析（`e2e/acceptance/log-analysis.acceptance.spec.ts`）。
@@ -101,6 +106,7 @@
 - `KB-ADMIN-001`：经审批门控工具 `action.createKnowledgeDraft` 创建的 Agent 知识草稿（确定性小泽先中断、后批准——同 `XIAOZE-ACTION-APPROVE-001` 在 SSE API 层断言，另有 `knowledge-agent-draft` eval 场景兜底）进入 `/knowledge-admin` 的 Agent 草稿发布队列（含创建人、会话来源、来源分析链接）；审阅者发布其一、归档拒绝其一，Agent 草稿在发布前不进入检索（`e2e/acceptance/knowledge.acceptance.spec.ts`；`server/modules/agent/xiaoze/eval/scenarios.ts`）。
 - `KB-REC-001`：已完成的日志分析记录展示由存储的结论/影响文本推导的「相关知识」区块：相关已发布条目带 `/knowledge?entryId=…` 引用深链出现，草稿与归档条目永不出现，区块诚实标注实际运行的检索模式，无相关条目时展示诚实空态（`e2e/acceptance/knowledge.acceptance.spec.ts`）。
 - `KB-XREF-001`：通过分页搜索关联精确 Catalog Definition；添加/移除幂等且有审计，草稿与已归档条目对任何调用者都不进入相关知识，双向导航保留精确身份；同一 Definition 合法转为 deprecated 后引用与「已废弃」徽章存续。保留独立的旧 Spec 历史及授权移除，拒绝新建旧引用。Software User 在 1440x900 通过 Knowledge 引用打开只读 Definition 页面，管理员导航仍有效，并保留截图证据。非超级用户 API LOGIN 承载真实 Hardware User 编辑与 Admin 参数页面读取；生命周期 producer 使用专用 pre-regime 测试安装，不代表线上激活或已部署的 deprecated 作者入口（`e2e/acceptance/knowledge-canonical-definition.acceptance.spec.ts`）。
+- `KB-ARCHIVED-REFERENCE-CORRECTION-001`：平台超级管理员在 1440×900 下更正所选组织的归档条目关联，验证拒绝越权写入、幂等、原修订、检索排除和操作审计（`e2e/acceptance/business-record-corrections.acceptance.spec.ts`）。
 - `DEBUG-SIM-001`：模拟器用户先通过模块导航浏览节点子树，再完成读、写、回读不一致、回滚与审计路径，包含复杂 JSON 值元数据。
 - `DEBUG-ADMIN-001`：API mode 下，Admin 新增、编辑、禁用/恢复、维护 HDC/ADB binding，并永久删除无历史引用的逻辑调试节点；同时验证有历史引用时的 `409` 保护路径，下载完整 v2 节点目录文件，回传该文件、在弹窗中预览合并分类并确认，再经 API 重新读取持久化节点并重新导出，证明该文件往返后为「不变」。这是确定性目录治理证据，不是 HDC 真机证据。
 - `DEBUG-ADMIN-846-CAPACITY`：直接向 PostgreSQL 写入 501 个模块与 2,001 个节点（启用、禁用、归档、无绑定、仅 HDC、仅 ADB 与禁用 binding），经真实 API 导出、预览、原子导入与再导出保持一致：声明计数与对象集合相符，同一文件再次预览为「不变」，清空目标后一次事务导入全部 2,001 个节点，再导出的语义完全一致。该用例证明导出与导入容量对称，已越过原 500 模块 / 2,000 节点导入上限；不声明任何设备访问。

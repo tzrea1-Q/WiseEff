@@ -73,16 +73,21 @@ async function revisionMembers(tx: Queryable, auth: AuthContext, projectId: stri
 export async function captureBaselineSourceSnapshot(tx: Queryable, auth: AuthContext, projectId: string, configSetId: string): Promise<BaselineSourceSnapshot | null> {
   const canonical = (await tx.query(`select id from parameter_catalog.project_parameter_source_occurrences
     where organization_id=$1 and project_id=$2 and config_set_id=$3 limit 1`, [parameterOrganizationId(auth),projectId,configSetId])).rows.length > 0;
-  if (!canonical) return null;
   const revision = (await tx.query<Revision>(`select * from public.dts_config_revisions where organization_id=$1 and project_id=$2
     and config_set_id=$3 and status='resolved' order by revision_number desc limit 1`, [parameterOrganizationId(auth),projectId,configSetId])).rows[0];
-  if (!revision) conflict("当前规范配置没有完整来源修订，请先在配置编辑器完成配置构建。");
+  if (!revision) {
+    if (!canonical) return null;
+    conflict("当前规范配置没有完整来源修订，请先在配置编辑器完成配置构建。");
+  }
   const members = await revisionMembers(tx,auth,projectId,configSetId,revision.id);
   const count = (await tx.query<{ count: number }>(`select count(*)::int as count from public.project_parameter_files
     where organization_id=$1 and project_id=$2 and config_set_id=$3`,[parameterOrganizationId(auth),projectId,configSetId])).rows[0]!.count;
   if (!members.length || members.length !== count || members.some((row) => row.currentVersionId !== row.fileVersionId
     || row.currentConfigSetId !== configSetId || row.currentRole !== (row.role === "include" ? "misc" : row.role)
-    || row.currentOrder !== row.sortOrder || !row.sourceName)) conflict("当前文件与完整来源修订不一致，请先在配置编辑器重新构建后保存快照。");
+    || row.currentOrder !== row.sortOrder || !row.sourceName)) {
+    if (!canonical) return null;
+    conflict("当前文件与完整来源修订不一致，请先在配置编辑器重新构建后保存快照。");
+  }
   const scope = { organizationId: parameterOrganizationId(auth), projectId, configSetId };
   const cohort = await filterPreviouslySuspendedSourceBindings(tx, { ...scope, baseConfigRevisionId: revision.id },
     await loadConfigurationRestoreCohort(tx,{ ...scope,snapshotRevisionId: revision.id }));
@@ -244,7 +249,7 @@ async function inspect(tx: Database, storage: ObjectStore, auth: AuthContext, in
   }
   const cohort = await loadConfigurationRestoreCohort(tx,{ organizationId: parameterOrganizationId(auth),projectId: input.projectId,configSetId,snapshotRevisionId: targetRevision.id });
   const expectedPinCount = baseline.source_snapshot?.sourcePinCount ?? targetRevision.source_pin_count!;
-  if (cohort.filter((row) => row.snapshotValueId !== null).length !== expectedPinCount) conflict("快照参数定义或来源记录已被删除/替换，无法完整恢复；不会复活已彻底删除的定义。");
+  if (cohort.filter((row) => row.snapshotValueId !== null).length !== expectedPinCount) conflict("快照中的定义或实例已更正，或来源已删除，无法完整恢复到工作配置；不会复活已彻底删除的定义。");
   // Restoring source bytes does not reactivate parameters already suspended by
   // an approved whole-source edit. Their exact historical pins remain available;
   // the next whole-source reconciliation owns any return to managed values.
@@ -303,7 +308,8 @@ async function inspect(tx: Database, storage: ObjectStore, auth: AuthContext, in
   preview.members = members.map((member) => {
     const retained = extras.some((row) => row.fileId === member.fileId);
     const compositionChanged = !retained && (member.currentConfigSetId !== configSetId
-      || member.currentRole !== (member.role === "include" ? "misc" : member.role) || member.currentOrder !== member.sortOrder);
+      || member.currentRole !== (member.role === "include" ? "misc" : member.role) || member.currentOrder !== member.sortOrder
+      || currentMembers.find(row => row.fileId === member.fileId)?.sourceName !== member.sourceName);
     return { fileId: member.fileId,fileName: member.sourceName,fromVersionId: member.currentVersionId,toVersionId: member.fileVersionId,
       versionNumber: member.versionNumber,role: member.role,sortOrder: member.sortOrder,compositionChanged,
       action: retained ? "retain-added" : member.currentConfigSetId !== configSetId ? "reattach" : member.currentVersionId !== member.fileVersionId || compositionChanged ? "restore" : "unchanged" };

@@ -46,6 +46,7 @@ export type DtsPreprocessingReceipt = {
   outputDigest: string;
 };
 type Segment = { start: number; end: number; sourceName: string; sourceStart: number };
+type IncludeEdge = { sourceName: string; target: string; line: number; column: number };
 export type PreparedDtsDocument = { text: string; document: DtsDocument; originalDocument: DtsDocument;
   originForSpan: (span: { start: number; end: number }) => { sourceName: string; start: number; end: number } | null };
 export type PreparedDtsSources = { receipt: DtsPreprocessingReceipt; documents: Map<string, PreparedDtsDocument>;
@@ -103,7 +104,7 @@ function boundedDocker(args: string[], timeoutMs: number, maxBytes: number): Pro
 function checkedInputs(input: DtsConfigSetInput) {
   const transformed = new Map<string, string>(), directiveLines = new Map<string, Set<number>>();
   const edges = new Map<string, string[]>();
-  const includeGraph: Array<{ sourceName: string; target: string; line: number; column: number }> = [];
+  const includeGraph: Array<IncludeEdge & { argumentSpan: { start: number; end: number } }> = [];
   let total = 0;
   const defines = normalizeDtsDefines(input.defines ?? input.preprocessing?.defines, input.entryFile);
   for (const [name, value] of Object.entries(defines)) {
@@ -144,11 +145,21 @@ function checkedInputs(input: DtsConfigSetInput) {
     const clean = stripCppComments(file.content.replace(/\r\n/gu, "\n").replace(/^\uFEFF/u, " "));
     // Spliced directives are checked as one logical line, including dead conditional branches.
     const lines = clean.split("\n"), originalLines = file.content.replace(/^\uFEFF/u, " ").split("\n");
+    let sourceOffset = 0;
+    const lineOffsets = originalLines.map(physical => {
+      const start = sourceOffset;
+      sourceOffset += physical.length + 1;
+      return start;
+    });
     const masked = new Set<number>(), dependencies: string[] = [];
     for (let index = 0; index < lines.length; index++) {
       const first = index;
+      const logicalStarts = [0];
       let line = lines[index]!;
-      while (line.endsWith("\\") && index + 1 < lines.length) line = line.slice(0, -1) + lines[++index]!;
+      while (line.endsWith("\\") && index + 1 < lines.length) {
+        logicalStarts.push(line.length - 1);
+        line = line.slice(0, -1) + lines[++index]!;
+      }
       const tokens = line.replace(/"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'/gu, "");
       if (tokens.includes("##") || tokens.includes(PREFIX)) fail(name, first + 1, "当前冻结合约不支持 token-pasting 或预处理保留标记。");
       if (/\b__(?:DATE|TIME|TIMESTAMP|FILE|BASE_FILE|COUNTER|INCLUDE_LEVEL)__\b/u.test(tokens)) fail(name, first + 1, "时间、路径或环境宏未声明为冻结输入，不能发布。");
@@ -159,22 +170,31 @@ function checkedInputs(input: DtsConfigSetInput) {
       for (let cursor = first; cursor <= index; cursor++) masked.add(cursor + 1);
       if (!["include", "define", "undef", "if", "ifdef", "ifndef", "elif", "else", "endif", "error", "warning"].includes(directive[1]!)) fail(name, first + 1, `不支持 #${directive[1]} 指令（包括源码位置重映射）。`);
       if (directive[1] === "include") {
-        const include = /^\s*#\s*include\s*(?:"([^"\n]+)"|<([^>\n]+)>)\s*$/u.exec(line);
+        const include = /^\s*#\s*include\s*("([^"\n]+)"|<([^>\n]+)>)\s*$/du.exec(line);
         if (!include) fail(name, first + 1, "include 必须是明确的清单内字面路径；不支持宏计算文件名。");
-        const target = include![1] ?? include![2]!;
-        const found = literalTarget(name, target, Boolean(include![1]), first + 1);
+        const target = include![2] ?? include![3]!;
+        const found = literalTarget(name, target, Boolean(include![2]), first + 1);
+        const [start, end] = include!.indices![1]!;
+        const physicalOffset = (logicalOffset: number) => {
+          const segment = logicalStarts.findLastIndex(offset => offset <= logicalOffset);
+          return lineOffsets[first + segment]! + logicalOffset - logicalStarts[segment]!;
+        };
         dependencies.push(found!);
-        includeGraph.push({ sourceName: name, target: found!, line: first + 1, column: line.indexOf("#") + 1 });
+        includeGraph.push({ sourceName: name, target: found!, line: first + 1, column: line.indexOf("#") + 1,
+          argumentSpan: { start: physicalOffset(start), end: physicalOffset(end - 1) + 1 } });
       }
     }
     for (let index = 0; index < lines.length; index++) {
       if (masked.has(index + 1)) continue;
-      const native = /^\s*\/include\/\s*"([^"\n]+)"\s*;?\s*$/u.exec(lines[index]!);
+      const native = /^\s*\/include\/\s*("([^"\n]+)")\s*;?\s*$/du.exec(lines[index]!);
       if (native) {
-        const target = native[1]!;
+        const target = native[2]!;
         const found = literalTarget(name, target, true, index + 1);
         dependencies.push(found!); masked.add(index + 1);
-        includeGraph.push({ sourceName: name, target: found!, line: index + 1, column: lines[index]!.indexOf("/include/") + 1 });
+        const [start, end] = native.indices![1]!;
+        const offset = lineOffsets[index]!;
+        includeGraph.push({ sourceName: name, target: found!, line: index + 1, column: lines[index]!.indexOf("/include/") + 1,
+          argumentSpan: { start: offset + start, end: offset + end } });
         originalLines[index] = `#include "${target}"`;
       } else if (lines[index]!.includes("/include/")) fail(name, index + 1, "启用 C 预处理时，原生 include 必须独占一行。");
       else if (/^\s*#[\w-]+\s*=/u.test(lines[index]!)) originalLines[index] = `${PREFIX} ${originalLines[index]}`;
@@ -205,7 +225,11 @@ export function requiresDtsPreprocessing(files: DtsConfigSetInput["files"], defi
     .some(line => /^\s*#/u.test(line) && !/^\s*#[\w-]+\s*=/u.test(line)));
 }
 
-export function inspectDtsCppIncludes(input: DtsConfigSetInput) { return checkedInputs(input).includeGraph; }
+export function inspectDtsCppIncludeArguments(input: DtsConfigSetInput) { return checkedInputs(input).includeGraph; }
+
+export function inspectDtsCppIncludes(input: DtsConfigSetInput): IncludeEdge[] {
+  return inspectDtsCppIncludeArguments(input).map(({ argumentSpan: _span, ...edge }) => edge);
+}
 
 export function dtsPreprocessingInputDigest(input: DtsConfigSetInput) {
   const defines = normalizeDtsDefines(input.defines ?? input.preprocessing?.defines, input.entryFile);

@@ -2,7 +2,8 @@ import { CATALOG_CAPABILITY_CONTRACT_REVISION } from "./types";
 import { describe, expect, it } from "vitest";
 
 import { compileCatalogRelease } from "../../catalog-kernel/compiler/index";
-import { omittedPredecessorAliasBundle } from "../../catalog-kernel/compiler/__fixtures__/catalogReleaseBundle";
+import { omittedPredecessorAliasBundle, validCatalogReleaseBundle } from "../../catalog-kernel/compiler/__fixtures__/catalogReleaseBundle";
+import { compiledReleaseGolden } from "../../catalog-kernel/compiler/__fixtures__/compiledReleaseGolden";
 import {
   CatalogReleaseVersion,
   serializeContract,
@@ -13,7 +14,9 @@ import {
   FIRST_ACME_RELEASE_ID,
   compileVendorCatalogSuccessor,
 } from "../../../../scripts/compile-vendor-catalog-release";
-import { buildCompleteSuccessor } from "./completeSuccessor";
+import { buildCompleteSuccessor, buildIdentitySuccessorFromSnapshot } from "./completeSuccessor";
+import { identitySnapshotOf } from "./identitySnapshot";
+import { encodeBundleBytes } from "./bundleCodec";
 import {
   allocationFor,
   allocationForRevision,
@@ -26,7 +29,96 @@ import {
 } from "./predecessorHarness";
 
 describe("buildCompleteSuccessor", () => {
-  it("publishes equal node names under distinct drivers while retaining legacy artifacts", async () => {
+  it("certifies the same candidate as full history after a historical cross-kind retirement", async () => {
+    const initial = firstAcmePredecessor();
+    const converted = await buildCompleteSuccessor({
+      productPath: "m2-core", predecessorArtifact: { digest: initial.digest, bytes: initial.bytes },
+      changeSet: [{ op: "replace-subject-kind", subjectId: "csub_acme_power", replacement: { kind: "node-type", selector: "converted" } }],
+      frozenIdentity: frozenPageIdentity([], "converted"),
+    });
+    if (!converted.ok || converted.value.kind !== "successor") throw new Error(JSON.stringify(converted));
+    const artifact = converted.value.artifact;
+    const convertedNode = artifact.bundle.releases.at(-1)!;
+    const subjectId = convertedNode.documents.find(doc => doc.kind === "subject" && doc.content.selector.value === "converted")!.content.id;
+    const renamed = await buildCompleteSuccessor({
+      productPath: "m2-core", predecessorArtifact: { digest: artifact.artifactDigest, bytes: artifact.artifactBytes },
+      changeSet: [{ op: "rename-subject", subjectId, selector: "renamed", keepOldAlias: false }],
+      frozenIdentity: frozenPageIdentity([], "renamed", "1.2.0"),
+    });
+    if (!renamed.ok || renamed.value.kind !== "successor") throw new Error(JSON.stringify(renamed));
+    const base = renamed.value.artifact;
+    const snapshot = identitySnapshotOf(base.bundle, base.bundle.releases.at(-1)!);
+    if (!snapshot) throw new Error("expected a validated identity snapshot");
+    const input = {
+      productPath: "m2-core" as const, predecessorArtifact: { digest: base.artifactDigest, bytes: base.artifactBytes },
+      changeSet: [{ op: "set-subject-alias" as const, subjectId, selector: "another", active: true }],
+      frozenIdentity: frozenPageIdentity([], "aliased", "1.3.0"),
+    };
+    const full = await buildCompleteSuccessor(input);
+    const compact = await buildIdentitySuccessorFromSnapshot(input, snapshot);
+    if (!full.ok || full.value.kind !== "successor") throw new Error(JSON.stringify(full));
+    if (!compact.ok || compact.value.kind !== "successor") throw new Error(JSON.stringify(compact));
+    expect(compact.value.candidate).toEqual(full.value.candidate);
+    expect(compact.value.artifact.bundle.releases).toEqual(full.value.artifact.bundle.releases.slice(-1));
+  });
+
+  it("keeps legacy compiled bytes and bundle digests while adding a verbatim DTS revision", async () => {
+    const historical = compileCatalogRelease(validCatalogReleaseBundle());
+    expect(historical).toMatchObject({ ok: true, value: {
+      compiledReleaseDigest: compiledReleaseGolden.compiledReleaseDigest,
+      materializationFingerprint: compiledReleaseGolden.materializationFingerprint,
+    } });
+    const predecessor = firstAcmePredecessor();
+    const source = "iin_max =\n\t<0x20>; /* mA */";
+    const frozenIdentity = frozenPageIdentity([allocationForRevision("iin_max", 2)]);
+    const build = (examples: string[], valueSchema = { type: "integer" as const, minimum: 0 }) => buildCompleteSuccessor({
+      productPath: "m2-core", predecessorArtifact: { digest: predecessor.digest, bytes: predecessor.bytes }, frozenIdentity,
+      changeSet: [{ op: "revise-definition", definitionId: "pdef_acme_power_iin_max", class: "documentation", content: {
+        ...integerContent("Input current limit", "Maximum accepted input current."), valueSchema, dtsExamples: examples,
+      } }],
+    });
+    const built = await build([`\r\n${source.replaceAll("\n", "\r\n")}\r\n`]);
+    if (!built.ok || built.value.kind !== "successor") throw new Error(JSON.stringify(built));
+    const [carried, successor] = built.value.artifact.bundle.releases;
+    expect(carried?.manifest.release.digest).toBe(FIRST_ACME_RELEASE_DIGEST);
+    expect(encodeBundleBytes({ ...predecessor.bundle, releases: [carried!] })).toEqual(predecessor.bytes);
+    expect(successor?.documents.find((doc) => doc.content.id === "pdef_acme_power_iin_max")).toMatchObject({
+      content: { revision: { number: 2, dtsExamples: [source] } },
+    });
+    expect(built.value.impact.definitions.changed).toMatchObject([{ contentClass: "documentation" }]);
+    expect(await build([source.replace("iin_max", "another")])).toMatchObject({ ok: false, error: { detail: "dts-example-property-mismatch" } });
+    expect(await build([source], { type: "integer", minimum: 33 })).toMatchObject({ ok: false, error: { detail: "dts-example-does-not-match-schema" } });
+  });
+
+  it("replays the old release and retains the previous compatible as an alias after a rename", async () => {
+    const predecessor = firstAcmePredecessor();
+    const result = await buildCompleteSuccessor({
+      productPath: "m2-core",
+      predecessorArtifact: { digest: predecessor.digest, bytes: predecessor.bytes },
+      changeSet: [{
+        op: "rename-subject", subjectId: "csub_acme_power",
+        selector: "acme,power-corrected", keepOldAlias: true,
+      }],
+      frozenIdentity: frozenPageIdentity([], "renamed"),
+    });
+    expect(result.ok, result.ok ? undefined : JSON.stringify(result.error)).toBe(true);
+    if (!result.ok || result.value.kind !== "successor") return;
+    expect(result.value.capabilityContract.revision).toBe("catalog-capability/v7");
+    const [previous, successor] = result.value.artifact.bundle.releases;
+    expect(previous).toEqual(predecessor.first);
+    expect(successor?.documents).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: "subject", content: expect.objectContaining({
+        id: "csub_acme_power", canonicalKey: "driver:acme,power-corrected",
+        selector: expect.objectContaining({ value: "acme,power-corrected" }),
+      }) }),
+      expect.objectContaining({ kind: "alias", content: expect.objectContaining({
+        subjectId: "csub_acme_power", normalizedSelector: "acme,power", lifecycle: "active",
+      }) }),
+    ]));
+    expect(result.value.impact.definitions.changed).toEqual([]);
+  });
+
+  it("publishes and corrects equal node names under distinct drivers while retaining legacy artifacts", async () => {
     const predecessor = firstAcmePredecessor();
     const result = await buildCompleteSuccessor({ productPath: "m2-core",
       predecessorArtifact: { digest: predecessor.digest, bytes: predecessor.bytes },
@@ -46,6 +138,20 @@ describe("buildCompleteSuccessor", () => {
     expect(result.value.capabilityContract.revision).toBe("catalog-capability/v6");
     expect(compileCatalogRelease(result.value.artifact.bundle).ok).toBe(true);
     expect(compileCatalogRelease(predecessor.bundle)).toEqual({ ok: true, value: predecessor.compiled });
+    let artifact = result.value.artifact;
+    for (const [subjectId, version] of [["csub_battery_a", "1.2.0"], ["csub_battery_b", "1.3.0"]] as const) {
+      const changed = await buildCompleteSuccessor({
+        productPath: "m2-core",
+        predecessorArtifact: { digest: artifact.artifactDigest, bytes: artifact.artifactBytes },
+        changeSet: [{ op: "rename-subject", subjectId, selector: "battery-corrected", keepOldAlias: true }],
+        frozenIdentity: frozenPageIdentity([], subjectId, version),
+      });
+      if (!changed.ok || changed.value.kind !== "successor") throw new Error(JSON.stringify(changed));
+      artifact = changed.value.artifact;
+    }
+    const renamed = artifact.bundle.releases.at(-1)?.documents.filter(doc =>
+      doc.kind === "subject" && doc.content.selector.value === "battery-corrected");
+    expect(renamed?.map(doc => doc.content.id)).toEqual(["csub_battery_a", "csub_battery_b"]);
   });
 
   it("publishes a standalone subject without inventing definitions and marks its new capability", async () => {
@@ -1017,7 +1123,7 @@ describe("buildCompleteSuccessor", () => {
     ]);
   });
 
-  it("carries a configuration-schema subject and two integer definitions through m2-core", async () => {
+  it("renames a configuration-schema subject and carries its two integer definitions through m2-core", async () => {
     const predecessor = firstAcmePredecessor();
     const result = await buildCompleteSuccessor({
       predecessorArtifact: { digest: predecessor.digest, bytes: predecessor.bytes },
@@ -1113,6 +1219,20 @@ describe("buildCompleteSuccessor", () => {
       );
       expect(current?.content).toEqual(previous.content);
     }
+    const renamed = await buildCompleteSuccessor({
+      productPath: "m2-core",
+      predecessorArtifact: { digest: artifact.artifactDigest, bytes: artifact.artifactBytes },
+      changeSet: [{ op: "rename-subject", subjectId: "csub_wiseeff_power_config",
+        selector: "wiseeff/charging/power-configuration", keepOldAlias: true }],
+      frozenIdentity: frozenPageIdentity([], "cfg-renamed", "1.2.0"),
+    });
+    if (!renamed.ok || renamed.value.kind !== "successor") throw new Error(JSON.stringify(renamed));
+    expect(renamed.value.impact.definitions.changed).toEqual([]);
+    expect(renamed.value.artifact.bundle.releases.at(-1)?.documents).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: "alias", content: expect.objectContaining({
+        normalizedSelector: "wiseeff.power-config", subjectId: "csub_wiseeff_power_config",
+      }) }),
+    ]));
   });
 
   it("admits 1024 change-set ops on v4 and refuses 1025", async () => {

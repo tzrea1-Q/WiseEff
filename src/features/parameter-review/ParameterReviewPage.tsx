@@ -340,7 +340,6 @@ export function ParameterReviewPage({
   const selectedParameterDescription =
     selected?.parameterDescription?.trim() ||
     selectedReviewParameter?.description?.trim() ||
-    selectedReviewParameter?.explanation?.trim() ||
     "";
   const selectedInitializationSubmitter = selectedInitialization
     ? resolveRetainedUserName(state.users, selectedInitialization.review.submittedBy, selectedInitialization.review.submittedByName)
@@ -576,6 +575,7 @@ export function ParameterReviewPage({
     ...pendingRequests.map((request) => ({ row: { kind: "change" as const, request }, view: "pending" as const })),
     ...historyRequests.map((request) => ({ row: { kind: "change" as const, request }, view: "history" as const }))
   ].map(({ row, view }) => ({ id: getReviewRowField(row, "id"), kind: "legacy", view,
+    parameterId: row.kind === "change" ? row.request.parameterId : undefined,
     typeLabel: row.kind === "initialization" ? "参数初始化" : row.request.editSubjectKind === "node-enablement" ? "节点状态" : runtimeMode === "api" ? "历史参数" : "参数变更",
     projectId: getReviewRowField(row, "projectId"), project: getReviewRowField(row, "project"),
     module: getReviewRowField(row, "module"), title: row.kind === "change" ? row.request.title : `${row.draft.projectName} 初始化`,
@@ -618,7 +618,7 @@ export function ParameterReviewPage({
     <WorkbenchLayout title={reviewPageTitle}>
       <ReviewInbox projectId={canonicalProjectId} repository={runtimeMode === "api" ? runtime?.parameterCatalogRepository : undefined}
         sourceRepository={sourceRepository}
-        state={state} search={search} runtimeMode={runtimeMode} sessionPermissions={sessionPermissions} sessionRoles={sessionRoles} canReview={canReviewCanonical} legacyRows={inboxLegacyRows}
+        state={state} search={search} runtimeMode={runtimeMode} sessionPermissions={sessionPermissions} sessionRoles={sessionRoles} parameterActions={parameterActions} canReview={canReviewCanonical} legacyRows={inboxLegacyRows}
         onNavigate={onNavigate}
         busy={actionPending || batchProgress !== null}
         onBusyChange={onBusyChange}
@@ -702,7 +702,7 @@ export function ParameterReviewPage({
               </p>
               <ol className="review-initialization-list" id="initialization-snapshots">{[...selectedInitialization.draft.parameterSnapshots]
                 .sort((left, right) => Number(right.needsRecommendedValueConfirmation) - Number(left.needsRecommendedValueConfirmation)).map((snapshot) => <li className="review-initialization-list__item" key={snapshot.parameterId}>
-                <strong>{state.parameters.find((parameter) => parameter.id === snapshot.parameterId)?.name || "参数名称未记录"}</strong>
+                <strong>{snapshot.displayName || (runtimeMode !== "api" && state.parameters.find((parameter) => parameter.id === snapshot.parameterId)?.name) || "参数名称未记录"}</strong>
                 <p className="review-initialization-list__meta">{snapshot.module} · {riskLabels[snapshot.risk]}风险 · {snapshot.sourceRole === "primary" ? "主来源" : "补充来源"}：{state.configDraft.projects.find((project) => project.id === snapshot.sourceProjectId)?.name || "来源名称未记录"}</p>
                 {snapshot.needsRecommendedValueConfirmation ? <p className="review-initialization-list__attention">需核对推荐值</p> : null}
                 {shouldSummarizeReviewChange({ currentValue: "", targetValue: snapshot.recommendedValue }) ? <details open={snapshot.needsRecommendedValueConfirmation}>
@@ -792,6 +792,7 @@ export function ParameterReviewPage({
                 moduleName={selected.module}
                 moduleDescription={selectedModuleDescription}
                 parameterDescription={selectedParameterDescription}
+                parameterDocumentation={selectedReviewParameter?.explanation}
               />
               {canExpandSubmission ? (
                 <Button

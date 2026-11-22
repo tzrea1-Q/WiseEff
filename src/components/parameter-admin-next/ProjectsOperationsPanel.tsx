@@ -167,7 +167,12 @@ export function ProjectsOperationsPanel({
     onNavigate(`/parameter-admin/projects/${encodeURIComponent(id)}/${nextView}${listPath === "/parameter-admin/projects" ? "" : `?returnTo=${encodeURIComponent(listPath)}`}`);
   };
 
-  const stateRows = useMemo(() => buildParameterAdminProjectsFromState(state), [state]);
+  const stateRows = useMemo(() => {
+    if (!isApiMode) return buildParameterAdminProjectsFromState(state);
+    // Non-admins can deep-link to a project's configuration, where only its
+    // project identity and lifecycle are needed. Admin counts come from the API.
+    return canAdmin ? [] : buildParameterAdminProjectsFromState({ ...state, parameters: [] });
+  }, [canAdmin, isApiMode, state]);
   const rows = isApiMode && canAdmin ? apiRows : stateRows;
   const projectIds = JSON.stringify(state.configDraft.projects.map((project) => project.id));
   const editingProject = rows.find((row) => row.id === editingProjectId) ?? null;

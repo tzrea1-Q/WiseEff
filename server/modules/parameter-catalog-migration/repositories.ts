@@ -7,6 +7,7 @@
 import type pg from "pg";
 import { randomUUID } from "node:crypto";
 
+import { PUBLICATION_REQUEST_SCOPE } from "../catalog-publication/preview";
 import type { DefinitionReplacementFailure, FrozenProjectTip, ReplacementStatus } from "./types";
 
 export type MigrationRow = pg.QueryResultRow;
@@ -33,12 +34,16 @@ export const loadCurrentReleasePin = async (
   return result.rows[0] ?? null;
 };
 
-export const isCurrentAdministrator = async (client: MigrationClient, organizationId: string, principalId: string, role: "admin" | "platform-admin") =>
+export const isCurrentAdministrator = async (client: MigrationClient, organizationId: string, principalId: string,
+  role: "admin" | "platform-admin", homeOnly = false) =>
   (await client.query<{ authorized: boolean }>(
-    `select exists(select 1 from public.users administrator join public.user_role_bindings role on role.user_id=administrator.id
-      and role.organization_id=administrator.organization_id where administrator.id=$1 and administrator.organization_id=$2
+    `select exists(select 1 from public.organizations target cross join public.users administrator
+      join public.user_role_bindings role on role.user_id=administrator.id
+      and role.organization_id=administrator.organization_id where administrator.id=$1
+      and (($3='platform-admin' and not $4::boolean) or administrator.organization_id=$2)
+      and target.id=$2 and target.status<>'deleting'
       and administrator.is_active and role.role_id=$3 and role.project_id is null) as authorized`,
-    [principalId, organizationId, role])).rows[0]?.authorized === true;
+    [principalId, organizationId, role, homeOnly])).rows[0]?.authorized === true;
 
 export const loadReleasePinById = async (
   client: MigrationClient,
@@ -58,7 +63,7 @@ export type DefinitionRow = {
   subject_id: string;
   property_key: string;
   revision_id: string;
-  revision_content: { lifecycle?: string; valueSchema?: unknown } | null;
+  revision_content: { lifecycle?: string; valueSchema?: unknown; unit?: string } | null;
   subject_status: string | null;
   subject_name: string | null;
 };
@@ -75,7 +80,7 @@ export const loadDefinitionInRelease = async (
             head.revision_id,
             revision.content as revision_content,
             membership.lifecycle as subject_status,
-            subject.canonical_key as subject_name
+            coalesce(membership.selector_snapshot->'values'->>0, membership.selector_snapshot->>'value', subject.canonical_key) as subject_name
        from parameter_catalog.parameter_definitions definition
        join parameter_catalog.catalog_release_definition_heads head
          on head.definition_id = definition.id
@@ -121,7 +126,8 @@ export const loadSubjectInRelease = async (
   subjectId: string,
 ): Promise<SubjectRow | null> => {
   const result = await client.query<SubjectRow>(
-    `select subject.id, subject.kind, membership.lifecycle as status, subject.canonical_key
+    `select subject.id, subject.kind, membership.lifecycle as status,
+            coalesce(membership.selector_snapshot->'values'->>0, membership.selector_snapshot->>'value', subject.canonical_key) as canonical_key
        from parameter_catalog.catalog_subjects subject
        join parameter_catalog.catalog_release_subjects membership
          on membership.subject_id = subject.id
@@ -145,8 +151,8 @@ export const loadProjects = async (
             project.organization_id,
             coalesce(project.name, project.id) as name
        from public.projects project
-      where project.id = any($1::text[])`,
-    [[...projectIds]],
+      where project.organization_id = $1 and project.id = any($2::text[])`,
+    [organizationId, [...projectIds]],
   );
   return result.rows;
 };
@@ -289,6 +295,55 @@ export const loadCurrentBindingTips = async (
   );
   return result.rows;
 };
+
+/** Under the Binding lock, trace the current tip back to the value confirmed in the merge.
+ * Native source commits can propagate an unchanged value through many file revisions.
+ * A changed target must come from a committed source request, and a deleted source must
+ * carry that request's absence proof. A different intervening value invalidates the merge. */
+export async function loadMergeValueProgress(client: MigrationClient, input: {
+  organizationId: string; projectId: string; bindingId: string; baseValueId: string;
+  revisionId: string; selectedDigest: string; allowDeletion: boolean;
+}) {
+  const { rows } = await client.query<{ valueId: string; deleted: boolean; matchesSelection: boolean }>(
+    `with recursive owned as (
+       select binding.current_value_id, base.value_digest
+       from parameter_catalog.project_parameter_bindings binding
+       join parameter_catalog.project_parameter_values base on base.id=$4 and base.binding_id=binding.id
+       where binding.organization_id=$1 and binding.project_id=$2 and binding.id=$3
+         and binding.effective_revision_id=$5 and base.definition_revision_id=$5 and base.value_state='present'
+         and not parameter_catalog.is_replaced_current_binding(binding.id)
+     ), lineage as (
+       select current_value_id as id from owned
+       union
+       select history.old_current_value_id
+       from lineage
+       join parameter_catalog.binding_history_events history on history.binding_id=$3 and history.new_current_value_id=lineage.id
+       join parameter_catalog.project_parameter_values next on next.id=lineage.id and next.binding_id=$3 and next.definition_revision_id=$5
+       join parameter_catalog.project_parameter_values prior on prior.id=history.old_current_value_id and prior.binding_id=$3
+         and prior.definition_revision_id=$5 and prior.value_state='present'
+       join parameter_catalog.project_value_source_pins pin on pin.project_value_id=next.id and pin.binding_id=$3
+       cross join owned
+       left join public.project_parameter_value_change_requests request on request.id=history.applied_request_id
+         and request.organization_id=$1 and request.project_id=$2 and request.status='approved'
+         and request.apply_outcome='committed' and request.applied_audit_ref=history.success_audit_ref
+       where lineage.id<>$4 and (
+         (history.reason='source-revision-propagation' and next.value_state='present' and next.value_digest=prior.value_digest
+           and next.value_kind=prior.value_kind)
+         or (request.id is not null and (
+           ($7::boolean and next.value_state='deleted' and pin.delete_request_id=request.id
+             and pin.base_source_pin_id=(select id from parameter_catalog.project_value_source_pins where project_value_id=prior.id and binding_id=$3)
+             and prior.value_digest=owned.value_digest)
+           or (not $7::boolean and next.value_state='present' and next.value_digest=$6 and prior.value_digest=owned.value_digest)
+         ))
+       )
+     )
+     select tip.id as "valueId", tip.value_state='deleted' as deleted, tip.value_digest=$6 as "matchesSelection"
+     from owned join parameter_catalog.project_parameter_values tip on tip.id=owned.current_value_id
+     where exists(select 1 from lineage where id=$4)`,
+    [input.organizationId, input.projectId, input.bindingId, input.baseValueId, input.revisionId, input.selectedDigest, input.allowDeletion],
+  );
+  return rows[0] ?? null;
+}
 
 export const countCurrentReferences = async (
   client: MigrationClient,
@@ -607,8 +662,8 @@ export type PreviewRow = {
   preview_fingerprint: string;
   preview_catalog_release_id: string;
   preview_catalog_release_digest: string;
-  candidate_id: string;
-  artifact_digest: string;
+  candidate_id: string | null;
+  artifact_digest: string | null;
   manifest: FrozenProjectTip[];
   blockers: string[];
   impact: Record<string, unknown>;
@@ -677,7 +732,7 @@ export const loadReplacementPreview = async (
 };
 
 /** An actual receipt, not the preview's proposed allocation, proves activation. */
-export const loadZeroProjectActivation = async (client: MigrationClient, previewId: string, principalId: string) =>
+export const loadReplacementActivation = async (client: MigrationClient, previewId: string, principalId: string, zeroProjects: boolean) =>
   (await client.query<{ candidateId: string; publicationJobId: string; authorizationId: string; releaseId: string; releaseDigest: string; targetAvailable: boolean }>(
     `select receipt.candidate_id as "candidateId",receipt.publication_job_id as "publicationJobId",
       receipt.authorization_id as "authorizationId",receipt.release_id as "releaseId",receipt.release_digest as "releaseDigest",
@@ -689,17 +744,19 @@ export const loadZeroProjectActivation = async (client: MigrationClient, preview
      from parameter_catalog.definition_replacement_previews preview
      join catalog_publication.candidates candidate on candidate.id=preview.candidate_id and candidate.artifact_digest=preview.artifact_digest
      join parameter_catalog.catalog_activation_receipts receipt on receipt.candidate_id=candidate.id
-       and receipt.kind='online-publication' and receipt.actor_principal_id=$2
+       and receipt.kind='online-publication' and (not $3::boolean or receipt.actor_principal_id=$2)
        and receipt.predecessor_release_id=preview.preview_catalog_release_id
        and receipt.predecessor_release_digest=preview.preview_catalog_release_digest
      join catalog_publication.publication_jobs job on job.id=receipt.publication_job_id
        and job.candidate_id=receipt.candidate_id and job.authorization_id=receipt.authorization_id and job.status='active'
-       and job.request_scope='organization:'||preview.organization_id||':definition-replacement'
+       and (job.request_scope='organization:'||preview.organization_id||':definition-replacement'
+         or (not $3::boolean and job.request_scope=$4))
      join catalog_publication.publication_authorizations approval on approval.id=receipt.authorization_id
        and approval.candidate_id=receipt.candidate_id and approval.event_kind='approve' and approval.actor_principal_id=receipt.actor_principal_id
      join parameter_catalog.catalog_release_definition_heads activated on activated.release_id=receipt.release_id
        and activated.definition_id=preview.new_definition_id and activated.revision_id=preview.new_revision_id
-     where preview.id=$1 and jsonb_array_length(preview.manifest)=0`, [previewId, principalId])).rows[0] ?? null;
+     where preview.id=$1 and (jsonb_array_length(preview.manifest)=0)=$3::boolean
+     order by receipt.created_at desc limit 1`, [previewId, principalId, zeroProjects, PUBLICATION_REQUEST_SCOPE])).rows[0] ?? null;
 
 export const consumeReplacementPreview = async (
   client: MigrationClient,
@@ -770,9 +827,9 @@ export const insertReplacement = async (
     readonly manifest: readonly FrozenProjectTip[];
     readonly approvalPrincipalId: string;
     readonly reason: string;
-    readonly candidateId: string;
-    readonly publicationJobId: string;
-    readonly authorizationId: string;
+    readonly candidateId: string | null;
+    readonly publicationJobId: string | null;
+    readonly authorizationId: string | null;
     readonly successorReleaseId: string;
     readonly successorReleaseDigest: string;
   },

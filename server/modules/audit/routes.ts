@@ -108,7 +108,8 @@ export function registerAuditRoutes(
     // Configuration owners consume these events as commit/source-admission
     // receipts. The generic client-event endpoint cannot manufacture them.
     if (body.kind === "config-set" && body.action === "imported" && body.targetType === "dts-config-set"
-      || body.kind === "project-initialization-approved" && body.action === "approve" && body.targetType === "project-parameter-initialization-review") {
+      || body.kind === "project-initialization-approved" && body.action === "approve" && body.targetType === "project-parameter-initialization-review"
+      || body.kind === "baseline" && body.action === "erratum_appended" && body.targetType === "dts-release-baseline") {
       throw new ApiError("FORBIDDEN", "配置操作回执只能由对应服务写入。");
     }
     const id = randomUUID();

@@ -134,7 +134,7 @@ describe("ParameterHomePage", () => {
     ["software-committer", "org-selected", "处理待审阅参数变更", "/parameter-changes", "review"],
     ["software-committer", undefined, "处理待审阅参数变更", "/parameter-changes", "review"],
     ["admin", "org-selected", "处理未应用的导入批次", "/parameter-admin", null]
-  ])("preserves explicit organization on the %s home destination", (roleId, operatingOrganizationId, action, pathname, scope) => {
+  ])("preserves explicit organization on the %s home destination", async (roleId, operatingOrganizationId, action, pathname, scope) => {
     const navigate = vi.fn();
     render(<TopBarActionsHarness><PageRouter page={getPageByPath("/parameter-home")}
       state={{ ...initialState, activeRoleId: roleId }} dispatch={vi.fn()}
@@ -144,7 +144,7 @@ describe("ParameterHomePage", () => {
       dashboardRuntime={{ loadSummary: vi.fn(), loadHotspots: vi.fn() } as never}
       onDashboardWindowChange={vi.fn()} onDashboardDimensionChange={vi.fn()} onDashboardOverviewScopeChange={vi.fn()}
       onDashboardProjectChange={vi.fn()} onFeedback={vi.fn()} DebuggingAdminPage={() => null} /></TopBarActionsHarness>);
-    fireEvent.click(screen.getByRole("button", { name: new RegExp(action!) }));
+    fireEvent.click(await screen.findByRole("button", { name: new RegExp(action!) }));
     const destination = new URL(navigate.mock.calls[0][0], "http://localhost");
     expect(destination.pathname).toBe(pathname);
     expect(destination.searchParams.get("scope")).toBe(scope);

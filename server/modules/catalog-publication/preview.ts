@@ -9,15 +9,20 @@ import {
   DefinitionProposalRevisionId,
 } from "../parameter-catalog-contract/index";
 import type { Database } from "../../shared/database/client";
+import { isSubjectIdentityOp, isSubjectRulesOp, subjectIdentityChangeSchema,
+  type SubjectIdentityChange, type SubjectIdentityImpact } from "../contracts/dtoSchemas/catalogSubjectIdentity";
+import { inspectSubjectRulesImpact } from "./subjectRulesImpact";
 import { classifyImpact } from "./authorization/classify";
 import type { OwnerDeclaration } from "./claimedOwners";
 import type { ImpactFacts, PublicationRiskClass } from "./authorization/types";
 import {
   buildCompleteSuccessor,
+  buildIdentitySuccessorFromSnapshot,
   impactSummaryFromReport,
   persistSuccessorBuild,
 } from "./builder/completeSuccessor";
-import { targetReleaseOf } from "./builder/bundleCodec";
+import { encodeBundleBytes, targetReleaseOf } from "./builder/bundleCodec";
+import { canAppendIdentitySnapshot, identitySnapshotOf, withPreviewBaseline } from "./builder/identitySnapshot";
 import {
   preparePredecessorArtifact,
   preparedPredecessorBundle,
@@ -36,8 +41,8 @@ import type {
 import { CATALOG_CAPABILITY_CONTRACT_REVISION } from "./builder/types";
 import { persistCandidate as storePersistCandidate } from "./persistence/store";
 import { persistArtifact as storePersistArtifact } from "./persistence/store";
-import { getArtifactByDigest } from "./persistence/store";
-import type { JsonObject, PublicationCandidateRecord } from "./persistence/types";
+import { getArtifactByDigest, getValidatedPreviewSnapshot, putValidatedPreviewSnapshot } from "./persistence/store";
+import type { JsonObject, PreviewSnapshot, PublicationCandidateRecord } from "./persistence/types";
 
 export const PUBLICATION_REQUEST_SCOPE = "instance:catalog-publication";
 
@@ -68,6 +73,7 @@ export type PreviewPublicationError =
   | { readonly kind: "subject-not-found"; readonly subjectId: string }
   | { readonly kind: "subject-not-active"; readonly subjectId: string }
   | { readonly kind: "definition-already-exists" }
+  | { readonly kind: "subject-selector-occupied" }
   | { readonly kind: "persist-failed"; readonly detail: string };
 
 export type PreviewPublicationValue = {
@@ -81,6 +87,18 @@ export type PreviewPublicationValue = {
     readonly addedSubjectIds?: readonly string[];
     readonly ownerDeclarations?: readonly OwnerDeclaration[];
     readonly ownerPublicationOnly?: boolean;
+    readonly subjectIdentity?: SubjectIdentityImpact;
+    readonly definitionSuccessorChange?: {
+      readonly definitionId: string;
+      readonly successorDefinitionId: string | null;
+      readonly successorLabel: string | null;
+      readonly reason: string | null;
+    };
+    readonly definitionReplacement?: {
+      readonly definitionId: string;
+      readonly propertyKey: string;
+      readonly subjectId: string;
+    };
   };
 };
 
@@ -88,7 +106,8 @@ const asSupportedContent = (value: unknown): SupportedDefinitionContent | null =
   if (!isRecord(value) || typeof value.displayName !== "string" || typeof value.documentation !== "string") {
     return null;
   }
-  if (!isRecord(value.valueSchema) || typeof value.valueSchema.type !== "string") {
+  if (!isRecord(value.valueSchema) || (typeof value.valueSchema.type !== "string" &&
+    (value.valueSchema.type !== undefined || typeof value.valueSchema.description !== "string"))) {
     return null;
   }
   if (value.description != null && typeof value.description !== "string") {
@@ -125,6 +144,12 @@ export function parsePublicationChangeSet(
     if (!isRecord(entry) || typeof entry.op !== "string") {
       return { error: { kind: "invalid-input", reason: "changeSet" } };
     }
+    if (isSubjectIdentityOp(entry.op)) {
+      const parsed = subjectIdentityChangeSchema.safeParse(entry);
+      if (!parsed.success) return { error: { kind: "invalid-input", reason: "changeSet" } };
+      changes.push(parsed.data);
+      continue;
+    }
     if (entry.op === "create-definition") {
       const content = asSupportedContent(entry.content);
       if (typeof entry.subjectId !== "string" || typeof entry.propertyKey !== "string" || content === null) {
@@ -158,11 +183,14 @@ export function parsePublicationChangeSet(
       continue;
     }
     if (entry.op === "revise-definition") {
-      const content = asSupportedContent(entry.content);
+      const content = entry.content === undefined ? undefined : asSupportedContent(entry.content);
+      const successor = entry.successorDefinitionId;
       if (
         typeof entry.definitionId !== "string" ||
         (entry.class !== "documentation" && entry.class !== "semantic") ||
-        content === null
+        content === null || (content === undefined && successor === undefined) ||
+        (successor !== undefined && successor !== null && (typeof successor !== "string" || !successor)) ||
+        (entry.reason !== undefined && typeof entry.reason !== "string")
       ) {
         return { error: { kind: "invalid-input", reason: "changeSet" } };
       }
@@ -170,7 +198,9 @@ export function parsePublicationChangeSet(
         op: "revise-definition",
         definitionId: entry.definitionId,
         class: entry.class,
-        content,
+        ...(content === undefined ? {} : { content }),
+        ...(successor === undefined ? {} : { successorDefinitionId: successor }),
+        ...(typeof entry.reason === "string" ? { reason: entry.reason } : {}),
       });
       continue;
     }
@@ -252,6 +282,7 @@ export function publicationImpactFacts(
   return {
     authorPrincipalId,
     operations: changeSet.map((change) => {
+      if (isSubjectIdentityOp(change.op)) return { op: "correct-subject-identity" as const };
       if (change.op === "create-definition") {
         return { op: "create-definition" as const, supported: true };
       }
@@ -350,7 +381,7 @@ const mintFrozenIdentity = (
       }
       continue;
     }
-    if (change.op === "declare-subject-owner") continue;
+    if (!("definitionId" in change)) continue;
     const current = predecessorDefinitions.find(
       (document) => document.kind === "definition" && document.content.id === change.definitionId,
     );
@@ -376,19 +407,38 @@ const mintFrozenIdentity = (
   };
 };
 
-export async function previewPublicationCandidate(input: {
+type PreviewInput = {
   readonly db: Database;
   readonly predecessorDigest: string;
   readonly predecessorArtifact?: PreparedPredecessorArtifact;
   readonly changeSet: readonly CatalogChange[];
   readonly authorPrincipalId: string;
   readonly authorOrganizationId: string;
+  readonly replacementSourceDefinitionId?: string;
   readonly proposalId?: string;
   readonly proposalRevisionId?: string;
   readonly markdownSource?: { readonly fileName: string; readonly sha256: string; readonly parserVersion: string };
-}): Promise<{ ok: true; value: PreviewPublicationValue } | { ok: false; error: PreviewPublicationError }> {
+};
+
+export const previewPublicationCandidate = (input: PreviewInput) => preview(input, true);
+
+async function preview(input: PreviewInput, useSnapshot: boolean):
+  Promise<{ ok: true; value: PreviewPublicationValue } | { ok: false; error: PreviewPublicationError }> {
+  const [first] = input.changeSet;
+  const checkSnapshotSchema = async () => (await input.db.query<{ available: boolean }>(
+    `select exists (select from pg_catalog.pg_attribute where attrelid=to_regclass('catalog_publication.preview_snapshots')
+      and attname='has_dts_examples' and not attisdropped) as available`,
+  )).rows[0]?.available;
+  const spelling = input.changeSet.length === 1 && (first?.op === "rename-subject" || first?.op === "set-subject-alias") ? first : undefined;
+  let snapshot: PreviewSnapshot | undefined;
+  let snapshotsAvailable: boolean | undefined;
+  if (useSnapshot && spelling && !input.predecessorArtifact && (snapshotsAvailable = await checkSnapshotSchema())) {
+    const found = await withPreviewBaseline(input.db, tx => getValidatedPreviewSnapshot(tx, input.predecessorDigest));
+    if (found.ok) snapshot = found.value;
+    else if (found.error.kind !== "not-found") return { ok: false, error: { kind: "predecessor-incomplete", detail: found.error.kind } };
+  }
   let predecessorArtifact = input.predecessorArtifact;
-  if (!predecessorArtifact) {
+  if (!snapshot && !predecessorArtifact) {
     const artifact = await getArtifactByDigest(input.db, input.predecessorDigest);
     if (!artifact.ok) return { ok: false, error: { kind: "artifact-missing" } };
     const prepared = preparePredecessorArtifact({
@@ -397,11 +447,11 @@ export async function previewPublicationCandidate(input: {
     if (!prepared.ok) return { ok: false, error: { kind: "predecessor-incomplete", detail: prepared.detail } };
     predecessorArtifact = prepared.artifact;
   }
-  const bundle = preparedPredecessorBundle(predecessorArtifact);
-  if (!bundle || predecessorArtifact.digest !== input.predecessorDigest) {
+  const bundle = predecessorArtifact && preparedPredecessorBundle(predecessorArtifact);
+  if (!snapshot && (!bundle || predecessorArtifact?.digest !== input.predecessorDigest)) {
     return { ok: false, error: { kind: "invalid-input", reason: "predecessor-artifact-mismatch" } };
   }
-  const predecessorTarget = targetReleaseOf(bundle);
+  const predecessorTarget = snapshot?.target ?? (bundle && targetReleaseOf(bundle));
   if (!predecessorTarget) {
     return { ok: false, error: { kind: "predecessor-incomplete", detail: "predecessor-target-missing" } };
   }
@@ -423,17 +473,21 @@ export async function previewPublicationCandidate(input: {
           proposalRevisionId: DefinitionProposalRevisionId(input.proposalRevisionId),
         }
       : null;
-  const productPath = input.changeSet.some((change) => change.op !== "create-definition")
+  const productPath: "m1" | "m2-core" = input.changeSet.some((change) => change.op !== "create-definition")
     ? "m2-core"
     : "m1";
 
-  const built = await buildCompleteSuccessor({
-    predecessorArtifact,
+  const buildInput = {
+    predecessorArtifact: predecessorArtifact ?? { digest: input.predecessorDigest },
     changeSet: input.changeSet,
     frozenIdentity: frozen,
     proposal,
     productPath,
-  });
+  };
+  const built = snapshot ? await buildIdentitySuccessorFromSnapshot(buildInput, snapshot) : await buildCompleteSuccessor(buildInput);
+  // Reviewed historical retirements may rely on an earlier successor state.
+  // Resolve ambiguous diagnostics against the original complete lineage.
+  if (snapshot && !built.ok && built.error.kind === "invalid-release") return preview(input, false);
 
   if (!built.ok) {
     if (built.error.kind === "artifact-missing") {
@@ -458,6 +512,9 @@ export async function previewPublicationCandidate(input: {
       if (built.error.reason === "duplicate-natural-key") {
         return { ok: false, error: { kind: "definition-already-exists" } };
       }
+      if (input.changeSet.some(change => isSubjectIdentityOp(change.op))) {
+        return { ok: false, error: { kind: "subject-selector-occupied" } };
+      }
       return {
         ok: false,
         error: { kind: "unsupported-catalog-capability", detail: built.error.reason },
@@ -466,10 +523,22 @@ export async function previewPublicationCandidate(input: {
     if (built.error.kind === "persist-failed") {
       return { ok: false, error: { kind: "persist-failed", detail: built.error.stage } };
     }
+    if (built.error.kind === "invalid-input") return { ok: false, error: built.error };
+    if (built.error.kind === "invalid-release") {
+      const detail = built.error.violations?.find(violation => violation.detail?.startsWith("definition-successor-"))?.detail;
+      if (detail) return { ok: false, error: { kind: "invalid-input", reason: detail } };
+      if (input.changeSet.some(change => isSubjectIdentityOp(change.op)) &&
+        built.error.violations.some(violation => ["alias-collision", "duplicate-stable-identity", "stable-key-reassigned"].includes(violation.code))) {
+        return { ok: false, error: { kind: "subject-selector-occupied" } };
+      }
+    }
     return { ok: false, error: { kind: "invalid-input", reason: built.error.kind } };
   }
   if (built.value.kind !== "successor") {
     return { ok: false, error: { kind: "invalid-input", reason: "noop-revise" } };
+  }
+  if (snapshot && spelling && !await canAppendIdentitySnapshot(input.db, snapshot, spelling, frozen, built.value.artifact.artifactDigest)) {
+    return preview(input, false);
   }
 
   const facts = { ...publicationImpactFacts(input.authorPrincipalId, input.changeSet, built.value.impact),
@@ -490,14 +559,65 @@ export async function previewPublicationCandidate(input: {
       subjectName: subject?.kind === "subject" ? subject.content.selector.value : change.subjectId,
       ownerName: owner?.kind === "subject" ? owner.content.selector.value : change.ownerSubjectId }];
   });
+  const [change] = input.changeSet;
+  const successorChange = input.changeSet.length === 1 && change?.op === "revise-definition" &&
+    change.content === undefined && change.successorDefinitionId !== undefined ? change : null;
+  const successor = successorChange && predecessorTarget.documents.find(document =>
+    document.kind === "definition" && document.content.id === successorChange.successorDefinitionId);
+  const replacementChange = input.replacementSourceDefinitionId && input.changeSet.length === 1 && change?.op === "create-definition"
+    ? { definitionId: input.replacementSourceDefinitionId, propertyKey: change.propertyKey, subjectId: change.subjectId } : null;
+  const identity = input.changeSet.find((change): change is SubjectIdentityChange => isSubjectIdentityOp(change.op));
+  const identityIds = identity ? [identity.subjectId, ...(identity.op === "set-subject-alias" && identity.fromSubjectId ? [identity.fromSubjectId] : [])] : [];
+  const target = targetReleaseOf(built.value.artifact.bundle);
+  const rulesReview = identity && isSubjectRulesOp(identity.op) && target ? await inspectSubjectRulesImpact(input.db, {
+    subjectId: identity.subjectId, before: predecessorTarget.documents, after: target.documents,
+    includeNatureOverride: true,
+  }) : undefined;
+  const subjectIdentity = identity ? { change: identity, ...(rulesReview ? { rules: rulesReview.impact } : {}),
+    subjects: predecessorTarget.documents.flatMap(document =>
+    document.kind === "subject" && identityIds.includes(document.content.id)
+      ? [{ id: document.content.id, canonicalName: document.content.selector.value,
+          ...(document.content.ownerSubjectId ? { ownerSubjectId: document.content.ownerSubjectId } : {}),
+          definitionCount: predecessorTarget.documents.filter(item => item.kind === "definition" && item.content.subjectId === document.content.id).length }]
+      : []) } : undefined;
   const impactSummary = { ...impactSummaryFromReport(built.value.impact),
+    ...(subjectIdentity ? { subjectIdentity } : {}),
     ...(ownerDeclarations.length ? { ownerDeclarations,
-      ownerPublicationOnly: ownerDeclarations.length === input.changeSet.length } : {}) };
+      ownerPublicationOnly: ownerDeclarations.length === input.changeSet.length } : {}),
+    ...(successorChange ? { definitionSuccessorChange: {
+      definitionId: successorChange.definitionId,
+      successorDefinitionId: successorChange.successorDefinitionId ?? null,
+      successorLabel: successor?.kind === "definition" ? successor.content.revision.displayName || successor.content.propertyKey : null,
+      reason: successorChange.reason ?? null,
+    } } : {}),
+    ...(replacementChange ? { definitionReplacement: replacementChange } : {}) };
+  snapshotsAvailable ??= await checkSnapshotSchema();
+  const baseSnapshot = snapshotsAvailable && spelling && bundle ? identitySnapshotOf(bundle, predecessorTarget) : undefined;
+  const artifact = built.value.artifact;
+  const verifiedIdentityBase = snapshot ?? baseSnapshot;
+  const successorSnapshot = snapshotsAvailable && target && (verifiedIdentityBase ?
+    { ...verifiedIdentityBase, target } : identitySnapshotOf(artifact.bundle, target));
+  const compact = Boolean(spelling && successorSnapshot);
   const persisted = await persistSuccessorBuild(
     {
       db: input.db,
       ports: {
-        persistArtifact: storePersistArtifact,
+        persistArtifact: async (db, artifactInput) => {
+          if (baseSnapshot) {
+            const saved = await putValidatedPreviewSnapshot(db, input.predecessorDigest, baseSnapshot);
+            if (!saved.ok) return saved;
+          }
+          const stored = await storePersistArtifact(db, compact && successorSnapshot ? { ...artifactInput, storageFormat: "successor-v1",
+            artifactBytes: artifact.storageFormat ? artifact.artifactBytes : encodeBundleBytes({
+              schemaVersion: "1.0.0", targetReleaseId: successorSnapshot.target.manifest.release.id,
+              releases: [successorSnapshot.target],
+            }) } : artifactInput);
+          if (stored.ok && successorSnapshot) {
+            const saved = await putValidatedPreviewSnapshot(db, artifact.artifactDigest, successorSnapshot, compact ? "successor-v1" : undefined);
+            if (!saved.ok) return saved;
+          }
+          return stored;
+        },
         persistCandidate: async (db, candidateInput) =>
           storePersistCandidate(db, {
             ...candidateInput,
@@ -507,6 +627,9 @@ export async function previewPublicationCandidate(input: {
               authorOrganizationId: input.authorOrganizationId,
               impactFacts: facts as unknown as JsonObject,
               impactSummary,
+              ...(rulesReview && identity && isSubjectRulesOp(identity.op) ? { subjectRulesReview: {
+                subjectId: identity.subjectId, fingerprint: rulesReview.fingerprint,
+              } } : {}),
             },
           }),
       },

@@ -35,8 +35,9 @@ describe("publication preview memory work", () => {
       candidate: { ...candidate, artifactDigest: artifact.artifactDigest, createdAt: "2026-11-17T00:00:00Z" },
     }));
     const parse = vi.spyOn(bundleCodec, "parseBundleBytes");
-    const db = { query: vi.fn(), transaction: vi.fn() } as unknown as Database;
-    const commands = bindCatalogPublicationCommands({ db, pool: {} as Parameters<typeof currentPointer.readCurrentCatalogPointer>[0] });
+    const db = { query: vi.fn().mockResolvedValue({ rows: [{ available: true }] }), transaction: vi.fn() } as unknown as Database;
+    const query = vi.fn().mockResolvedValue({ rows: [] });
+    const commands = bindCatalogPublicationCommands({ db, pool: { query } as Parameters<typeof currentPointer.readCurrentCatalogPointer>[0] });
     const result = await commands.previewCandidate({
       trustedActor: createUserInvocation(makeTestAuthContext()),
       organizationId: "org-import-memory", principalId: "author", actorKind: "org-admin",
@@ -49,6 +50,7 @@ describe("publication preview memory work", () => {
     } });
     expect(load).toHaveBeenCalledTimes(1);
     expect(parse).toHaveBeenCalledTimes(1);
+    expect(query).toHaveBeenCalledExactlyOnceWith(expect.stringContaining("registration_recognition_rules"), ["org-import-memory"]);
     expect(persist).toHaveBeenCalledTimes(1);
     expect(persist.mock.calls[0]![1]).toMatchObject({ sourceKind: "markdown-import" });
   });

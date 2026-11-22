@@ -2,14 +2,14 @@ import type { ZodTypeAny } from "zod";
 import { z } from "zod";
 import { createLogFileBodySchema, createLogBodySchema, rerunLogBodySchema, createLogDomainBodySchema, createLogSkillBodySchema, replaceLogSkillSampleBodySchema, sourceSnapshotUploadSchema, logSkillRecommendationRequestSchema } from "../../logs/schemas";
 import { logSkillSpecSchema, parseTestRequestSchema, skillFilePreviewRequestSchema, skillFilePreviewResponseSchema } from "../../logs/skillSpec";
-import { issueLogIntegrationCredentialBodySchema } from "../../logs/schemas";
+import { issueLogIntegrationCredentialBodySchema, renameLogIntegrationCredentialBodySchema, sourceSnapshotLabelPreviewSchema, sourceSnapshotLabelUpdateSchema } from "../../logs/schemas";
 import { parseTestRunSchema } from "../../logs/parseTestSpec";
 import { parsePreviewRequestSchema, parsePreviewResponseSchema } from "../../logs/parsing/spec";
 import { signalPreviewRequestSchema, signalPreviewResponseSchema } from "../../logs/signalRules";
 import { extractorPreviewRequestSchema, extractorPreviewResponseSchema } from "../../logs/parsing/extractorBuilder";
 import { formatPreviewRequestSchema, formatPreviewResponseSchema } from "../../logs/formatProfile";
-import { organizationBridgeListResponseSchema, organizationBridgeResponseSchema, revokeOrganizationBridgeBodySchema } from "../../deviceBridge/schemas";
-import { createUserBodySchema, roleBindingSchema } from "../../users/schemas";
+import { organizationBridgeListResponseSchema, organizationBridgeResponseSchema, renameOrganizationBridgeBodySchema, revokeOrganizationBridgeBodySchema } from "../../deviceBridge/schemas";
+import { correctLocalUsernameBodySchema, createUserBodySchema, roleBindingSchema } from "../../users/schemas";
 import { userImportCreateBodySchema, userImportReceiptSchema, userImportPreviewBodySchema, userImportPreviewResponseSchema } from "./userImport";
 import { oidcIdentitySchema, setOidcIdentityBodySchema } from "./oidcMembers";
 import { enterOperatingContextBodySchema, operatingContextResponseSchema } from "./organizationScope";
@@ -45,7 +45,7 @@ import {
   logSkillRecommendationResponseSchema,
   logSkillListResponseSchema, logSkillResponseSchema, logSkillRevisionResponseSchema, logSkillRevisionListResponseSchema,
   logSkillTemplateListResponseSchema, logSkillSampleResponseSchema, logSkillSampleReplaceResponseSchema,
-  logSourceSnapshotListResponseSchema, logSourceSnapshotResponseSchema, logSourceVersionListResponseSchema,
+  logSourceSnapshotListResponseSchema, logSourceSnapshotResponseSchema, logSourceVersionListResponseSchema, logSourceSnapshotLabelPreviewResponseSchema,
   logSourceEvidenceResponseSchema, logSourceLocateRequestSchema, logSourceLocateResponseSchema,
   logDomainResponseSchema,
   logFeedbackInsightsResponseSchema,
@@ -90,6 +90,12 @@ import { administratorMemberRemovalApplyRequestSchema, administratorMemberRemova
 import { logDeletionPreviewResponseSchema, logDeletionStatusResponseSchema, logDeletionStatusListResponseSchema } from "./logs";
 import { memberAdditionBodySchema, memberAdditionApplyBodySchema, memberAdditionPreviewResponseSchema, memberAdditionApplyResponseSchema, memberAdditionIntentRegisterSchema, memberAdditionIntentActionSchema, memberAdditionIntentResponseSchema, memberAdditionIntentsResponseSchema } from "./canonicalMemberAddition";
 import { configSetImportPreviewBodySchema, configSetImportApplyBodySchema, configSetImportPreviewResponseSchema, configSetImportApplyResponseSchema } from "./configSetPackage";
+import {
+  appendBaselineErratumSchema, correctedBaselineDetailResponseSchema, correctedBaselineListResponseSchema, correctedBaselineResponseSchema,
+  correctedConfigSetResponseSchema, jsonCorrectionApplyResponseSchema, jsonCorrectionApplySchema, jsonCorrectionOptionsResponseSchema,
+  jsonCorrectionPreviewResponseSchema, jsonCorrectionSchema, pathCorrectionApplyResponseSchema, pathCorrectionApplySchema,
+  pathCorrectionPreviewResponseSchema, pathCorrectionSchema, updateConfigurationMetadataSchema, updateDraftBaselineSchema
+} from "./configurationCorrection";
 import { skillDeletionRequestSchema, skillDeletionPreviewResponseSchema, skillDeletionStatusResponseSchema, skillDeletionListResponseSchema } from "./skillDeletion";
 import { releaseBaselineRestoreRequestSchema, releaseBaselineRestorePreviewResponseSchema, releaseBaselineRollbackResponseSchema } from "./canonicalConfigurationRestore";
 
@@ -125,6 +131,7 @@ export const dtoSchemaCatalog: Record<string, ZodTypeAny> = {
   UserImportReceiptResponse: userImportReceiptSchema,
   UserImportPreviewResponse: userImportPreviewResponseSchema,
   SetUserOidcIdentityRequest: setOidcIdentityBodySchema,
+  CorrectLocalUsernameRequest: correctLocalUsernameBodySchema,
   UserGovernanceResponse: z.object({ item: userGovernanceDtoSchema }),
   UserGovernanceListResponse: z.object({ items: z.array(userGovernanceDtoSchema) }),
   OrganizationProjectCandidatesResponse: z.object({ items: z.array(z.object({ id: z.string(), name: z.string() }).strict()) }).strict(),
@@ -134,6 +141,7 @@ export const dtoSchemaCatalog: Record<string, ZodTypeAny> = {
   }),
   OrganizationDeviceBridgeListResponse: organizationBridgeListResponseSchema,
   OrganizationDeviceBridgeResponse: organizationBridgeResponseSchema,
+  RenameOrganizationDeviceBridgeRequest: renameOrganizationBridgeBodySchema,
   RevokeOrganizationDeviceBridgeRequest: revokeOrganizationBridgeBodySchema,
   MeResponse: operatingContextResponseSchema.shape.actor,
   UpdateCurrentUserProfileRequest: z.object({
@@ -148,6 +156,22 @@ export const dtoSchemaCatalog: Record<string, ZodTypeAny> = {
   ReleaseBaselineRestoreRequest: releaseBaselineRestoreRequestSchema,
   ReleaseBaselineRestorePreviewResponse: releaseBaselineRestorePreviewResponseSchema,
   ReleaseBaselineRollbackResponse: releaseBaselineRollbackResponseSchema,
+  ReleaseBaselineResponse: correctedBaselineResponseSchema,
+  ReleaseBaselineListResponse: correctedBaselineListResponseSchema,
+  ReleaseBaselineDetailResponse: correctedBaselineDetailResponseSchema,
+  UpdateConfigurationMetadataRequest: updateConfigurationMetadataSchema,
+  CorrectedConfigSetResponse: correctedConfigSetResponseSchema,
+  UpdateDraftBaselineRequest: updateDraftBaselineSchema,
+  AppendBaselineErratumRequest: appendBaselineErratumSchema,
+  PathCorrectionRequest: pathCorrectionSchema,
+  PathCorrectionApplyRequest: pathCorrectionApplySchema,
+  PathCorrectionPreviewResponse: pathCorrectionPreviewResponseSchema,
+  PathCorrectionApplyResponse: pathCorrectionApplyResponseSchema,
+  JsonCorrectionOptionsResponse: jsonCorrectionOptionsResponseSchema,
+  JsonCorrectionRequest: jsonCorrectionSchema,
+  JsonCorrectionApplyRequest: jsonCorrectionApplySchema,
+  JsonCorrectionPreviewResponse: jsonCorrectionPreviewResponseSchema,
+  JsonCorrectionApplyResponse: jsonCorrectionApplyResponseSchema,
   CanonicalMemberAdditionPreviewRequest: memberAdditionBodySchema,
   ConfigSetImportPreviewRequest: configSetImportPreviewBodySchema,
   ConfigSetImportApplyRequest: configSetImportApplyBodySchema,
@@ -183,6 +207,7 @@ export const dtoSchemaCatalog: Record<string, ZodTypeAny> = {
   LogFormatPreviewResponse: formatPreviewResponseSchema,
   LogFileUploadRequest: createLogFileBodySchema,
   IssueLogIntegrationCredentialRequest: issueLogIntegrationCredentialBodySchema,
+  RenameLogIntegrationCredentialRequest: renameLogIntegrationCredentialBodySchema,
   LogIntegrationCredentialListResponse: logIntegrationCredentialListResponseSchema,
   LogIntegrationCredentialResponse: logIntegrationCredentialResponseSchema,
   LogIntegrationCredentialSecretResponse: logIntegrationCredentialSecretResponseSchema,
@@ -197,6 +222,9 @@ export const dtoSchemaCatalog: Record<string, ZodTypeAny> = {
   LogSkillSampleResponse: logSkillSampleResponseSchema,
   LogSkillSampleReplaceResponse: logSkillSampleReplaceResponseSchema,
   LogSourceSnapshotUploadRequest: sourceSnapshotUploadSchema,
+  LogSourceSnapshotLabelPreviewRequest: sourceSnapshotLabelPreviewSchema,
+  LogSourceSnapshotLabelUpdateRequest: sourceSnapshotLabelUpdateSchema,
+  LogSourceSnapshotLabelPreviewResponse: logSourceSnapshotLabelPreviewResponseSchema,
   LogSourceSnapshotListResponse: logSourceSnapshotListResponseSchema,
   LogSourceVersionListResponse: logSourceVersionListResponseSchema,
   LogSourceSnapshotResponse: logSourceSnapshotResponseSchema,
@@ -291,13 +319,16 @@ export const dtoSchemaCoveredRouteIds = [
   "organization.projectCandidates",
   "users.listRegistrationRoleRequests", "users.approveRegistrationRoleRequest", "users.rejectRegistrationRoleRequest", "users.enableBasicRegistrationRoleRequest",
   "debugging.admin.previewModuleDeletion",
-  "auth.localConfig", "users.list", "users.create", "users.importPreview", "users.setOidcIdentity",
-  "deviceBridges.listOrganization", "deviceBridges.getOrganizationBridge", "deviceBridges.revokeOrganizationBridge",
+  "auth.localConfig", "users.list", "users.create", "users.importPreview", "users.setOidcIdentity", "users.correctLocalUsername",
+  "deviceBridges.listOrganization", "deviceBridges.getOrganizationBridge", "deviceBridges.renameOrganizationBridge", "deviceBridges.revokeOrganizationBridge",
   "logs.restoreSourceSnapshot",
   "logs.retrySourceSnapshot",
   "parameters.previewRestoreReleaseBaseline", "parameters.rollbackReleaseBaseline",
   "logs.listSkillDeletions", "logs.previewSkillDeletion", "logs.getSkillDeletionStatus", "logs.purgeSkill",
   "parameterFiles.previewCanonicalMemberAddition", "parameterFiles.applyCanonicalMemberAddition",
+  "parameterFiles.updateConfigSetMetadata", "parameterFiles.updateDraftBaseline", "parameterFiles.appendBaselineErratum",
+  "parameterFiles.previewPathCorrection", "parameterFiles.applyPathCorrection",
+  "parameterFiles.listJsonCorrectionOptions", "parameterFiles.previewJsonCorrection", "parameterFiles.applyJsonCorrection",
   "parameterFiles.reserveMemberAdditionIntent", "parameterFiles.listMemberAdditionIntents", "parameterFiles.stopMemberAdditionIntent", "parameterFiles.acknowledgeMemberAdditionIntent",
   "parameterFiles.previewAdministratorMemberRemoval", "parameterFiles.applyAdministratorMemberRemoval",
   "logs.previewDeletion",
@@ -323,7 +354,7 @@ export const dtoSchemaCoveredRouteIds = [
   "parameters-dashboard-hotspots",
   "parameterModules.getRegistry",
   "logs.uploadFile",
-  "logs.listIntegrationCredentials", "logs.issueIntegrationCredential", "logs.rotateIntegrationCredential", "logs.revokeIntegrationCredential",
+  "logs.listIntegrationCredentials", "logs.issueIntegrationCredential", "logs.renameIntegrationCredential", "logs.rotateIntegrationCredential", "logs.revokeIntegrationCredential",
   "logs.list",
   "logs.get",
   "logs.getLines",
@@ -347,6 +378,7 @@ export const dtoSchemaCoveredRouteIds = [
   "logs.importAnalysisCases",
   "logs.importSkillPackage",
   "logs.listSourceSnapshots", "logs.listSourceVersions", "logs.uploadSourceSnapshot", "logs.defaultSourceSnapshot", "logs.archiveSourceSnapshot", "logs.locateSourceStatement", "logs.sourceEvidence",
+  "logs.previewSourceSnapshotLabel", "logs.updateSourceSnapshotLabel",
   "logs.listDomains",
   "logs.createDomain",
   "logs.updateDomain",

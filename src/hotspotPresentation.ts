@@ -16,8 +16,8 @@ export function computeEyebrow(
   if (hotspot.kind === "module") {
     return hotspot.projectCode;
   }
-  if (hotspot.kind === "project" && !hotspot.lastChangedAt) {
-    return "窗口内暂无变更";
+  if (hotspot.kind === "project") {
+    return hotspot.lastChangedAt ? `最近变更 ${formatHotspotLastChangedAt(hotspot.lastChangedAt)}` : "窗口内暂无变更";
   }
 
   if (hotspot.module !== "项目参数") {

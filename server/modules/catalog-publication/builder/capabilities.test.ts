@@ -6,11 +6,34 @@ import {
   CATALOG_CAPABILITY_V3_ALLOW_LIST,
   CATALOG_CAPABILITY_V3_REVISION,
   capabilityAllowListIdentity,
+  validateDtsExamples,
   validateSupportedDefinitionContent,
   validateSupportedDefinitionContentAt,
 } from "./capabilities";
 
 describe("catalog publication capability allow-list", () => {
+  it("preserves omission and explicit clears and enforces verbatim DTS resource budgets", () => {
+    const content = { displayName: "Limit", documentation: "", valueSchema: { type: "integer" } };
+    const validate = (extra: object) => validateSupportedDefinitionContent({ ...content, ...extra }, "content");
+    expect(validate({})).toEqual({ ok: true, value: content });
+    expect(validate({ dtsExamples: null })).toMatchObject({ ok: true, value: { dtsExamples: null } });
+    expect(validate({ dtsExamples: ["\r\n\tlimit =\r\n\t\t<0x3>; // value  \r\n \r\n"] })).toMatchObject({
+      ok: true, value: { dtsExamples: ["\tlimit =\n\t\t<0x3>; // value  "] },
+    });
+    for (const text of ["<3>\r", "<3>\u0000", "<3>\u0085", "<3>\v"]) {
+      expect(validate({ dtsExamples: [text] })).toMatchObject({ ok: false, error: { detail: "invalid-dts-example", path: "content.dtsExamples[0]" } });
+    }
+    expect(validate({ dtsExamples: Array(9).fill("<3>") })).toMatchObject({ ok: false, error: { detail: "resource-budget-exceeded", path: "content.dtsExamples[8]" } });
+    expect(validate({ dtsExamples: [" ".repeat(3997) + "<3>"] }).ok).toBe(true);
+    expect(validate({ dtsExamples: [" ".repeat(3998) + "<3>"] })).toMatchObject({ ok: false, error: { detail: "resource-budget-exceeded" } });
+    expect(validateSupportedDefinitionContentAt({ ...content, dtsExamples: ["<3>"] }, "content", CATALOG_CAPABILITY_V3_ALLOW_LIST)).toMatchObject({
+      ok: false, error: { detail: "unknown-field" },
+    });
+    expect(validateDtsExamples(null, "content.dtsExamples", CATALOG_CAPABILITY_ALLOW_LIST, {
+      propertyKey: "limit", subjectKind: "configuration-schema",
+    })).toMatchObject({ ok: false, error: { detail: "dts-examples-require-dts-subject" } });
+  });
+
   it("accepts the acme fixture integer schema with unit mA", () => {
     const result = validateSupportedDefinitionContent(
       {

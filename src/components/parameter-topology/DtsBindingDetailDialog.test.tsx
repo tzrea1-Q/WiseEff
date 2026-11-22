@@ -109,16 +109,19 @@ describe("DtsBindingDetailDialog unified inspector", () => {
       definitionId: "canonical-gpio", propertyKey: "gpio_int", revisionId: "revision-new",
       revisionNumber: 5, contentDigest: "sha256:new", displayName: "最新名称",
       documentation: "后台刚刚修改的说明", unit: "mV",
+      recommendedDefinition: { id: "gpio-next", propertyKey: "gpio-v2", displayName: "推荐 GPIO" },
       valueShape: { kind: "json-schema", schema: { type: "integer" } },
       constraints: { kind: "none" }, catalogReleaseId: "release-new", examples: ["<3>"]
     };
     renderDialog({
       row: gpioRow({ definitionId: "canonical-gpio", effectiveRevisionId: "revision-old", documentation: "项目旧说明" }),
-      latestStatus: "ready", latestDefinition,
+      latestStatus: "ready", latestDefinition, organizationId: "org-target",
       specDetailStatus: "ready", specDetail
     });
     const dialog = screen.getByRole("dialog", { name: "最新名称 · 参数详情" });
     expect(within(dialog).getByText("后台刚刚修改的说明")).toBeInTheDocument();
+    expect(within(dialog).getByRole("link", { name: "推荐 GPIO" })).toHaveAttribute("href",
+      "/parameters/definitions?definitionId=gpio-next&organizationId=org-target");
     expect(within(dialog).queryByText("项目旧说明")).not.toBeInTheDocument();
     expect(within(dialog).getByText(/项目合同仍固定于 revision-old/)).toBeInTheDocument();
     expect(within(dialog).getByText("最新目录示例（仅供参考）")).toBeInTheDocument();

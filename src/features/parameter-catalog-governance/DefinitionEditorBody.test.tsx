@@ -9,6 +9,7 @@ import { createMockCatalogPorts } from "@/application/parameter-catalog/mockAdap
 import {
   CATALOG_RELEASE_ID,
   activeDefinition,
+  catalogPublicationJob,
   readyCatalogDocument,
   registeredSubject,
   retiredSubject,
@@ -157,6 +158,31 @@ describe("DefinitionEditorBody", () => {
     })] }, expect.anything()));
   });
 
+  it("keeps the published schema and clears DTS source through a documentation revision", async () => {
+    const user = userEvent.setup();
+    const ports = createMockCatalogPorts({ scenario: "ready" });
+    const preview = vi.spyOn(ports.catalog, "createPublicationCandidate");
+    const schema = { type: "array", items: { type: "array", items: { type: "integer", minimum: 0 } }, maxItems: 2 };
+    const source = `${activeDefinition.propertyKey} = <0x1>,\n\t<0x2>; /* Example */`;
+    render(<DefinitionEditorBody authoringAllowed publishingAllowed history={null} actor="org-admin"
+      sessionPermissions={["catalog:author", "catalog:publish"]} domainState={ready} catalog={ports.catalog}
+      catalogReleaseId={CATALOG_RELEASE_ID} definition={{ ...activeDefinition, currentRevision: {
+        ...activeDefinition.currentRevision, valueShape: { kind: "json-schema", schema }, dtsExamples: [source],
+      } }} subjects={[registeredSubject]} />);
+    const textarea = screen.getByLabelText("DTS 原文示例 1");
+    expect(textarea).toHaveValue(source);
+    expect(textarea).toHaveAttribute("spellcheck", "false");
+    fireEvent.change(textarea, { target: { value: "wrong = <0x2>;" } });
+    expect(textarea).toHaveAccessibleDescription(/属性名必须/);
+    await user.click(screen.getByRole("button", { name: "移除第 1 个 DTS 示例" }));
+    expect(screen.getByText(/本次将移除：DTS 示例/)).toBeVisible();
+    await user.type(screen.getByLabelText("修改原因"), "移除过期示例");
+    await user.click(screen.getByRole("button", { name: "保存内容修订" }));
+    expect(preview).toHaveBeenCalledWith(expect.objectContaining({ changeSet: [expect.objectContaining({
+      class: "documentation", content: expect.objectContaining({ dtsExamples: null, valueSchema: schema }),
+    })] }), expect.anything());
+  });
+
   it("retains invalid example text and round-trips string examples without coercion", async () => {
     const user = userEvent.setup();
     const ports = createMockCatalogPorts({ scenario: "ready" });
@@ -200,7 +226,9 @@ describe("DefinitionEditorBody", () => {
   });
 
   it.each([true, false])("preserves complete multiline published documentation with authoring=%s", (authoringAllowed) => {
-    const documentation = `first documentation line ${"x".repeat(300)}\nlast documentation line`;
+    const firstLine = `first documentation line ${"x".repeat(300)}`;
+    const lastLine = "last documentation line";
+    const documentation = `${firstLine}\n${lastLine}`;
     const ports = createMockCatalogPorts({ scenario: "ready" });
     render(<DefinitionEditorBody authoringAllowed={authoringAllowed} publishingAllowed actor="org-admin" history={null}
       sessionPermissions={["catalog:author", "catalog:publish"]} domainState={ready}
@@ -208,7 +236,10 @@ describe("DefinitionEditorBody", () => {
       definition={{ ...activeDefinition, currentRevision: { ...activeDefinition.currentRevision, documentation } }}
       subjects={[registeredSubject]} />);
     const content = screen.getByLabelText("已发布参数说明");
-    expect(content.textContent).toBe(documentation);
+    const paragraph = content.querySelector("p");
+    expect(paragraph?.textContent).toBe(firstLine + lastLine);
+    expect(paragraph?.querySelector("br")?.previousSibling?.textContent).toBe(firstLine);
+    expect(paragraph?.querySelector("br")?.nextSibling?.textContent).toBe(lastLine);
   });
 
   it.each([
@@ -241,6 +272,65 @@ describe("DefinitionEditorBody", () => {
     expect(screen.getByText("保留的变更历史")).toBeVisible();
     expect(preview).not.toHaveBeenCalled();
     expect(publish).not.toHaveBeenCalled();
+  });
+
+  it("lets a platform administrator revise shared content from a retired organization registration", async () => {
+    const user = userEvent.setup();
+    const registration = { ...registeredSubject.registration, status: "retired" as const, id: "registration-retired" };
+    const { catalog } = renderDialog(undefined, undefined, {
+      actor: "platform-admin",
+      definition: { ...activeDefinition, registration },
+      subjects: [{ ...registeredSubject, registration }],
+      domainState: { kind: "retired", target: "registration", catalogReleaseId: CATALOG_RELEASE_ID, writesEnabled: false }
+    });
+    const publicationPreview = vi.spyOn(catalog, "createPublicationCandidate");
+    await user.clear(screen.getByLabelText("显示名"));
+    await user.type(screen.getByLabelText("显示名"), "共享定义名称");
+    await user.type(screen.getByLabelText("修改原因"), "纠正共享定义");
+    await user.click(screen.getByRole("button", { name: "保存内容修订" }));
+    await waitFor(() => expect(publicationPreview).toHaveBeenCalledWith({ changeSet: [expect.objectContaining({
+      op: "revise-definition", definitionId: activeDefinition.id, content: expect.objectContaining({ displayName: "共享定义名称" })
+    })] }, expect.anything()));
+  });
+
+  it.each([true, false])("previews deprecation withdrawal with high-risk review permission=%s", async (canReview) => {
+    const user = userEvent.setup();
+    const { catalog } = renderDialog(undefined, undefined, {
+      actor: "platform-admin",
+      sessionPermissions: canReview ? ["catalog:author", "catalog:review-high-risk"] : ["catalog:author"],
+      publishingAllowed: false,
+      reviewHighRiskAllowed: canReview,
+      definition: { ...activeDefinition, lifecycle: "deprecated", currentRevision: {
+        ...activeDefinition.currentRevision, successorDefinitionId: "pdef_successor"
+      } },
+      domainState: { kind: "retired", target: "definition", catalogReleaseId: CATALOG_RELEASE_ID, writesEnabled: false }
+    });
+    const candidate = vi.spyOn(catalog, "createPublicationCandidate").mockResolvedValue({ item: {
+      id: "ccand_withdrawal", expectedBaseReleaseId: CATALOG_RELEASE_ID, expectedBaseReleaseDigest: "sha256:base",
+      riskClass: "high", capabilityContract: { revision: "test", allowListId: "test" },
+      impactSummary: { addedDefinitionCount: 0, changedDefinitionCount: 1, addedSubjectCount: 0,
+        definitionSuccessorChange: { definitionId: activeDefinition.id, successorDefinitionId: null, successorLabel: null, reason: "撤销误弃用" } }
+    } });
+    const publish = vi.spyOn(catalog, "publishPublicationCandidate").mockResolvedValue({
+      item: { ...catalogPublicationJob, candidateId: "ccand_withdrawal" }
+    });
+    await user.click(screen.getByRole("checkbox", { name: "弃用此定义" }));
+    await user.type(screen.getByLabelText("修改原因"), "撤销误弃用");
+    await user.click(screen.getByRole("button", { name: "预览弃用修订" }));
+    expect(await screen.findByRole("region", { name: "定义发布候选" })).toHaveTextContent("ccand_withdrawal");
+    expect(candidate).toHaveBeenCalledWith({ changeSet: [{
+      op: "revise-definition", definitionId: activeDefinition.id, class: "semantic",
+      successorDefinitionId: null, reason: "撤销误弃用"
+    }] }, { catalogReleaseId: CATALOG_RELEASE_ID });
+    expect(publish).not.toHaveBeenCalled();
+    if (!canReview) {
+      expect(screen.queryByRole("button", { name: "确认发布定义候选" })).not.toBeInTheDocument();
+      return;
+    }
+    await user.click(screen.getByRole("button", { name: "确认发布定义候选" }));
+    await waitFor(() => expect(publish).toHaveBeenCalledWith(
+      "ccand_withdrawal", { idempotencyKey: "idem-847-correction" }, { catalogReleaseId: CATALOG_RELEASE_ID }
+    ));
   });
 
   it("allows an author to preview an active unregistered definition without publication authority", async () => {
@@ -528,7 +618,10 @@ describe("DefinitionEditorBody", () => {
 
   it("requires a reason for an exact Definition semantic revision without policyTarget or migration", async () => {
     const user = userEvent.setup();
-    const { catalog, preview, execute, continueReplacement } = renderDialog();
+    const { catalog, preview, execute, continueReplacement } = renderDialog(undefined, undefined, {
+      sessionPermissions: ["catalog:author", "catalog:publish", "catalog:review-high-risk"],
+      reviewHighRiskAllowed: true
+    });
     const createCandidate = vi.spyOn(catalog, "createPublicationCandidate");
     const publishCandidate = vi.spyOn(catalog, "publishPublicationCandidate");
     const save = screen.getByRole("button", { name: "保存内容修订" });
@@ -807,7 +900,8 @@ describe("DefinitionEditorBody", () => {
       .mockRejectedValueOnce(
         new WiseEffApiError("CONFLICT", "The catalog release changed.", { reason: "release-drift" }, "req-2")
       )
-      .mockResolvedValue({ item: { id: "drep_retry", status: "completed", projects: [], etag: '"drep_retry-v1"', version: 1 } } as never);
+      .mockResolvedValue({ item: { id: "drep_retry", organizationId: "org_acme", oldIdentity: { propertyKey: activeDefinition.propertyKey },
+        newIdentity: { propertyKey: "gpio-int-v3" }, status: "completed", projects: [], etag: '"drep_retry-v1"', version: 1 } } as never);
     const refresh = vi.spyOn(ports.catalog, "getCatalog").mockResolvedValue({
       item: { catalogReleaseId: "crel_successor" }
     } as never);
@@ -866,12 +960,12 @@ describe("DefinitionEditorBody", () => {
 
   it.each([null, 0])("keeps identity facts, policy count %s and on-demand history readable without authoring", async (policyCount) => {
     const user = userEvent.setup();
-    const onRequestHistory = vi.fn();
+    const onHistoryOpenChange = vi.fn();
     render(
       <DefinitionEditorBody
         authoringAllowed={false}
         history={<ol aria-label="定义时间线"><li>目录发布</li></ol>}
-        onRequestHistory={onRequestHistory}
+        onHistoryOpenChange={onHistoryOpenChange}
         actor="org-admin"
         sessionPermissions={[]}
         domainState={ready}
@@ -895,7 +989,9 @@ describe("DefinitionEditorBody", () => {
     expect(screen.getByText(policyCount === null ? /策略使用量暂不可用/ : /策略 0/)).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: /查看历史/ }));
-    expect(onRequestHistory).toHaveBeenCalledOnce();
+    expect(onHistoryOpenChange).toHaveBeenLastCalledWith(true);
     expect(screen.getByRole("region", { name: "定义时间线" })).toHaveTextContent("目录发布");
+    await user.click(screen.getByRole("button", { name: /收起历史/ }));
+    expect(onHistoryOpenChange.mock.calls).toEqual([[true], [false]]);
   });
 });

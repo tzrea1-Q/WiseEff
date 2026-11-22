@@ -452,9 +452,10 @@ export function createMockCatalogPorts(options: CatalogMockOptions = {}): {
       const parsed = catalogTypedPublicationCandidateRequestSchema.parse(body);
       const addedSubjects = parsed.changeSet.filter((change) => change.op === "create-subject-with-definitions" || change.op === "create-subject");
       const revised = parsed.changeSet.filter((change) => change.op === "revise-definition");
-      const semantic = revised.some((change) => change.op === "revise-definition" && change.class === "semantic");
+      const semantic = revised.some((change) => change.op === "revise-definition" &&
+        (change.class === "semantic" || change.successorDefinitionId !== undefined));
       const fakeDocumentation = revised.some((change) => {
-        if (change.op !== "revise-definition" || change.class !== "documentation") {
+        if (change.op !== "revise-definition" || change.class !== "documentation" || !change.content) {
           return false;
         }
         const current = store.definition.currentRevision;
@@ -465,6 +466,9 @@ export function createMockCatalogPorts(options: CatalogMockOptions = {}): {
         }
         return change.content.unit !== undefined && change.content.unit !== (current.unit?.symbol ?? null);
       });
+      const [revision] = revised;
+      const lifecycleOnly = parsed.changeSet.length === 1 && revision?.op === "revise-definition" &&
+        revision.content === undefined && revision.successorDefinitionId !== undefined;
       const candidate = {
         ...clone(catalogPublicationCandidate),
         id: `${CATALOG_CANDIDATE_ID}_${store.candidates.size + 1}`,
@@ -480,7 +484,10 @@ export function createMockCatalogPorts(options: CatalogMockOptions = {}): {
             ),
           changedDefinitionCount: revised.length,
           addedSubjectCount: addedSubjects.length,
-          ...(addedSubjects.length > 0 ? { addedSubjectIds: [`csub_new_${store.candidates.size + 1}`] } : {})
+          ...(addedSubjects.length > 0 ? { addedSubjectIds: [`csub_new_${store.candidates.size + 1}`] } : {}),
+          ...(lifecycleOnly ? { definitionSuccessorChange: { definitionId: revision.definitionId,
+            successorDefinitionId: revision.successorDefinitionId ?? null, successorLabel: revision.successorDefinitionId ?? null,
+            reason: revision.reason ?? null } } : {})
         }
       };
       store.candidates.set(candidate.id, candidate);
@@ -544,6 +551,8 @@ export function createMockCatalogPorts(options: CatalogMockOptions = {}): {
     },
     async getPublicationSurface() {
       assertReadyForRead(store);
+      const session = options.getSession?.();
+      const policyAllowsPublication = store.publicationOutcome !== "policy-disabled" && store.publicationOutcome !== "frozen";
       return {
         item: {
           publicationEnabled: store.publicationOutcome !== "policy-disabled",
@@ -552,9 +561,10 @@ export function createMockCatalogPorts(options: CatalogMockOptions = {}): {
           frozen: store.publicationOutcome === "frozen",
           adopted: true,
           currentReleaseId: CATALOG_RELEASE_ID,
-          authoringAllowed: store.publicationOutcome !== "policy-disabled" && store.publicationOutcome !== "frozen",
-          publishingAllowed: store.publicationOutcome !== "policy-disabled" && store.publicationOutcome !== "frozen",
-          reviewHighRiskAllowed: false,
+          authoringAllowed: policyAllowsPublication,
+          publishingAllowed: policyAllowsPublication,
+          reviewHighRiskAllowed: policyAllowsPublication && (!session ||
+            (session.isActive && (session.actorKind === "org-admin" || session.actorKind === "platform-admin"))),
           blockers: [
             ...(store.publicationOutcome === "policy-disabled" ? (["publication-policy-disabled"] as const) : []),
             ...(store.publicationOutcome === "frozen" ? (["publication-frozen"] as const) : [])
@@ -853,9 +863,10 @@ export function createMockCatalogPorts(options: CatalogMockOptions = {}): {
       assertOrganizationScope(organizationId);
       assertRelease(store, write.catalogReleaseId);
       const parsed = catalogUpdatePlacementRequestSchema.parse(body);
+      const placement = "placement" in parsed ? parsed.placement : undefined;
       // This adapter holds only one registration; it cannot validate another
       // owner's replacement proof. Never silently ignore a two-sided command.
-      if (parsed.replacement) throw catalogApiFailure("placement-conflict");
+      if ("replacement" in parsed && parsed.replacement) throw catalogApiFailure("placement-conflict");
       if (!store.registration || store.registration.id !== registrationId) {
         throw catalogApiFailure("registration-required", { subjectId: CATALOG_SUBJECT_ID });
       }
@@ -863,14 +874,16 @@ export function createMockCatalogPorts(options: CatalogMockOptions = {}): {
         throw catalogApiFailure("revision-conflict");
       }
       if (
-        parsed.placement.mode === "choose-parent" &&
-        parsed.placement.parentPlacementId === store.registration.placement.id
+        placement?.mode === "choose-parent" &&
+        placement.parentPlacementId === store.registration.placement.id
       ) {
         throw catalogApiFailure("invalid-placement-parent");
       }
       return replayOrStore(store, "updatePlacement", write, parsed, () => {
-        const nextPlacement = placementFromIntent(parsed.placement);
-        store.registration = { ...store.registration!, placement: nextPlacement };
+        const current = store.registration!;
+        const nextPlacement = placement ? placementFromIntent(placement) : current.placement;
+        store.registration = { ...current, placement: nextPlacement,
+          ...(parsed.displayAlias ? { displayAlias: parsed.displayAlias.value ?? undefined } : {}) };
         return { item: clone(nextPlacement) };
       });
     },

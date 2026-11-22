@@ -21,6 +21,7 @@ import { createGovernanceIdempotencyKey } from "./governanceState";
 import { clearStoredPublicationJob } from "./publicationJobStorage";
 import { usePublicationFlow } from "./usePublicationFlow";
 import { PublicationConfirmation } from "./PublicationConfirmation";
+import { DtsExamplesEditor } from "./DtsExamplesEditor";
 import { publicationSurfaceAdvisory, type PublicationSurfaceItem } from "./publicationSurface";
 import {
   buildPublicationChangeSet,
@@ -29,6 +30,7 @@ import {
   canSavePublicationDraft,
   emptyPublicationDraft,
   parsePublicationExamples,
+  parsePublicationDtsExamples,
   fingerprintPublicationDraft,
   publicationApprovalCopy,
   publicationCopy,
@@ -45,6 +47,7 @@ import {
   publicationSupportedUnits,
   publicationValueTypeLabel,
   publicationSupportedValueTypes,
+  valueSchemaOf,
   type PublicationDraft,
   type PublicationSubjectKind,
   type PublicationValueType
@@ -109,9 +112,6 @@ export function PublicationDialog({
     canExecutePublicationAction(actor, "preview-publication", domainState, sessionPermissions);
   const canSaveDraft =
     surfaceAllowsAuthoring && canSavePublicationDraft(actor, domainState, sessionPermissions);
-  const canPublish =
-    surfaceAllowsPublishing &&
-    canExecutePublicationAction(actor, "publish-publication", domainState, sessionPermissions);
   const flow = usePublicationFlow({
     catalog, catalogReleaseId, currentPersonId, organizationId,
     createIdempotencyKey, onCompleted, onRefreshEvidence,
@@ -120,6 +120,10 @@ export function PublicationDialog({
     candidate, candidateVerified, previewFingerprint, job, pending, setPending,
     failure, setFailure, confirm, setConfirm, gateRef, pollJob,
   } = flow;
+  const canPublish = (publicationSurface?.reviewHighRiskAllowed === true
+    && canExecutePublicationAction(actor, "review-high-risk-publication", domainState, sessionPermissions))
+    || (candidate?.riskClass === "low" && surfaceAllowsPublishing
+      && canExecutePublicationAction(actor, "publish-publication", domainState, sessionPermissions));
   const formId = useId();
   const initialDraft = (): PublicationDraft => ({ ...emptyPublicationDraft(), mode: intent, subjectId: initialSubjectId,
     ...(intent === "create-subject" ? { nature: "", cardinality: "", selectorValue: sourcePrefill?.compatible ?? "",
@@ -139,6 +143,8 @@ export function PublicationDialog({
   const previewStale = publicationPreviewIsStale(previewFingerprint, draft) ||
     Boolean(candidate && (!candidateVerified || candidate.expectedBaseReleaseId !== catalogReleaseId));
   const selectedSubject = subjects.find((item) => item.id === draft.subjectId) ?? null;
+  const selectedSubjectKind = selectedSubject?.canonicalType ?? selectedSubject?.type;
+  const definitionDraft = { ...draft, subjectKind: selectedSubjectKind ?? draft.subjectKind };
   const publishedSubjects = subjects.filter((item) => item.membership.status === "active" && item.registration.status !== "retired");
   const publishedSubjectIds = new Set(publishedSubjects.map((item) => item.id));
   const publishedDrivers = publishedSubjects.filter((item) => item.type === "driver" && (item.canonicalType ?? item.type) === "driver");
@@ -260,9 +266,15 @@ export function PublicationDialog({
     if (draft.mode === "create-subject") return true;
     try {
       parsePublicationExamples(draft);
-      return true;
     } catch (error) {
       setFieldError({ input: "examples", message: `${error instanceof Error ? error.message : publicationCopy.invalidExamples}当前输入已保留。` });
+      return false;
+    }
+    try {
+      parsePublicationDtsExamples(definitionDraft);
+      return true;
+    } catch (error) {
+      setFieldError({ input: "dtsExamples", message: `${error instanceof Error ? error.message : publicationCopy.dtsExamples}当前输入已保留。` });
       return false;
     }
   };
@@ -299,7 +311,7 @@ export function PublicationDialog({
             ...(draft.mode === "create-definition" ? { subjectId: draft.subjectId } : {}),
             ...(draft.mode === "revise-definition" ? { definitionId: draft.definitionId } : {}),
             propertyKey: draft.propertyKey.trim(),
-            content: definitionContentOf(draft)
+            content: definitionContentOf(definitionDraft)
           },
           reason: draft.reason.trim()
         },
@@ -335,7 +347,7 @@ export function PublicationDialog({
     if (!validateExamples()) return;
     await flow.preview(async () => {
       const created = await catalog.createPublicationCandidate(
-        { changeSet: buildPublicationChangeSet(draft), ...(proposalId ? { proposalId } : {}) },
+        { changeSet: buildPublicationChangeSet(draft.mode === "create-subject" ? draft : definitionDraft), ...(proposalId ? { proposalId } : {}) },
         { catalogReleaseId },
       );
       setFieldError(null);
@@ -612,6 +624,9 @@ export function PublicationDialog({
                         onChange={(event) => patchDraft({ examples: event.target.value })}
                       />
                     </label>
+                    {selectedSubjectKind === "driver" || selectedSubjectKind === "node-type" ?
+                      <DtsExamplesEditor examples={draft.dtsExamples} propertyKey={draft.propertyKey} schema={valueSchemaOf(draft)}
+                        onChange={(dtsExamples) => patchDraft({ dtsExamples })} /> : null}
                     </> : null}
                     <label>
                       {publicationCopy.reason}
@@ -655,7 +670,7 @@ export function PublicationDialog({
                     </div>
                     <div>
                       <dt>{publicationCopy.approval}</dt>
-                      <dd>{publicationApprovalCopy(candidate.riskClass, actor)}</dd>
+                      <dd>{publicationApprovalCopy(candidate.riskClass)}</dd>
                     </div>
                     <div>
                       <dt>{publicationCopy.scope}</dt>
@@ -768,7 +783,7 @@ export function PublicationDialog({
         )}
       </ModalDialog>
       <PublicationConfirmation confirm={confirm} allowed={targetAllowed && (confirm === "publish" ? canPublish : canPreview)}
-        risk={candidate?.riskClass ?? "high"} actor={actor} pending={pending}
+        risk={candidate?.riskClass ?? "high"} pending={pending}
         onPreview={() => void runPreview()} onPublish={() => void runPublish()} onCancel={() => setConfirm(null)} />
       <ConfirmDialog
         open={leaveConfirm}

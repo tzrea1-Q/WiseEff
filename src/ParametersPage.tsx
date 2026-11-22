@@ -1,7 +1,7 @@
 import { changeCenterHref } from "@/domain/parameters/changeCenterUrl";
 import { SelectControl } from "@/components/common/SelectControl";
 import { SectionEmpty } from "@/components/common/SectionState";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import type { Dispatch } from "react";
 import {
   Badge,
@@ -47,7 +47,7 @@ import type { ParameterTopologyRepository } from "@/application/ports/ParameterT
 import type { ParameterCatalogRepository } from "@/application/ports/ParameterCatalogRepository";
 import { useTopologyLayoutMode } from "@/components/parameter-topology/useTopologyLayoutMode";
 import { buildParameterModuleFilterNodes } from "@/application/parameters/buildModuleFilterNodes";
-import { createSearchIndex } from "@/lib/search";
+import { createSearchIndex, formatMatchHint } from "@/lib/search";
 import { parameterRecordSearchProfile } from "@/lib/search/profiles";
 
 type ParameterRiskFilter = "All" | "High" | "Medium" | "Low";
@@ -79,9 +79,11 @@ type ParametersPageProps = {
   dispatch: Dispatch<ParametersPageAction>;
   onNavigate: (path: string) => void;
   search: string;
+  organizationId?: string;
   parameterActions?: ParameterPageActions;
   topologyRepository?: ParameterTopologyRepository;
   canonicalRepository?: ParameterCatalogRepository;
+  parameterRepository?: Pick<import("@/application/ports/ParameterRepository").ParameterRepository, "getParameter">;
   listConfigSets?: (projectId: string) => Promise<Array<{ id: string; name: string }>>;
   effectiveProjectId?: string;
   topBarProjectId?: string;
@@ -97,9 +99,11 @@ export function ParametersPage({
   dispatch,
   onNavigate,
   search,
+  organizationId,
   parameterActions,
   topologyRepository,
   canonicalRepository,
+  parameterRepository,
   parameterFileRepository,
   listConfigSets,
   effectiveProjectId,
@@ -146,7 +150,11 @@ export function ParametersPage({
   const [submittingRound, setSubmittingRound] = useState(false);
   const [stashingRound, setStashingRound] = useState(false);
   const previousUserIdRef = useRef(state.currentUserId);
-  const resolvedProjectId = effectiveProjectId || state.activeProjectId;
+  const requestedProjectId = effectiveProjectId || state.activeProjectId;
+  const loadProjectParameters = isApiMode ? parameterActions?.loadProjectParameters : undefined;
+  const projectAvailable = !loadProjectParameters || (state.projectParameterStatuses
+    && state.configDraft.projects.some((project) => project.id === requestedProjectId));
+  const resolvedProjectId = projectAvailable ? requestedProjectId : "";
   const handoffParams = useMemo(() => new URLSearchParams(search), [search]);
   const handoffDefinition = handoffParams.get("definitionId") ?? "";
   const handoffSet = handoffParams.get("configSetId") ?? "";
@@ -166,8 +174,10 @@ export function ParametersPage({
       let definition = handoffDefinition;
       if (!definition) {
         const read = canonicalRepository.listProtectedProjectBindings;
-        if (!read) throw new Error("Project binding lookup is unavailable");
-        const bindings = await read(resolvedProjectId);
+        if (!read && !loadProjectParameters) throw new Error("Project binding lookup is unavailable");
+        const bindings = await (loadProjectParameters
+          ? loadProjectParameters(resolvedProjectId).bindings
+          : read!(resolvedProjectId));
         definition = bindings.items.find((item) => item.id === handoffBinding)?.definitionId ?? "";
       }
       if (!definition) throw new Error("Binding is unavailable");
@@ -179,7 +189,7 @@ export function ParametersPage({
     };
     void resolve().catch(() => { if (active) setResolvedHandoff({ key: handoffKey, error: true }); });
     return () => { active = false; };
-  }, [canonicalRepository, isApiMode, handoffBinding, handoffDefinition, handoffSet, handoffKey, resolvedProjectId, handoffRetry]);
+  }, [canonicalRepository, isApiMode, handoffBinding, handoffDefinition, handoffSet, handoffKey, resolvedProjectId, handoffRetry, loadProjectParameters]);
   useEffect(() => {
     if (!isApiMode) return;
     const guard = (event: Event) => {
@@ -208,16 +218,12 @@ export function ParametersPage({
         : undefined,
     [canonicalDraftTray, resolvedProjectId]
   );
-  const selectedProjectParameters = useMemo(
-    () => state.parameters.filter((parameter) => parameter.projectId === resolvedProjectId),
-    [resolvedProjectId, state.parameters]
-  );
-  const firstProjectParameterId = selectedProjectParameters[0]?.id ?? "";
   const topBarResolvedProjectId = topBarProjectId || resolvedProjectId;
   const projectParameters = useMemo(
     () => state.parameters.filter((parameter) => parameter.projectId === resolvedProjectId),
     [resolvedProjectId, state.parameters]
   );
+  const firstProjectParameterId = projectParameters[0]?.id ?? "";
   const activeParameterById = useMemo(
     () => new Map(projectParameters.map((parameter) => [parameter.id, parameter])),
     [projectParameters]
@@ -245,14 +251,23 @@ export function ParametersPage({
     () => buildParameterModuleTree(projectParameters, state.configDraft?.parameterModules ?? []),
     [projectParameters, state.configDraft?.parameterModules]
   );
+  const deferredSearchQuery = useDeferredValue(searchQuery);
   const parameterSearchIndex = useMemo(
-    () => createSearchIndex(projectParameters, parameterRecordSearchProfile),
-    [projectParameters]
+    () => isApiMode ? null : createSearchIndex(projectParameters, parameterRecordSearchProfile),
+    [isApiMode, projectParameters]
   );
-  const searchedParameters = useMemo(
-    () => parameterSearchIndex.search(searchQuery).map((hit) => hit.item),
-    [parameterSearchIndex, searchQuery]
-  );
+  const { searchedParameters, searchMatchHints } = useMemo(() => {
+    const hints = new Map<string, string>();
+    if (!deferredSearchQuery.trim() || !parameterSearchIndex) {
+      return { searchedParameters: projectParameters, searchMatchHints: hints };
+    }
+    const matches = parameterSearchIndex.search(deferredSearchQuery).map((hit) => {
+      const hint = formatMatchHint(hit.matchedFields, ["name", "description", "module"]);
+      if (hint) hints.set(hit.item.id, hint);
+      return hit.item;
+    });
+    return { searchedParameters: matches, searchMatchHints: hints };
+  }, [deferredSearchQuery, parameterSearchIndex, projectParameters]);
   const moduleFilterNodes = useMemo<TreeFilterNode[]>(
     () => {
       const scopedRows = searchedParameters
@@ -279,9 +294,11 @@ export function ParametersPage({
     [moduleFilterNodes, moduleFilters]
   );
   const parameterById = useMemo(
-    () => new Map(state.parameters.map((parameter) => [parameter.id, parameter])),
-    [state.parameters]
+    () => new Map((isApiMode ? [] : state.parameters).map((parameter) => [parameter.id, parameter])),
+    [isApiMode, state.parameters]
   );
+  const parametersRef = useRef(state.parameters);
+  parametersRef.current = state.parameters;
   const modifiedIds = useMemo(
     () => new Set(selectedIds),
     [selectedIds]
@@ -376,11 +393,11 @@ export function ParametersPage({
     return [focusedDraft, ...items.filter((item) => item.parameterId !== focusedId)];
   }, [stagingDrafts, parameterById, focusedId]);
   const modifiedParameters = useMemo(
-    () =>
-      pendingSubmissionItems.map((item) => ({
-        ...item.parameter,
-        recommendedValue: item.targetValue
-      })),
+    () => pendingSubmissionItems.map((item) => item.parameter),
+    [pendingSubmissionItems]
+  );
+  const targetValues = useMemo(
+    () => new Map(pendingSubmissionItems.map((item) => [item.parameterId, item.targetValue])),
     [pendingSubmissionItems]
   );
   const stashedIds = useMemo(
@@ -489,9 +506,12 @@ export function ParametersPage({
     }
     if (isApiMode && requestedId && !contextQuery.bindingId) {
       setArchivedLinkNotice(null);
-      const navigateToBinding = (bindingId: string) => {
-        const binding = parameterById.get(bindingId);
-        if (!binding) {
+      let cancelled = false;
+      const navigateToBinding = async (bindingId: string) => {
+        const binding = parametersRef.current.find((parameter) => parameter.id === bindingId)
+          ?? await parameterRepository?.getParameter(bindingId).catch(() => undefined);
+        if (cancelled) return;
+        if (binding?.id !== bindingId || !binding.projectId) {
           setHistoricalLinkNotice("该精确映射的 Binding 当前不可读，不能确定所属项目。");
           return;
         }
@@ -501,11 +521,10 @@ export function ParametersPage({
         params.set("binding", bindingId);
         onNavigate(`/parameters?${params}`);
       };
-      if (parameterById.has(requestedId)) {
-        navigateToBinding(requestedId);
-        return;
+      if (parametersRef.current.some((parameter) => parameter.id === requestedId)) {
+        void navigateToBinding(requestedId);
+        return () => { cancelled = true; };
       }
-      let cancelled = false;
       if (!canonicalRepository) {
         setHistoricalLinkNotice("当前无法解析旧参数链接的精确 Binding 映射。");
         return;
@@ -513,7 +532,7 @@ export function ParametersPage({
       void canonicalRepository.getLegacyIdentifier("project-parameter-binding", requestedId).then(({ item }) => {
         if (cancelled) return;
         if (item.target.kind === "parameter-binding" && !item.historicalOnly) {
-          navigateToBinding(item.target.id);
+          return navigateToBinding(item.target.id);
         } else {
           setHistoricalLinkNotice("该精确映射仅指向历史证据，不能作为当前 Binding 打开。");
         }
@@ -528,7 +547,7 @@ export function ParametersPage({
     setArchivedLinkNotice(null);
   }, [
     contextQuery.parameterId,
-    parameterById,
+    parameterRepository,
     canonicalRepository,
     contextQuery.bindingId,
     isApiMode,
@@ -631,12 +650,12 @@ export function ParametersPage({
   }, [effectiveCanEdit, restoredDrafts]);
 
   useEffect(() => {
-    if (!selected) {
+    if (!selected || activeParameterById.has(contextQuery.parameterId)) {
       return;
     }
     setSelectedId(selected.id);
     setFocusedId(selected.id);
-  }, [selected?.id]);
+  }, [selected, activeParameterById, contextQuery.parameterId]);
 
   useEffect(() => {
     setSelectedIds((ids) => {
@@ -1037,6 +1056,7 @@ export function ParametersPage({
           <ApiProjectTopologyWorkspace
             key={`${resolvedProjectId}:${currentHandoff?.setId ?? "default"}`}
             projectId={resolvedProjectId}
+            organizationId={organizationId}
             projectName={activeProject?.name}
             notice={workbenchNotice || currentHandoff?.error ? <>{workbenchNotice}{currentHandoff?.error ? <p role="status">关联参数在当前项目中不可用。</p> : null}</> : undefined}
             requestedBindingId={!currentHandoff?.error && contextQuery.projectId === resolvedProjectId ? contextQuery.bindingId : ""}
@@ -1048,6 +1068,7 @@ export function ParametersPage({
             canonicalRepository={canonicalRepository}
             parameterFileRepository={parameterFileRepository}
             listConfigSets={listConfigSets}
+            loadProjectParameters={loadProjectParameters}
             listDrafts={listDrafts}
             deleteDraft={deleteDraft}
             listWorkflowAssignees={parameterActions?.listWorkflowAssignees}
@@ -1064,11 +1085,13 @@ export function ParametersPage({
               <section className="modified-parameters-section" aria-label="本轮已修改参数区">
                 <ParametersTable
                   rows={modifiedParameters}
+                  targetValues={targetValues}
                   totalRows={modifiedParameters.length}
                   ariaLabel="本轮已修改参数表"
                   title="本轮已修改参数"
                   description="这些参数已从检索结果中移出，可在这里集中确认目标值并提交本轮。"
                   showToolbar={false}
+                  searchQuery=""
                   valueColumnLabel="当前 → 目标"
                   selectedIds={selectedIds}
                   onSelectedIdsChange={handleSelectedIdsChange}
@@ -1089,6 +1112,7 @@ export function ParametersPage({
               title="检索参数"
               description="按名称、模块或重要性筛选参数。点击编辑只会打开草稿，提交参数后才会移到上方的本轮已修改参数表。"
               searchQuery={searchQuery}
+              searchMatchHints={searchMatchHints}
               onSearchQueryChange={setSearchQuery}
               onClearFilters={clearFilters}
               filters={

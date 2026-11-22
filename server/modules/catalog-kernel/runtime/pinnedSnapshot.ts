@@ -8,20 +8,13 @@ import {
   CatalogReleaseId,
 } from "../../parameter-catalog-contract/index";
 import type { PinnedCatalogSnapshot } from "../interface";
-import { loadProjection, locatorPin } from "./currentSnapshot";
-import { withCatalogReadTransaction, type CatalogReadSource } from "./readTransaction";
-
-const asPinned = (
-  snapshot: Exclude<Awaited<ReturnType<typeof loadProjection>>, null>["snapshot"],
-  pin: CatalogReleasePin,
-): PinnedCatalogSnapshot => {
-  const pinned: PinnedCatalogSnapshot = Object.assign(snapshot, {
-    snapshotKind: "pinned" as const,
-    pin,
-  });
-  Object.freeze(pinned);
-  return pinned;
-};
+import { loadSnapshotBody, locatorPin, readReleaseHeader } from "./currentSnapshot";
+import {
+  catalogSnapshotCachePool,
+  CatalogSnapshotReadFailure,
+  withCatalogReadTransaction,
+  type CatalogReadSource,
+} from "./readTransaction";
 
 export const resolveCatalogReleasePin = async (
   pool: CatalogReadSource,
@@ -53,59 +46,54 @@ export const resolveCatalogReleasePin = async (
     };
   });
 
+const ownerEpochChanged: CatalogKernelError = {
+  kind: "storage-failure",
+  operation: "loadPinnedCatalog",
+  retryable: true,
+};
+
 export const loadPinnedCatalogSnapshot = async (
   pool: CatalogReadSource,
   pin: CatalogReleasePin,
-): Promise<Result<PinnedCatalogSnapshot, CatalogKernelError>> =>
-  withCatalogReadTransaction(pool, "loadPinnedCatalog", async (client) => {
-    const release = await client.query<{
-      id: string;
-      release_digest: string;
-    }>(
-      `select id, release_digest
-         from parameter_catalog.catalog_releases
-        where id = $1`,
-      [pin.id],
-    );
-    const row = release.rows[0];
-    if (!row) {
-      return {
-        ok: false,
-        error: { kind: "historical-release-unavailable", pin },
-      };
-    }
-    const actualDigest = CatalogReleaseDigest(row.release_digest);
-    if (actualDigest !== pin.digest) {
-      return {
-        ok: false,
-        error: {
+  { fresh = false } = {},
+): Promise<Result<PinnedCatalogSnapshot, CatalogKernelError>> => {
+  const cachePool = fresh ? null : catalogSnapshotCachePool(pool);
+  const load = () => withCatalogReadTransaction<PinnedCatalogSnapshot>(pool, "loadPinnedCatalog", async (client, commit) => {
+    const readPinnedHeader = async (options: { cache?: boolean; checkOwnerEpoch: boolean }) => {
+      const row = await readReleaseHeader(client, pin.id, options);
+      if (!row) {
+        throw new CatalogSnapshotReadFailure({ kind: "historical-release-unavailable", pin });
+      }
+      const actual = CatalogReleaseDigest(row.release_digest);
+      if (row.id !== pin.id || actual !== pin.digest) {
+        throw new CatalogSnapshotReadFailure({
           kind: "digest-conflict",
           releaseId: pin.id,
           expected: pin.digest,
-          actual: actualDigest,
-        },
-      };
-    }
-    const loaded = await loadProjection(client, pin.id, "pinned", pin);
-    if (!loaded) {
-      return {
-        ok: false,
-        error: { kind: "historical-release-unavailable", pin },
-      };
-    }
-    if (loaded.identity.id !== pin.id || loaded.identity.digest !== pin.digest) {
-      return {
-        ok: false,
-        error: {
-          kind: "digest-conflict",
-          releaseId: pin.id,
-          expected: pin.digest,
-          actual: loaded.identity.digest,
-        },
-      };
-    }
-    return { ok: true, value: asPinned(loaded.snapshot, pin) };
+          actual,
+        });
+      }
+      return row;
+    };
+    const row = await readPinnedHeader({
+      cache: cachePool !== null,
+      checkOwnerEpoch: cachePool !== null || commit !== undefined,
+    });
+    const validation = commit && {
+      commit,
+      async recheck() {
+        const after = await readPinnedHeader({ checkOwnerEpoch: row.subject_owner_epoch !== null });
+        if (after.subject_owner_epoch !== row.subject_owner_epoch) {
+          throw new CatalogSnapshotReadFailure(ownerEpochChanged);
+        }
+      },
+    };
+    const snapshot = await loadSnapshotBody(cachePool, client, row, "pinned", pin, validation);
+    return { ok: true, value: snapshot };
   });
+  const result = await load();
+  return !result.ok && result.error === ownerEpochChanged ? load() : result;
+};
 
 export const loadPinnedCatalogById = async (
   pool: CatalogReadSource,

@@ -44,6 +44,7 @@ const CANONICAL_SOURCE_READ_FUNCTIONS = [
   "parameter_catalog.source_origin_matches(text, text, text)",
   "parameter_catalog.find_source_binding_suspension(text,text,text,text,jsonb)",
   "parameter_catalog.current_source_binding_is_suspended(text,text,text)",
+  "parameter_catalog.current_source_binding_suspensions(text)",
   "parameter_catalog.source_member_is_restored(text, text)",
   "parameter_catalog.is_replaced_current_binding(text)",
   "parameter_catalog.resolve_current_binding_by_source_occurrence(text, text, text)",
@@ -571,6 +572,9 @@ export async function provisionPublicationRuntimeLogins(
         if (!functionExists.rows[0]?.exists) continue;
         await admin.query(`revoke execute on function ${routine} from ${quoteIdent(names.worker)}, ${quoteIdent(names.manager)}`);
         await admin.query(`grant execute on function ${routine} to ${quoteIdent(names.api)}`);
+      }
+      if ((await admin.query("select to_regclass('parameter_catalog.json_instance_corrections') as relation")).rows[0]?.relation) {
+        await admin.query(`grant insert on parameter_catalog.json_instance_corrections to ${quoteIdent(names.api)}`);
       }
 
       // Suspension provenance is read only through the exact scoped RPC. The

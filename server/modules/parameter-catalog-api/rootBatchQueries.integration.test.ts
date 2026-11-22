@@ -108,7 +108,7 @@ describe("R2-BATCH root HTTP SQL budget", () => {
         const input: unknown = args[0];
         const sql = typeof input === "string" ? input : input && typeof input === "object" && "text" in input ? String(input.text) : "<non-text query>";
         const rejectProjection = projectionFailure === "usage"
-          ? /from parameter_catalog\.current_project_parameter_bindings binding/.test(sql)
+          ? /count\(distinct binding\.project_id\)::text as project_count/.test(sql)
           : projectionFailure === "registration" && /from parameter_catalog\.organization_subject_registrations registration/.test(sql);
         if (rejectProjection) {
           injectedFailures += 1;

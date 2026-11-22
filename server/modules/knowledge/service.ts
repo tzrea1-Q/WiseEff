@@ -1039,19 +1039,20 @@ export async function hardDeleteKnowledgeEntry(
 
 /**
  * Guard shared by the reference edit endpoints: same governance rule as entry
- * editing (`knowledge:edit` own / `knowledge:manage` any). Archived entries
- * allow content corrections but keep their parameter references read-only.
+ * editing (`knowledge:edit` own / `knowledge:manage` any). Only a platform
+ * administrator can manually correct a canonical reference while archived.
  */
-async function requireReferenceEditableEntry(tx: Queryable, auth: AuthContext, entryId: string) {
+async function requireReferenceEditableEntry(tx: Queryable, auth: AuthContext, entryId: string, manualDefinitionEdit = false) {
   const entry = await getEntryForUpdate(tx, auth, entryId);
   if (!entry || !canReadEntry(auth, entry)) {
     throw knowledgeEntryNotFound(entryId);
   }
   requireKnowledgeGovern(auth, entry);
-  if (entry.status === "archived") {
+  if (entry.status === "archived" && !(manualDefinitionEdit && auth.permissions.includes("platform:access")
+    && auth.roles.some((role) => role.roleId === "platform-admin" && role.projectId === null))) {
     throw new ApiError(
       "VALIDATION_FAILED",
-      "Archived knowledge entries cannot change parameter references. Restore the entry first.",
+      "Archived knowledge entries require a platform administrator to correct Definition references.",
       { entryId, status: entry.status }
     );
   }
@@ -1104,7 +1105,7 @@ async function addKnowledgeDefinitionReferenceInTx(
   db: Database, tx: Database, auth: AuthContext, invocation: TrustedInvocationContext,
   input: { entryId: string; definitionId: string; fromSuggestion?: boolean }, context: KnowledgeServiceContext
 ) {
-  const entry = await requireReferenceEditableEntry(tx, auth, input.entryId);
+  const entry = await requireReferenceEditableEntry(tx, auth, input.entryId, !input.fromSuggestion && invocation.initiator === "user");
   if (input.fromSuggestion) {
     const suggestion = await tx.query<{ status: string }>(
       "select status from knowledge_reference_suggestions where organization_id = $1 and entry_id = $2 and definition_id = $3 for update",
@@ -1120,7 +1121,7 @@ async function addKnowledgeDefinitionReferenceInTx(
   }
   if (await hasDefinitionReference(tx, auth, input)) return;
   // Read through the authenticated Catalog boundary using the root Database.
-  const definition = await readCatalogDefinitionForKnowledge(db, auth, input.definitionId, context.requestId);
+  const definition = await readCatalogDefinitionForKnowledge(db, auth, input.definitionId, context.requestId, knowledgeOrganizationId(auth));
   if (definition.lifecycle === "retired") {
     throw new ApiError("CONFLICT", "Retired Catalog Definitions cannot receive new knowledge references.", {
       reason: "definition-retired",
@@ -1145,6 +1146,8 @@ async function addKnowledgeDefinitionReferenceInTx(
       metadata: {
         title: entry.title,
         definitionId: input.definitionId,
+        previousDefinitionId: null,
+        nextDefinitionId: input.definitionId,
         propertyKey: definition.propertyKey,
         driverModule: definition.subject.canonicalName,
         lifecycle: definition.lifecycle,
@@ -1262,7 +1265,7 @@ export async function removeKnowledgeDefinitionReference(
 ): Promise<KnowledgeEntryDto> {
   const invocation = knowledgeServiceInvocation(auth);
   await db.transaction(async (tx) => {
-    const entry = await requireReferenceEditableEntry(tx, auth, input.entryId);
+    const entry = await requireReferenceEditableEntry(tx, auth, input.entryId, invocation.initiator === "user");
     const removed = await deleteDefinitionReference(tx, auth, input);
     if (!removed) return;
 
@@ -1273,7 +1276,7 @@ export async function removeKnowledgeDefinitionReference(
         kind: "knowledge-definition-reference-remove",
         action: "definition-reference-remove",
         entryId: input.entryId,
-        metadata: { title: entry.title, definitionId: input.definitionId }
+        metadata: { title: entry.title, definitionId: input.definitionId, previousDefinitionId: input.definitionId, nextDefinitionId: null }
       },
       context
     );
@@ -1314,7 +1317,7 @@ export async function findRelatedKnowledgeForDefinition(
   input: { definitionId: string; limit?: number }
 ): Promise<{ items: KnowledgeSearchResultDto[] }> {
   requireKnowledgeView(auth);
-  await readCatalogDefinitionForKnowledge(db, auth, input.definitionId);
+  await readCatalogDefinitionForKnowledge(db, auth, input.definitionId, undefined, knowledgeOrganizationId(auth));
   return {
     items: await listPublishedEntriesReferencingDefinition(db, auth, {
       definitionId: input.definitionId,

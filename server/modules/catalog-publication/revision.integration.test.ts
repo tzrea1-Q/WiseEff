@@ -119,7 +119,7 @@ describe("CP-10 definition revision and new-subject PG", () => {
     await persistPredecessorArtifact(client, predecessor);
     await enablePublicationPolicy(client, {
       publicationEnabled: true,
-      lowRiskSingleActorPublish: true,
+      lowRiskSingleActorPublish: false,
     });
   }, 120_000);
 
@@ -372,7 +372,7 @@ describe("CP-10 definition revision and new-subject PG", () => {
             revisionId: `drev_${input.token}_${nested.propertyKey}`,
           });
         }
-      } else {
+      } else if ("definitionId" in change) {
         const currentDef = target.documents.find(
           (document) => document.kind === "definition" && document.content.id === change.definitionId,
         );
@@ -446,6 +446,9 @@ describe("CP-10 definition revision and new-subject PG", () => {
     const policy = await client.query<{ revision: string }>(
       `select revision::text as revision from catalog_publication.publication_policies where singleton`,
     );
+    const trustedActor = userActor(input.publisherUserId, input.publisherPermissions as never, {
+      roleId: input.publisherRoleId ?? "admin",
+    });
     const authorized = await asCoordinator(client, async () => {
       const capability = await client.query<{ digest: string }>(
         `select catalog_publication.digest_jsonb(capability_contract) as digest
@@ -453,9 +456,7 @@ describe("CP-10 definition revision and new-subject PG", () => {
         [successor.candidate.id],
       );
       return authorizePublish(asQueryable(client), {
-        trustedActor: userActor(input.publisherUserId, input.publisherPermissions as never, {
-          roleId: input.publisherRoleId ?? "admin",
-        }),
+        trustedActor,
         candidate: {
           candidateId: successor.candidate.id,
           artifactDigest: successor.candidate.artifactDigest,
@@ -489,14 +490,13 @@ describe("CP-10 definition revision and new-subject PG", () => {
       candidateId: successor.candidate.id, authorizationId: authorized.value.authorization.id,
       expectedCurrent: { id: successor.candidate.expectedBaseReleaseId, digest: successor.candidate.expectedBaseReleaseDigest },
       fencingToken: job.value.fencingToken,
-      trustedActor: userActor(input.publisherUserId, input.publisherPermissions as never), impactFacts: facts,
+      trustedActor, impactFacts: facts,
     });
     const claimed = await runPublicationManagerOnce({
       db,
       pool,
       installer: createCatalogInstaller(pool),
-      resolvePublisherActor: async () =>
-        userActor(input.publisherUserId, input.publisherPermissions as never),
+      resolvePublisherActor: async () => trustedActor,
       ownerId: `manager-${input.token}`,
     });
     expect(claimed).toBe("claimed");
@@ -622,58 +622,40 @@ describe("CP-10 definition revision and new-subject PG", () => {
       .toEqual([{ current_catalog_release_id: cleared.built.artifact.targetReleaseId }]);
   }, 60_000);
 
-  it("T17 new Driver fallback impact requires a distinct high-risk reviewer", async () => {
+  it("T17 a Driver author with high-risk review permission can activate the fallback change", async () => {
     const token = uniqueToken("t17");
+    const changeSet: readonly CatalogChange[] = [{
+      op: "create-subject-with-definitions",
+      kind: "driver",
+      canonicalKey: `driver:acme,aux-${token}`,
+      selector: { kind: "driver-compatible", value: `acme,aux-${token}` },
+      nature: "physical-device",
+      cardinality: "multiple",
+      definitions: [{ propertyKey: "vbat", content: integerContent("Aux battery", "Auxiliary battery voltage.") }],
+    }];
     const authorAttempt = activateChangeSet({
-      changeSet: [
-        {
-          op: "create-subject-with-definitions",
-          kind: "driver",
-          canonicalKey: `driver:acme,aux-${token}`,
-          selector: { kind: "driver-compatible", value: `acme,aux-${token}` },
-          nature: "physical-device",
-          cardinality: "multiple",
-          definitions: [
-            {
-              propertyKey: "vbat",
-              content: integerContent("Aux battery", "Auxiliary battery voltage."),
-            },
-          ],
-        },
-      ],
+      changeSet,
       authorPrincipalId: AUTHOR,
       publisherUserId: AUTHOR,
-      publisherPermissions: ["catalog:publish", "catalog:review-high-risk", "parameter:view"],
+      publisherPermissions: ["catalog:publish", "parameter:view"],
       publisherRoleId: "hardware-user",
       token: `${token}a`,
     });
-    await expect(authorAttempt).rejects.toThrow(/publication-self-approval-forbidden|authorize failed/);
+    await expect(authorAttempt).rejects.toThrow("publication-capability-missing");
 
     const result = await activateChangeSet({
-      changeSet: [
-        {
-          op: "create-subject-with-definitions",
-          kind: "driver",
-          canonicalKey: `driver:acme,aux-${token}`,
-          selector: { kind: "driver-compatible", value: `acme,aux-${token}` },
-          nature: "physical-device",
-          cardinality: "multiple",
-          definitions: [
-            {
-              propertyKey: "vbat",
-              content: integerContent("Aux battery", "Auxiliary battery voltage."),
-            },
-          ],
-        },
-      ],
+      changeSet,
       authorPrincipalId: AUTHOR,
-      publisherUserId: REVIEWER,
-      publisherPermissions: [...reviewerPermissions],
+      publisherUserId: AUTHOR,
+      publisherPermissions: reviewerPermissions,
+      publisherRoleId: "hardware-committer",
       token,
     });
     expect(result.facts.introducesNewSubject).toBe(true);
     expect(result.facts.changesFallback).toBe(true);
     expect(result.built.impact.matcher.fallbackImpact).toBe(true);
+    const receipt = await withPublicationCoordinator(db, (tx) => getReceiptByJobId(tx, result.job.id));
+    expect(receipt).toMatchObject({ ok: true, value: { actorPrincipalId: AUTHOR, releaseId: result.built.artifact.targetReleaseId } });
     const bindings = await client.query<BindingSnapshot>(bindingSnapshotSql);
     expect(bindings.rows.every((row) => row.effective_revision_id === "drev_acme_power_iin_max_1")).toBe(
       true,

@@ -209,6 +209,7 @@ describe("canonical parameter Catalog schema", () => {
       "definition_replacements",
       "definition_revisions",
       "governance_command_idempotency",
+      "json_instance_corrections",
       "legacy_identities",
       "legacy_mapping_heads",
       "legacy_mapping_versions",

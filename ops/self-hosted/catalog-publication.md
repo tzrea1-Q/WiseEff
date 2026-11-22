@@ -75,7 +75,27 @@ curl -fsS http://127.0.0.1:8791/health/live   # from inside the manager containe
 
 API and log worker set `WISEEFF_API_PROCESS=1` / `LOG_WORKER_ENABLED=true` and never load `.env.publication-manager`. The manager entry requires `WISEEFF_PUBLICATION_MANAGER=1`.
 
+### Activation deadline and retry
+
+`WISEEFF_PUBLICATION_MANAGER_ACTIVATION_TIMEOUT_MS` defaults to 60 seconds. At that threshold the manager logs `activation-timeout` and checks for a committed activation Receipt. The current attempt has an additional grace period equal to the configured timeout, capped at 60 seconds. The effective lease covers the timeout, grace period, and a five-second settlement margin. A longer configured lease still applies.
+
+Artifact parsing and compilation finish before the manager acquires the Catalog pointer lock. The activation transaction rechecks the Receipt, base release, authorization, fence, and artifact identity. After the watchdog fires, the manager waits for the existing attempt to commit or roll back if no Receipt confirms success. A deadline failure records `activation-timeout` and follows `WISEEFF_PUBLICATION_MANAGER_RETRY_BUDGET`, which defaults to five attempts.
+
+For a long-running job, correlate `claimed`, `activation-timeout`, `settled`, and `activated` events by job ID. The activation Receipt confirms publication. Administrators can read `catalog_publication.publication_jobs.last_error_reason` to distinguish a deadline failure from another execution problem.
+
 ### Memory budgets for preview and publication
+
+For shared subject renames and formal alias edits, the API can preview against a
+validated snapshot of the pinned release. The first preview of a legacy release
+can still take longer while it validates history. Once eligible, each candidate
+stores the new release and a reference to its predecessor. Activation and
+historical replay reconstruct the complete bundle. A change requiring historical
+evidence beyond the snapshot uses the complete validation path.
+
+During a rolling upgrade, apply the schema migrations and upgrade the publication
+manager and other artifact readers before starting API instances that write the
+new format. Once a compact candidate exists, keep a compatible reader for its
+activation and replay, including during an application rollback.
 
 Both API preview and manager activation compile Catalog data. Each service defaults
 to 2 GiB RAM, 3 GiB RAM plus swap, and 1536 MiB V8 old-space. The difference leaves
@@ -94,6 +114,34 @@ old-space on the Node command line, preserving other `NODE_OPTIONS` and overridi
 an older `--max-old-space-size` in that variable. Keep the heap below the RAM
 ceiling. `FATAL ERROR: ... JavaScript heap out of memory` is a V8 failure even when
 Docker reports `OOMKilled=false`.
+
+For a large dedicated host (for example, 125 GiB RAM with about 120 GiB
+available), replace the six settings in `.env` with this higher-capacity profile:
+
+```dotenv
+WISEEFF_API_MEMORY_LIMIT=16g
+WISEEFF_API_MEMORY_SWAP_LIMIT=16g
+WISEEFF_API_MAX_OLD_SPACE_SIZE_MB=12288
+WISEEFF_PUBLICATION_MANAGER_MEMORY_LIMIT=16g
+WISEEFF_PUBLICATION_MANAGER_MEMORY_SWAP_LIMIT=16g
+WISEEFF_PUBLICATION_MANAGER_MAX_OLD_SPACE_SIZE_MB=12288
+```
+
+The two services can use up to 32 GiB of RAM combined. Each has 4 GiB between
+the V8 old-space limit and the container ceiling. Matching the RAM and
+RAM-plus-swap ceilings keeps these services from using swap. These ceilings do
+not reserve RAM up front. Keep the deployment's existing database settings
+unless database measurements indicate a separate bottleneck.
+
+For large releases on this profile, set the manager's activation threshold
+to 3 minutes in `.env.publication-manager` and recreate the manager:
+
+```dotenv
+WISEEFF_PUBLICATION_MANAGER_ACTIVATION_TIMEOUT_MS=180000
+```
+
+The manager's settlement grace period and effective lease follow the rules above.
+This setting applies after confirmation, when the manager activates a queued job.
 
 Use the normal [upgrade procedure](upgrade.md) to deploy application code changes.
 For a configuration-only recovery using the already running image, first update
@@ -124,7 +172,7 @@ Verify the actual recreated containers and their main-process arguments:
 ```bash
 ./scripts/compose --env-file .env ps -a -q api publication-manager |
   xargs -r docker inspect --format \
-  '{{.Name}} memory={{.HostConfig.Memory}} memorySwap={{.HostConfig.MemorySwap}} command={{json .Config.Cmd}} restarts={{.RestartCount}}'
+  '{{.Name}} memory={{.HostConfig.Memory}} memorySwap={{.HostConfig.MemorySwap}} command={{json .Config.Cmd}} restarts={{.RestartCount}} oom={{.State.OOMKilled}}'
 ./scripts/compose --env-file .env exec -T api \
   curl -fsS http://127.0.0.1:8787/health/live
 ./scripts/compose --env-file .env exec -T publication-manager \
@@ -137,6 +185,13 @@ At defaults, inspect shows `memory=2147483648`, `memorySwap=3221225472` and
 that CLI flag reports the new probe's default heap, not the running service's heap.
 Retry one import preview, then confirm it completes and restart counts remain
 unchanged. Health alone does not establish import or publication acceptance.
+With the 16 GiB profile, both ceilings should read `17179869184` and the Node
+argument should be `--max-old-space-size=12288`. If the error returns, record the
+failed request path, status, duration, and response request ID. The preview POST
+to `/api/v2/catalog/publication-candidates` is handled by the API. If that POST
+succeeds and the publication job fails after confirmation, inspect the separate
+manager logs for that job ID. Check container restart counts and OOM state before
+attributing a gateway response to insufficient memory.
 
 ## 2. Inspect a preexisting Catalog
 
@@ -210,12 +265,12 @@ Status prints non-secret identity: database OID, database name, current Release 
 
 ```bash
 npx tsx scripts/catalog-publication-ops.ts policy enable --actor <user-id> \
-  --confirmation ephemeral-test-only [--low-risk-single-actor]
+  --confirmation ephemeral-test-only
 npx tsx scripts/catalog-publication-ops.ts policy disable --actor <user-id> \
   --confirmation ephemeral-test-only
 ```
 
-Enable is refused unless `current_database()` matches the ephemeral test name pattern and the confirmation token matches. `--low-risk-single-actor` is independent and defaults to the current policy value (not bundled on).
+Enable is refused unless `current_database()` matches the ephemeral test name pattern and the confirmation token matches. The legacy `low_risk_single_actor_publish` field and its CLI options remain available for compatibility. Approval uses the Candidate’s risk and the actor’s capabilities.
 
 **Durable / non-ephemeral instance:** check then execute against observed identity. Do not use the ephemeral confirmation. Re-run status after any drift; do not reuse a stale check.
 
@@ -226,8 +281,7 @@ npx tsx scripts/catalog-publication-ops.ts policy check enable --actor <user-id>
   --expected-digest sha256:... \
   --expected-policy-revision <n> \
   --expected-frozen true|false \
-  --expected-adopted true \
-  [--low-risk-single-actor|--no-low-risk-single-actor]
+  --expected-adopted true
 
 npx tsx scripts/catalog-publication-ops.ts policy enable --actor <user-id> \
   --expected-database-oid <oid> \
@@ -235,8 +289,7 @@ npx tsx scripts/catalog-publication-ops.ts policy enable --actor <user-id> \
   --expected-digest sha256:... \
   --expected-policy-revision <n> \
   --expected-frozen true|false \
-  --expected-adopted true \
-  [--low-risk-single-actor|--no-low-risk-single-actor]
+  --expected-adopted true
 ```
 
 Enable requires exact Catalog adoption (current Artifact + Receipt). It does not advance `current`, does not clear freeze, and does not require a prior online publication. Disable keeps Catalog, Artifact, Receipt, and project values. Closing publication does not restore legacy `advance` after a Receipt exists.
@@ -277,7 +330,7 @@ Work directory unless noted: `/srv/wiseeff/ops/self-hosted`. CLI runs inside the
 | 1. Read post-upgrade state | `./scripts/collect-catalog-publication-status.sh` (or `compose ps`, image `curl` manager `/health/live`, `policy status`, `freeze status`) | No | Running image/tag, roles, current Release, policy revision, freeze; JSON `pinsForPolicyCheck` | Missing manager LOGIN on a stack that already had `publication-manager` |
 | 2. Inspect source bundle / adopt check | `inspect` with `CATALOG_BASELINE_READONLY_DATABASE_URL`; `adopt --check` with expected id/digest/bundle | No | JSON identity matches the collected bundle | Drift, missing history, or missing Artifact bytes |
 | 3. Adopt + ACL + capabilities | `adopt --execute`; Org Admin already has `catalog:author` / `catalog:publish` / `catalog:review-high-risk`. Grant those only for non-admin publishers | Yes | Receipt kind `adopted-preexisting`; Org Admin can author and self-approve after re-login | Do not use test capabilities; do not grant platform-admin |
-| 4. Policy check / enable / disable | `policy check enable` then `policy enable` with the **fresh** status pins; optional `--low-risk-single-actor` | Yes | `publication_enabled=true`; freeze unchanged | Stale pins, not adopted, ephemeral confirmation on a durable name |
+| 4. Policy check / enable / disable | `policy check enable` then `policy enable` with the **fresh** status pins | Yes | `publication_enabled=true`; freeze unchanged | Stale pins, not adopted, ephemeral confirmation on a durable name |
 | 5. Page business loop | `/parameter-admin/specs` create/revise/preview/publish; workbench "Submit selected" control | Yes | Receipt `effective`; official value content; history after restart | Queued/running after timeout is failure; do not POST save APIs by hand |
 | 6. Abnormal stop | `policy disable`; `freeze set` if maintenance; upgrade recovery for restore | Yes | Publication closed; Catalog/values retained | Do not DROP history or re-bootstrap |
 

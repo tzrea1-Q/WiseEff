@@ -30,6 +30,7 @@ import { readCurrentCatalogPointer } from "../../catalog-kernel/install/currentP
 import {
   enablePublicationPolicy,
   publisherPermissions,
+  reviewerPermissions,
   userActor,
 } from "../../catalog-publication/authorization/testHarness";
 import { enqueuePublicationJob } from "../../catalog-publication/enqueue";
@@ -64,6 +65,7 @@ export const PREDECESSOR_PROPERTY_KEY = "iin_max";
 export const PREDECESSOR_REVISION_ID = "drev_acme_power_iin_max_1";
 
 export const MIGRATION_PRINCIPAL = "user-definition-migration-admin";
+const fixtureReviewer = "user-migration-fixture-reviewer";
 export const HARNESS_ORG = "org-drepl-harness";
 
 export type HarnessContent = {
@@ -218,7 +220,8 @@ export const runQueuedPublicationJob = async (
       db,
       pool,
       installer,
-      resolvePublisherActor: async (principalId) => userActor(principalId, publisherPermissions),
+      resolvePublisherActor: async (principalId) => userActor(principalId,
+        principalId === fixtureReviewer ? reviewerPermissions : publisherPermissions),
       ownerId: `drepl-${attempt}-${randomUUID().slice(0, 6)}`,
       activationTimeoutMs: 20_000,
       retryBudget: 5,
@@ -283,7 +286,22 @@ export async function createMigrationHarness(options: { readonly objectStore?: O
     ? null
     : await mkdtemp(path.join(tmpdir(), "wiseeff-drepl-"));
   const objectStore = options.objectStore ?? createLocalObjectStore(ownedStorageDirectory!);
+  const close = async () => {
+    client.release();
+    await db.close();
+    await database.drop();
+    if (ownedStorageDirectory) await rm(ownedStorageDirectory, { recursive: true, force: true });
+  };
+  try {
+    return await initializeHarness({ database, db, pool, client, objectStore, close });
+  } catch (error) {
+    await close();
+    throw error;
+  }
+}
 
+async function initializeHarness(resources: Required<Pick<MigrationHarness, "database" | "db" | "pool" | "client" | "objectStore" | "close">>): Promise<MigrationHarness> {
+  const { database, db, pool, client, objectStore, close } = resources;
   const bundle = firstReleaseBundle();
   const compiled = compileCatalogRelease(bundle);
   if (!compiled.ok) {
@@ -878,7 +896,7 @@ export async function createMigrationHarness(options: { readonly objectStore?: O
       db,
       candidateId: built.value.candidate.id,
       idempotencyKey: `harness-${label}-${randomUUID().slice(0, 8)}`,
-      trustedActor: userActor(MIGRATION_PRINCIPAL, publisherPermissions),
+      trustedActor: userActor(fixtureReviewer, reviewerPermissions),
       requestScope: "instance:definition-replacement-harness",
     });
     if (!enqueued.ok) {
@@ -953,14 +971,7 @@ export async function createMigrationHarness(options: { readonly objectStore?: O
     currentTip,
     setCurrentRelease,
     refreshCatalog: reloadSnapshot,
-    close: async () => {
-      client.release();
-      await db.close();
-      await database.drop();
-      if (ownedStorageDirectory) {
-        await rm(ownedStorageDirectory, { recursive: true, force: true });
-      }
-    },
+    close,
   };
 }
 

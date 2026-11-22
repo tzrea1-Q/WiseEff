@@ -1,6 +1,7 @@
 import pg from "pg";
 import type { Queryable } from "../../../shared/database/client";
 import { loadOrganizationRecognitionRules, lockOrganizationModuleRecognition } from "../../parameter-modules/recognitionSettings";
+import { readModuleRecognitionSubjectDefaults } from "../../parameter-catalog-api/governance";
 import { lockOrganizationSubjectRegistration } from "../../parameter-modules/recognitionLock";
 
 import {
@@ -22,6 +23,7 @@ import {
   loadBindingByComposite,
   loadProjectOwner,
   loadRegistrationForAgreement,
+  loadStoredProjectBindings,
   loadSourceRegistrationAgreement,
   type BindingRow,
   type BindingWriterClient,
@@ -33,6 +35,13 @@ import type {
   Result,
   StabilizeBindingCommand,
 } from "./types";
+
+export const readStoredProjectBindings = (
+  client: BindingWriterClient,
+  organizationId: string,
+  projectId: string,
+  bindingIds: readonly string[],
+): Promise<BindingRow[]> => loadStoredProjectBindings(client, organizationId, projectId, bindingIds);
 
 export type BindingService = {
   stabilize(
@@ -302,8 +311,10 @@ export const writeCanonicalBinding = async (
       }
 
       const rules = await loadOrganizationRecognitionRules(client as unknown as Queryable, command.organizationId);
-      const singleton = rules.some((rule) => rule.canonical_subject_id === agreed.value.subjectId
-        && rule.instance_cardinality === "singleton-per-project");
+      const override = rules.find((rule) => rule.canonical_subject_id === agreed.value.subjectId);
+      const cardinality = override ? override.instance_cardinality : (await readModuleRecognitionSubjectDefaults(
+        client as unknown as Queryable, [agreed.value.subjectId], null))[0]?.cardinality;
+      const singleton = cardinality === "singleton-per-project";
       const singletonConflict = singleton ? await client.query(
         `select 1 from parameter_catalog.current_project_parameter_bindings binding
              where binding.organization_id=$1 and binding.project_id=$3 and binding.subject_id=$2

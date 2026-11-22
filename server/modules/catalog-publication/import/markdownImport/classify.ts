@@ -16,6 +16,7 @@ const comparableContent = (
   displayName: content.displayName, documentation: content.documentation,
   description: content.description ?? null, unit: content.unit ?? null,
   valueSchema: content.valueSchema, examples: content.examples ?? null,
+  dtsExamples: content.dtsExamples ?? null,
 });
 
 /** Classification owns existing and duplicate keys, so later outcome policy has one seam. */
@@ -48,7 +49,7 @@ export function classifyEntry(input: {
     const revision = existing.content.revision;
     const content = input.entry.content;
     if (revision.lifecycle === "active" && content
-      && isDeepStrictEqual(comparableContent(revision), comparableContent(content))) {
+      && isDeepStrictEqual(comparableContent(revision), comparableContent(revise ? revisedDefinitionContent(revision, content) : content))) {
       if (!diagnostics.length && revise) {
         diagnostics.push(diagnostic(section, definition, "操作", "无变化。", definition.line));
         return { outcome: "skip", diagnostics };
@@ -64,7 +65,8 @@ export function classifyEntry(input: {
         return { "显示名": value.displayName, [F.documentation]: value.documentation, [F.description]: value.description ?? null,
           [F.unit]: value.unit ?? null, [F.type]: formatValueType(schema),
           [F.typeDescription]: item.description ?? null, [F.minimum]: item.minimum ?? null, [F.maximum]: item.maximum ?? null,
-          [F.minItems]: schema.minItems ?? null, [F.maxItems]: schema.maxItems ?? null, [F.example]: value.examples ?? null };
+          [F.minItems]: schema.minItems ?? null, [F.maxItems]: schema.maxItems ?? null, [F.example]: value.examples ?? null,
+          "DTS 示例": value.dtsExamples ?? null };
       };
       const oldFields = fields(revision);
       const newFields = fields(next);

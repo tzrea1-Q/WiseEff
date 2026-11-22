@@ -10,7 +10,7 @@ import {
   publisherPermissions,
   userActor,
 } from "../../catalog-kernel/install/publicationTestHarness";
-import { getJob, getReceiptByJobId } from "../persistence/store";
+import { getJob, getReceiptByJobId, updateJobExecution } from "../persistence/store";
 import {
   createEphemeralTestDatabase,
   createInMemoryTestDatabase,
@@ -50,6 +50,12 @@ if (!pgVectorInstalled) {
   throw new Error(
     "CP-07 manager tests require pgvector installed in the real PostgreSQL test database; skipping is forbidden",
   );
+}
+
+function deferred() {
+  let resolve!: () => void;
+  const promise = new Promise<void>((complete) => { resolve = complete; });
+  return { promise, resolve };
 }
 
 describe("CP-07 publication manager production seam", () => {
@@ -161,8 +167,10 @@ describe("CP-07 publication manager production seam", () => {
 
   it("clears the activation timer when execute wins and does not unhandled-reject later", async () => {
     await provisionOnlineActivation(pool, client, "iin_tmr1");
-    // Select execute as the winner without bounding real PostgreSQL IO to 200ms.
+    // Advance only the watchdog timer. The real activation has its own deadline.
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const setTimer = vi.spyOn(globalThis, "setTimeout");
+    const clearTimer = vi.spyOn(globalThis, "clearTimeout");
     const rejections: unknown[] = [];
     const onReject = (reason: unknown) => {
       rejections.push(reason);
@@ -176,7 +184,7 @@ describe("CP-07 publication manager production seam", () => {
         installer: createCatalogInstaller(pool),
         resolvePublisherActor: async () => userActor("user-catalog-publisher", publisherPermissions),
         ownerId: "manager-timer-cleared",
-        activationTimeoutMs: 200,
+        activationTimeoutMs: 30_000,
         log: (fields) => {
           if (typeof fields.event === "string") events.push(fields.event);
         },
@@ -184,14 +192,131 @@ describe("CP-07 publication manager production seam", () => {
       expect(claimed).toBe("claimed");
       expect(events).toContain("activated");
       expect(events).not.toContain("activation-timeout");
-      const pendingTimers = vi.getTimerCount();
-      await vi.advanceTimersByTimeAsync(350);
-      expect(vi.getTimerCount()).toBe(pendingTimers);
+      const timerIndex = setTimer.mock.calls.findIndex(([, ms]) => ms === 30_000);
+      expect(timerIndex).toBeGreaterThanOrEqual(0);
+      expect(clearTimer).toHaveBeenCalledWith(setTimer.mock.results[timerIndex]?.value);
+      await vi.advanceTimersByTimeAsync(30_350);
       expect(rejections).toEqual([]);
     } finally {
+      setTimer.mockRestore();
+      clearTimer.mockRestore();
       vi.useRealTimers();
       process.off("unhandledRejection", onReject);
     }
+  });
+
+  it("keeps the same claim after the watchdog while activation finishes without a Receipt yet", async () => {
+    const prepared = await provisionOnlineActivation(pool, client, "iin_slow");
+    const inner = createCatalogInstaller(pool);
+    const started = deferred();
+    const finish = deferred();
+    const watchdog = deferred();
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const options = {
+      db, pool, leaseMs: 1_000, activationTimeoutMs: 30_000,
+      installer: { ...inner, installPublishedRelease: async (command: Parameters<typeof inner.installPublishedRelease>[0]) => {
+        started.resolve();
+        await finish.promise;
+        return inner.installPublishedRelease(command);
+      } },
+      resolvePublisherActor: async () => userActor("user-catalog-publisher", publisherPermissions),
+      log: (fields: Record<string, string | number | boolean | null>) => {
+        if (fields.event === "activation-timeout") watchdog.resolve();
+      },
+    };
+    let completed = false;
+    const tick = runPublicationManagerOnce(options).then((result) => {
+      completed = true;
+      return result;
+    });
+    try {
+      await started.promise;
+      await vi.advanceTimersByTimeAsync(30_000);
+      await watchdog.promise;
+      expect(await runPublicationManagerOnce(options)).toBe("idle");
+      const job = await withPublicationCoordinator(db, (tx) => getJob(tx, prepared.job.id));
+      expect(job).toMatchObject({ ok: true, value: { status: "running", attemptCount: 1, fencingToken: 1 } });
+      if (!job.ok || !job.value.leaseUntil) throw new Error("expected an in-flight lease");
+      expect(Date.parse(job.value.leaseUntil) - Date.parse(job.value.updatedAt)).toBe(65_000);
+      expect(completed).toBe(false);
+      finish.resolve();
+      expect(await tick).toBe("claimed");
+      expect(await withPublicationCoordinator(db, (tx) => getJob(tx, prepared.job.id)))
+        .toMatchObject({ ok: true, value: { status: "active", attemptCount: 1, fencingToken: 1 } });
+      expect(await withPublicationCoordinator(db, (tx) => getReceiptByJobId(tx, prepared.job.id)))
+        .toMatchObject({ ok: true });
+    } finally {
+      finish.resolve();
+      vi.useRealTimers();
+      await tick.catch(() => undefined);
+    }
+  });
+
+  it("settles rolled-back deadline failures and stops after the retry budget", async () => {
+    const prepared = await provisionOnlineActivation(pool, client, "iin_budget");
+    const before = await domainSnapshot(client);
+    const inner = createCatalogInstaller(pool);
+    const options = {
+      db, pool, retryBudget: 2,
+      installer: { ...inner, installPublishedRelease: async () => ({ ok: false, error: { kind: "activation-timeout" } }) } satisfies typeof inner,
+      resolvePublisherActor: async () => userActor("user-catalog-publisher", publisherPermissions),
+    };
+    expect(await runPublicationManagerOnce(options)).toBe("claimed");
+    expect(await withPublicationCoordinator(db, (tx) => getJob(tx, prepared.job.id)))
+      .toMatchObject({ ok: true, value: { status: "failed-retryable", attemptCount: 1, lastErrorReason: "activation-timeout" } });
+    expect(await withPublicationCoordinator(db, (tx) => updateJobExecution(tx, prepared.job.id, {
+      leaseUntil: "2000-01-01T00:00:00.000Z", expectedFencingToken: 1,
+    }))).toMatchObject({ ok: true });
+    expect(await runPublicationManagerOnce(options)).toBe("claimed");
+    expect(await withPublicationCoordinator(db, (tx) => getJob(tx, prepared.job.id)))
+      .toMatchObject({ ok: true, value: { status: "failed-terminal", attemptCount: 2, lastErrorReason: "activation-timeout" } });
+    expect(await runPublicationManagerOnce(options)).toBe("idle");
+    expect(await domainSnapshot(client)).toEqual({ ...before, jobStatuses: ["failed-terminal"] });
+  });
+
+  it("keeps a committed activation when the installer returns a deadline error after COMMIT", async () => {
+    const prepared = await provisionOnlineActivation(pool, client, "iin_commit_result");
+    const inner = createCatalogInstaller(pool);
+    const installer = { ...inner, installPublishedRelease: async (command) => {
+      const installed = await inner.installPublishedRelease(command);
+      expect(installed.ok).toBe(true);
+      return { ok: false, error: { kind: "activation-timeout" } };
+    } } satisfies typeof inner;
+    expect(await runPublicationManagerOnce({
+      db, pool, retryBudget: 1, installer,
+      resolvePublisherActor: async () => userActor("user-catalog-publisher", publisherPermissions),
+    })).toBe("claimed");
+    expect(await withPublicationCoordinator(db, (tx) => getJob(tx, prepared.job.id)))
+      .toMatchObject({ ok: true, value: { status: "active", attemptCount: 1, lastErrorReason: null } });
+    expect((await domainSnapshot(client)).receiptKinds).toEqual(["online-publication"]);
+  });
+
+  it("preserves a job cancelled during the attempt even though its fencing token stayed the same", async () => {
+    const prepared = await provisionOnlineActivation(pool, client, "iin_cancelled");
+    const inner = createCatalogInstaller(pool);
+    const installer = { ...inner, installPublishedRelease: async () => {
+      const cancelled = await withPublicationCoordinator(db, (tx) => updateJobExecution(tx, prepared.job.id, {
+        status: "cancelled", leaseUntil: null, expectedFencingToken: 1,
+      }));
+      expect(cancelled.ok).toBe(true);
+      return { ok: false, error: { kind: "activation-timeout" } };
+    } } satisfies typeof inner;
+    expect(await runPublicationManagerOnce({
+      db, pool, installer,
+      resolvePublisherActor: async () => userActor("user-catalog-publisher", publisherPermissions),
+    })).toBe("claimed");
+    expect(await withPublicationCoordinator(db, (tx) => getJob(tx, prepared.job.id)))
+      .toMatchObject({ ok: true, value: { status: "cancelled", attemptCount: 1, fencingToken: 1, lastErrorReason: null } });
+  });
+
+  it("settles an unexpected executor rejection against the retry budget", async () => {
+    const prepared = await provisionOnlineActivation(pool, client, "iin_rejected");
+    expect(await runPublicationManagerOnce({
+      db, pool, retryBudget: 1, installer: createCatalogInstaller(pool),
+      resolvePublisherActor: async () => { throw new Error("actor lookup interrupted"); },
+    })).toBe("claimed");
+    expect(await withPublicationCoordinator(db, (tx) => getJob(tx, prepared.job.id)))
+      .toMatchObject({ ok: true, value: { status: "failed-terminal", attemptCount: 1, lastErrorReason: "activation-execution-error" } });
   });
 
   it("reconciles from Receipt when the activation timeout wins and does not crash", async () => {

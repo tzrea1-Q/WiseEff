@@ -1,5 +1,5 @@
 import { SelectControl } from "@/components/common/SelectControl";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 
 import type { CatalogActorKind } from "@/application/parameter-catalog/authority";
 import { catalogStateFromFailure, type CatalogDomainState } from "@/application/parameter-catalog/states";
@@ -74,6 +74,8 @@ export type RegistrationDialogProps = {
   initialDestinationModuleId?: string;
   subjectImpact?: RegistrationSubjectImpact;
   currentModuleName?: string;
+  displayAlias?: { value: string; registrationEtag: string };
+  displayAliasOnly?: boolean;
   createIdempotencyKey?: () => string;
   onOpenChange: (open: boolean) => void;
   onCompleted?: () => void;
@@ -99,6 +101,8 @@ export function RegistrationDialog({
   initialDestinationModuleId = "",
   subjectImpact,
   currentModuleName,
+  displayAlias,
+  displayAliasOnly = false,
   createIdempotencyKey,
   onOpenChange,
   onCompleted,
@@ -111,7 +115,10 @@ export function RegistrationDialog({
   const [placementMode, setPlacementMode] = useState<"use-default" | "choose-parent">("use-default");
   const [parentPlacementId, setParentPlacementId] = useState("");
   const [displayName, setDisplayName] = useState("");
-  const [destinationModuleId, setDestinationModuleId] = useState(initialDestinationModuleId);
+  const [aliasDraft, setAliasDraft] = useState<string>();
+  const aliasHintId = useId();
+  const [destinationDraft, setDestinationDraft] = useState<string>();
+  const destinationModuleId = destinationDraft ?? initialDestinationModuleId;
   const [newParentId, setNewParentId] = useState("");
   const [newModuleName, setNewModuleName] = useState("");
   const [createNew, setCreateNew] = useState(false);
@@ -128,9 +135,20 @@ export function RegistrationDialog({
   const [leaveOpen, setLeaveOpen] = useState(false);
   const leaveDecision = useRef<{ promise: Promise<boolean>; resolve: (allowed: boolean) => void } | null>(null);
   const leaveAction = useRef<(() => void) | null>(null);
+  const aliasValue = aliasDraft ?? displayAlias?.value ?? "";
+  const aliasChanged = Boolean(displayAlias && aliasValue.trim() !== displayAlias.value);
+  const aliasValid = [...aliasValue.trim()].length <= 128 && !/[\u0000-\u001f\u007f-\u009f]/u.test(aliasValue);
+  const aliasUpdate = displayAlias && aliasChanged
+    ? { value: aliasValue.trim() || null, registrationEtag: displayAlias.registrationEtag }
+    : undefined;
+  const initializing = createNew && newDestinationParents.length > 0;
+  const initiallyCreating = moduleOptions.length === 0 && newDestinationParents.length > 0;
+  const placementChanged = !displayAliasOnly && (initializing !== initiallyCreating || placementMode !== "use-default" ||
+    (initializing ? Boolean(newParentId || newModuleName) : destinationModuleId !== initialDestinationModuleId));
+  const aliasOnly = aliasChanged && !placementChanged;
   const selectedModule = moduleOptions.find((option) => option.id === destinationModuleId);
   const occupant = selectedModule?.occupant?.registrationId !== registrationId ? selectedModule?.occupant : undefined;
-  const replacing = intent === "update-placement" && Boolean(occupant);
+  const replacing = intent === "update-placement" && !aliasOnly && Boolean(occupant);
   const replacementPreview = usePlacementReplacementPreview({ active: open && allowed && replacing && !refreshing,
     repository, organizationId, catalogReleaseId, sourceRegistrationId: registrationId, sourceIfMatch: ifMatch,
     destinationModuleId, occupant, refreshKey: replacementRefresh });
@@ -153,12 +171,13 @@ export function RegistrationDialog({
     setPlacementMode("use-default");
     setParentPlacementId(placementOptions[0]?.id ?? "");
     setDisplayName(placementOptions[0]?.displayName ?? "");
+    setAliasDraft(undefined);
     // A missing target is an explicit choice the caller must resolve.  Never
     // silently pick the first module: module identity is canonical data.
-    setDestinationModuleId(initialDestinationModuleId);
+    setDestinationDraft(undefined);
     setNewParentId("");
     setNewModuleName("");
-    setCreateNew(moduleOptions.length === 0 && newDestinationParents.length > 0);
+    setCreateNew(initiallyCreating);
     setReason("");
     setConfirmOpen(false);
     setPending(false);
@@ -169,8 +188,8 @@ export function RegistrationDialog({
     setAcceptedReplacement(null);
     setReplacementRefresh((value) => value + 1);
     setLeaveOpen(false);
-  }, [open, intent, subjectId, organizationId, placementOptions, initialDestinationModuleId, moduleOptions]);
-  const dirty = Boolean(reason.trim() || newParentId || newModuleName) || destinationModuleId !== initialDestinationModuleId || placementMode !== "use-default";
+  }, [open, intent, subjectId, organizationId, placementOptions, initiallyCreating]);
+  const dirty = aliasChanged || placementChanged || Boolean(reason.trim() || newParentId || newModuleName);
   const busy = pending || refreshing;
   const inputDisabled = busy || !allowed;
   const requestLeave = (action: () => void) => {
@@ -219,6 +238,7 @@ export function RegistrationDialog({
     setRefreshError("");
     try {
       await onRefreshEvidence();
+      if (!aliasChanged) setAliasDraft(undefined);
       gateRef.current.reset();
       setWriteFailure(undefined);
       setReplacementRefresh((value) => value + 1);
@@ -235,21 +255,23 @@ export function RegistrationDialog({
   const placementReady =
     choice.mode === "use-default" ||
     (choice.parentPlacementId.trim().length > 0 && choice.displayName.trim().length > 0);
-  const initializing = createNew && newDestinationParents.length > 0;
   const destinationReady = initializing
     ? newDestinationParents.some((option) => option.id === newParentId) && Boolean(newModuleName.trim())
     : moduleOptions.length === 0 || moduleOptions.some((option) => option.id === destinationModuleId);
   const selectedDestinationName =
     (initializing ? `${newDestinationParents.find((option) => option.id === newParentId)?.displayName ?? "未选择业务分类"} / ${newModuleName.trim() || "未填写模块名称"}` : moduleOptions.find((option) => option.id === destinationModuleId)?.displayName) ??
     (destinationModuleId || "未选择目标模块");
-  const title = intent === "register-subject" ? governanceCopy.registerTitle : governanceCopy.placementTitle;
+  const title = displayAliasOnly ? `编辑节点展示别名：${subjectName}` :
+    intent === "register-subject" ? governanceCopy.registerTitle : governanceCopy.placementTitle;
+  const readyToConfirm = (!aliasChanged || (aliasValid && Boolean(aliasUpdate?.registrationEtag))) &&
+    (aliasOnly || (!displayAliasOnly && placementReady && destinationReady && replacementReady));
   const confirmTitle =
-    replacing ? "确认替换归属" : intent === "register-subject" ? governanceCopy.confirmRegisterTitle : governanceCopy.confirmPlacementTitle;
+    aliasOnly ? "确认修改展示别名" : replacing ? "确认替换归属" : intent === "register-subject" ? governanceCopy.confirmRegisterTitle : governanceCopy.confirmPlacementTitle;
   const confirmLabel =
-    replacing ? "确认替换归属" : intent === "register-subject" ? governanceCopy.confirmRegister : governanceCopy.confirmPlacement;
+    aliasOnly || replacing ? confirmTitle : intent === "register-subject" ? governanceCopy.confirmRegister : governanceCopy.confirmPlacement;
 
   const submit = async () => {
-    if (!allowed || !placementReady || !destinationReady || !replacementReady || busy || writeFailure?.kind === "conflict" ||
+    if (!allowed || !readyToConfirm || busy || writeFailure?.kind === "conflict" ||
       (replacing && confirmedReplacement !== replacementEvidence)) {
       return;
     }
@@ -261,7 +283,7 @@ export function RegistrationDialog({
         state: domainState,
         catalogReleaseId,
         ifMatch,
-        draftFingerprint: fingerprintGovernanceDraft({ intent, choice, reason, destinationModuleId, newParentId, newModuleName, replacementEvidence }),
+        draftFingerprint: fingerprintGovernanceDraft({ intent, choice, reason, destinationModuleId, newParentId, newModuleName, replacementEvidence, aliasUpdate }),
         createIdempotencyKey
       });
       if (prepared.status !== "ready") {
@@ -284,7 +306,9 @@ export function RegistrationDialog({
         await repository.updatePlacement(
           organizationId,
           registrationId,
-          { placement, ...destination, ...(replacing && replacementEvidence ? { replacement: {
+          aliasOnly && aliasUpdate ? { displayAlias: aliasUpdate } : {
+            placement, ...destination, ...(aliasUpdate ? { displayAlias: aliasUpdate } : {}),
+            ...(replacing && replacementEvidence ? { replacement: {
             registrationId: replacementEvidence.registrationId,
             placementEtag: replacementEvidence.placementEtag,
             registrationEtag: replacementEvidence.registrationEtag,
@@ -331,6 +355,15 @@ export function RegistrationDialog({
               <div id={descriptionId} className="governance-confirm-dialog__body">
                 {actor === "org-admin" || actor === "platform-admin" ? (
                   <fieldset className="registration-dialog-fields" disabled={inputDisabled}>
+                    {displayAlias ? <label>
+                      展示别名
+                      <Input aria-label="展示别名" aria-describedby={aliasHintId} aria-invalid={aliasChanged && !aliasValid}
+                        placeholder={subjectName} value={aliasValue} readOnly={!displayAlias.registrationEtag}
+                        onChange={(event) => setAliasDraft(event.target.value)} />
+                      <span id={aliasHintId} className="muted">{!displayAlias.registrationEtag ? "无法读取登记版本，请关闭编辑窗口后重试。" :
+                        aliasChanged && !aliasValid ? "请输入最多 128 个字符的展示别名。" : "仅当前组织可见。留空使用规范名称。"}</span>
+                    </label> : null}
+                    {displayAliasOnly ? <p>业务归属随所属驱动，识别继续使用规范标识及有效匹配规则。</p> : <>
                     {moduleOptions.length === 0 && !initializing ? (
                       <fieldset>
                         <legend>{governanceCopy.placementMode}</legend>
@@ -398,7 +431,7 @@ export function RegistrationDialog({
                           ariaLabel="目标模块"
                           disabled={inputDisabled}
                           value={destinationModuleId}
-                          onValueChange={(value) => { setDestinationModuleId(value); setConfirmOpen(false); setAcceptedReplacement(null); }}
+                          onValueChange={(value) => { setDestinationDraft(value === initialDestinationModuleId ? undefined : value); setConfirmOpen(false); setAcceptedReplacement(null); }}
                           options={[{ value: "", label: "请选择目标模块" }, ...moduleOptions.map((option) => ({
                             value: option.id,
                             label: `${option.displayName}${option.impactSummary ? ` · ${option.impactSummary}` : ""}`
@@ -424,9 +457,9 @@ export function RegistrationDialog({
                         {intent === "register-subject" && subjectImpact.childCount ? <p>子节点将随驱动一同登记。</p> : null}
                         <dl className="registration-dialog__placement">
                           {intent === "update-placement" ? <div><dt>当前归属</dt><dd>{currentModuleName ?? "当前归属"}</dd></div> : null}
-                          <div><dt>{intent === "update-placement" ? "调整至" : "登记至"}</dt><dd>{selectedDestinationName}</dd></div>
+                          {!aliasOnly ? <div><dt>{intent === "update-placement" ? "调整至" : "登记至"}</dt><dd>{selectedDestinationName}</dd></div> : null}
                         </dl>
-                        {!replacing ? <p>仅调整归属，不改参数值。</p> : null}
+                        {!replacing ? <p>{aliasOnly ? "本次仅修改展示别名。" : "仅调整归属，不改参数值。"}</p> : null}
                       </section>
                     ) : null}
                     {replacing ? <section className="registration-dialog__replacement" aria-label="替换归属影响">
@@ -460,6 +493,7 @@ export function RegistrationDialog({
                         />
                       </label>
                     ) : null}
+                    </>}
                   </fieldset>
                 ) : (
                   <p>{governanceCopy.agentReadOnly}</p>
@@ -492,7 +526,7 @@ export function RegistrationDialog({
                 <button
                   className="button primary"
                   type="button"
-                  disabled={busy || !placementReady || !destinationReady || !replacementReady || writeFailure?.kind === "conflict"}
+                  disabled={busy || !readyToConfirm || writeFailure?.kind === "conflict"}
                   onClick={() => { setConfirmedReplacement(replacementEvidence); setConfirmOpen(true); }}
                 >
                   {governanceCopy.continueConfirm}
@@ -513,16 +547,20 @@ export function RegistrationDialog({
         )}
       </ModalDialog>
       <ConfirmDialog
-        open={open && confirmOpen && allowed && (!replacing || (replacementReady && confirmedReplacement === replacementEvidence))}
+        open={open && confirmOpen && allowed && readyToConfirm && (!replacing || confirmedReplacement === replacementEvidence)}
         title={confirmTitle}
         description={
-          <div><p>
+          <div>{aliasUpdate && displayAlias ? <>
+            <p>当前展示名称：{displayAlias.value || subjectName}</p>
+            <p>{aliasUpdate.value === null ? `清除展示别名，使用规范名称 ${subjectName}。` : `新展示别名：${aliasUpdate.value}`}</p>
+          </> : null}
+          {aliasOnly ? null : <p>
             {initializing ? `新建目标模块并登记：${selectedDestinationName}` : destinationModuleId.trim()
               ? `目标模块：${selectedDestinationName}`
               : choice.mode === "use-default"
                 ? governanceCopy.useDefaultPlacement
                 : `${governanceCopy.chooseParentPlacement}：${choice.displayName}`}
-          </p>{replacing && replacementEvidence ? <>
+          </p>}{replacing && replacementEvidence ? <>
             <p>当前主体 {subjectName}：{currentModuleName ?? "当前归属"} → {selectedDestinationName}。
               {subjectImpact?.bindingCount} 个参数绑定，涉及 {subjectImpact?.projectCount} 个项目。</p>
             <p>原主体 {occupant?.displayName}：{selectedDestinationName} → 未分配模块。
@@ -533,12 +571,12 @@ export function RegistrationDialog({
         confirmLabel={confirmLabel}
         pending={pending}
         pendingLabel={governanceCopy.pending}
-        acknowledgement={replacing ? "我已确认双方归属与影响，原主体将置为未分配模块，参数值与历史保留" : governanceCopy.registerAck}
+        acknowledgement={aliasOnly ? "我已确认展示别名" : replacing ? "我已确认双方归属与影响，原主体将置为未分配模块，参数值与历史保留" : governanceCopy.registerAck}
         error={writeFailure ? governanceFailureMessage(writeFailure) : ""}
         onConfirm={() => void submit()}
         onCancel={() => setConfirmOpen(false)}
       />
-      <ConfirmDialog open={leaveOpen} title="放弃未保存的归属修改？" description="关闭将丢失当前目标模块和原因。"
+      <ConfirmDialog open={leaveOpen} title="放弃未保存的归属修改？" description="关闭将丢失本次未保存的修改。"
         confirmLabel="放弃修改" cancelLabel="继续编辑" onConfirm={() => finishLeave(true)} onCancel={() => finishLeave(false)} />
     </>
   );

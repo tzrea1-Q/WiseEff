@@ -16,6 +16,7 @@ const REASON_HTTP_STATUS: Partial<Record<CatalogApiFailureReason, number>> = {
   "candidate-stale": 409,
   "candidate-tampered": 409,
   "definition-already-exists": 409,
+  "subject-selector-occupied": 409,
   "needs-rebase": 409,
   "publication-authorization-revoked": 409,
   "idempotency-key-conflict": 409,
@@ -90,13 +91,13 @@ export function notFound(requestId: string): CatalogPublicationResponse {
   });
 }
 
-export function validationFailed(requestId: string, field: string): CatalogPublicationResponse {
+export function validationFailed(requestId: string, field: string, reason?: string): CatalogPublicationResponse {
   return catalogPublicationError({
     status: 400,
     code: "VALIDATION_FAILED",
     message: "Invalid catalog publication request.",
     requestId,
-    details: { retryable: false, field },
+    details: { retryable: false, field, ...(reason ? { reason } : {}) },
   });
 }
 
@@ -171,7 +172,7 @@ export function mapPublicationFailure(
     return forbidden(requestId, (error.reason as CatalogApiFailureReason | undefined) ?? "forbidden");
   }
   if (error.kind === "validation") {
-    return validationFailed(requestId, error.field ?? "body");
+    return validationFailed(requestId, error.field ?? "body", error.reason);
   }
   if (error.reason) {
     return publicationReason(requestId, error.reason as CatalogApiFailureReason);

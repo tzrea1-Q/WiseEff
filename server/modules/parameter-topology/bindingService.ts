@@ -27,8 +27,9 @@ import type {
   TrustedInvocationDomainAttributionRow
 } from "../auth/trustedInvocation";
 import { ApiError } from "../../shared/http/errors";
-import { loadModuleRecognitionSettings, lockOrganizationModuleRecognition } from "../parameter-modules/recognitionSettings";
+import { loadModuleRecognitionSettings, loadOrganizationRecognitionRules, lockOrganizationModuleRecognition } from "../parameter-modules/recognitionSettings";
 import { listModuleRecognitionInstances } from "../parameter-modules/recognitionInstances";
+import { lockCurrentRecognitionRelease, readModuleRecognitionSubjectDefaults } from "../parameter-catalog-api/governance";
 
 export type ProjectPropertyBindingKey = {
   projectId: string;
@@ -479,13 +480,26 @@ export async function countSingletonCardinalityConflicts(
 ): Promise<number> {
   await lockOrganizationModuleRecognition(db, input.organizationId);
   const settings = await loadModuleRecognitionSettings(db, input.organizationId);
+  const releaseId = await lockCurrentRecognitionRelease(db);
+  const governed = releaseId ? await readModuleRecognitionSubjectDefaults(db, "versioned-singletons", releaseId) : [];
+  const overrides = governed.length ? await loadOrganizationRecognitionRules(db, input.organizationId) : [];
+  const rules = [
+    ...[...settings].flatMap(([moduleId, rule]) => rule.instanceCardinality === "singleton-per-project"
+      ? [{ id: rule.recognitionSubjectId ?? moduleId, compatibles: rule.compatibles, nodeTypeName: rule.nodeTypeName }] : []),
+    ...governed.flatMap(rule => {
+      const override = overrides.find(row => row.canonical_subject_id === rule.subject_id);
+      if (override && override.instance_cardinality !== "singleton-per-project") return [];
+      return [{ id: rule.subject_id, compatibles: override?.compatibles ?? [...(rule.selector_snapshot.values ?? []), ...rule.aliases],
+        nodeTypeName: null }];
+    }),
+  ];
   const conflicts = new Set<string>();
-  for (const [moduleId, setting] of settings) {
-    if (setting.instanceCardinality !== "singleton-per-project") continue;
-    const instances = await listModuleRecognitionInstances(db, input.organizationId, { ...setting,
+  for (const rule of rules) {
+    if (conflicts.has(rule.id)) continue;
+    const instances = await listModuleRecognitionInstances(db, input.organizationId, { ...rule,
       projectId: input.projectId, configRevisionId: input.configRevisionId });
     if (new Set(instances.map((instance) => instance.logicalNodeId)).size > 1) {
-      conflicts.add(setting.recognitionSubjectId ?? moduleId);
+      conflicts.add(rule.id);
     }
   }
   return conflicts.size;
@@ -719,6 +733,7 @@ function canonicalValueRawValue(row: CanonicalValueRow): string | null {
     return payloadToBindingView(
       { kind: row.value_kind, value: row.value } as ProjectValuePayload,
       row.source_format,
+      row.source_raw_text,
     ).rawValue;
   } catch {
     // A historical canonical value may predate its source pin (the initial

@@ -75,6 +75,32 @@ describe("catalog project value payload mapping", () => {
     expect(payloadToBindingView(payload).rawValue).toBe("<1000>");
   });
 
+  const multilineCells = "<\n\t4350 4300 4250   /* 100% */\n\t0x10F4 4150      /* 90% */\n>";
+
+  it("returns matching DTS source verbatim with its original typed cell spellings", () => {
+    const payload = { kind: "number-array", value: [4350, 4300, 4250, 4340, 4150] } as const;
+    const view = payloadToBindingView(payload, "dts", multilineCells);
+    expect(view.rawValue).toBe(multilineCells);
+    expect(view.typedValue).toMatchObject({
+      kind: "cells", groups: [[{}, {}, {}, { kind: "integer", raw: "0x10F4", value: "4340" }, {}]],
+    });
+  });
+
+  it("keeps DTS layout and comments when cell values change without a shape change", () => {
+    const payload = { kind: "number-array", value: [4360, 4300, 4250, 4340, 4160] } as const;
+    expect(payloadToBindingView(payload, "dts", multilineCells).rawValue)
+      .toBe("<\n\t4360 4300 4250   /* 100% */\n\t4340 4160      /* 90% */\n>");
+  });
+
+  it.each([
+    ["a changed shape", multilineCells],
+    ["unparsable source", "<\n\t0x10F4"],
+    ["unexpanded macros", "<\n\tVOLTAGE_A VOLTAGE_B\n>"],
+  ])("uses canonical DTS for %s", (_label, sourceRawText) => {
+    const payload = { kind: "number-array", value: [4340, 4150] } as const;
+    expect(payloadToBindingView(payload, "dts", sourceRawText).rawValue).toBe("<4340 4150>");
+  });
+
   it("maps a DTS string to a string payload", () => {
     expect(dtsValueToPayload({ kind: "strings", values: ["acme"] })).toEqual({
       kind: "string",
@@ -110,7 +136,7 @@ describe("catalog project value payload mapping", () => {
     ];
 
     for (const value of values) {
-      const view = payloadToBindingView({ kind: "json", value }, "json");
+      const view = payloadToBindingView({ kind: "json", value }, "json", multilineCells);
       expect(view.typedValue).toEqual({ kind: "json", value });
       expect(view.rawValue).toBe(serializeContract(value));
     }

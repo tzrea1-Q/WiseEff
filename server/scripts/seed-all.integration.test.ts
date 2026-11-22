@@ -75,8 +75,14 @@ it("seeds twice through canonical owners without legacy rows and serves seeded h
   const history = await requestJson<{ items: unknown[] }>(server, `/api/v1/parameters/${binding!.id}/history`, { headers });
   expect(history.status, history.bodyText).toBe(200);
   expect(history.body.items.length).toBeGreaterThanOrEqual(2);
-  const values = await db.query<{ value: unknown }>("select value from parameter_catalog.project_parameter_values where binding_id = $1 order by created_at", [binding!.id]);
-  expect(values.rows).toEqual([{ value: {} }, { value: 5000 }, { value: 6000 }]);
+  const values = await db.query("select value from parameter_catalog.project_parameter_values where binding_id = $1", [binding!.id]);
+  expect(values.rows).toHaveLength(3);
+  const transitions = await db.query(`select prior.value as previous, successor.value as next
+    from parameter_catalog.binding_history_events event
+    join parameter_catalog.project_parameter_values prior on prior.id = event.old_current_value_id
+    join parameter_catalog.project_parameter_values successor on successor.id = event.new_current_value_id
+    where event.binding_id = $1`, [binding!.id]);
+  expect(transitions.rows).toEqual(expect.arrayContaining([{ previous: {}, next: 5000 }, { previous: 5000, next: 6000 }]));
   const source = await db.query<{ storage_key: string; version_number: number; index_length: number }>(`select
     version.storage_key, version.version_number, length(version.parsed_index::text)::int as index_length
     from project_parameter_files file join project_parameter_file_versions version on version.id = file.current_version_id

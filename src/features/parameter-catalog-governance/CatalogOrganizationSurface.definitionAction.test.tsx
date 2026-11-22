@@ -14,7 +14,7 @@ function renderSurface(authoringAllowed: boolean, surfaceOverrides: Partial<Publ
   vi.spyOn(ports.catalog, "getPublicationSurface").mockImplementation(async () => {
     if (surfaceError) throw new Error("publication surface unavailable");
     const response = await readSurface();
-    return { item: { ...response.item, authoringAllowed, publishingAllowed: false, ...surfaceOverrides } };
+    return { item: { ...response.item, authoringAllowed, publishingAllowed: false, reviewHighRiskAllowed: false, ...surfaceOverrides } };
   });
   function Harness() {
     const [search, setSearch] = useState("");
@@ -27,6 +27,37 @@ function renderSurface(authoringAllowed: boolean, surfaceOverrides: Partial<Publ
 }
 
 describe("Catalog definition action capability", () => {
+  it("shares the complete pinned subject inventory between the navigator and the editor", async () => {
+    const ports = createMockCatalogPorts({ scenario: "ready" });
+    const document = vi.spyOn(ports.catalog, "getCatalog");
+    const subjects = vi.spyOn(ports.catalog, "listSubjects").mockImplementation(async query => ({
+      items: query?.lifecycle === "retired" || query?.cursor ? [] : [registeredSubject],
+      hasMore: !query?.lifecycle && !query?.cursor,
+      nextCursor: !query?.lifecycle && !query?.cursor ? "subject-page-2" : null,
+      totalCount: 1, catalogReleaseId: CATALOG_RELEASE_ID
+    }));
+    const registry = { getRegistry: vi.fn().mockResolvedValue({ modules: [], mappings: [] }) };
+    function Harness() {
+      const [search, setSearch] = useState("");
+      return <CatalogOrganizationSurface {...ports} actor="org-admin" currentPersonId="admin"
+        organizationId={CATALOG_ORGANIZATION_ID} moduleRegistry={registry} search={search}
+        onAnchorChange={href => setSearch(new URL(href, window.location.origin).search)} />;
+    }
+    render(<Harness />);
+    await userEvent.click(await screen.findByRole("button", { name: /^(编辑|查看) gpio-int$/ }));
+    const dialog = await screen.findByRole("dialog");
+    expect(await within(dialog).findByRole("region", { name: "定义详情" })).toHaveTextContent(registeredSubject.canonicalName);
+    await userEvent.click(within(dialog).getByRole("button", { name: "关闭" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(document).toHaveBeenCalledTimes(1);
+    expect(registry.getRegistry).toHaveBeenCalledTimes(1);
+    expect(subjects.mock.calls.map(([query]) => query)).toEqual([
+      { catalogReleaseId: CATALOG_RELEASE_ID, limit: 100 },
+      { catalogReleaseId: CATALOG_RELEASE_ID, limit: 100, lifecycle: "retired" },
+      { catalogReleaseId: CATALOG_RELEASE_ID, limit: 100, cursor: "subject-page-2" }
+    ]);
+  });
+
   it.each([false, true])("returns to the current release after lifecycle activation (batch: %s)", async (batch) => {
     const user = userEvent.setup();
     const ports = createMockCatalogPorts({ scenario: "ready" });
@@ -57,7 +88,7 @@ describe("Catalog definition action capability", () => {
     const hrefs: string[] = [];
     function Harness() {
       const [search, setSearch] = useState(`?catalogReleaseId=${CATALOG_RELEASE_ID}`);
-      return <CatalogOrganizationSurface {...ports} actor="org-admin" sessionPermissions={["catalog:author", "catalog:publish"]}
+      return <CatalogOrganizationSurface {...ports} actor="org-admin" sessionPermissions={["catalog:author", "catalog:review-high-risk"]}
         organizationId={CATALOG_ORGANIZATION_ID} currentPersonId="catalog-reader" search={search}
         onAnchorChange={(href) => { hrefs.push(href); setSearch(new URL(href, window.location.origin).search); }} />;
     }
@@ -113,7 +144,7 @@ describe("Catalog definition action capability", () => {
       authoringAllowed: true, publishingAllowed: true, blockers: [] } });
     const preview = vi.spyOn(ports.catalog, "createPublicationCandidate");
     render(<CatalogOrganizationSurface {...ports} actor="org-admin" search=""
-      sessionPermissions={["catalog:author", "catalog:publish"]} organizationId={CATALOG_ORGANIZATION_ID}
+      sessionPermissions={["catalog:author", "catalog:review-high-risk"]} organizationId={CATALOG_ORGANIZATION_ID}
       currentPersonId="catalog-reader" onAnchorChange={vi.fn()} />);
     const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: `恢复 ${retired.propertyKey}` }));
@@ -171,7 +202,7 @@ describe("Catalog definition action capability", () => {
     expect(page).toContainElement(notice);
     expect(toolbar.compareDocumentPosition(notice) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(notice.compareDocumentPosition(navigator) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(notice).toHaveTextContent("可以保存草稿并预览，但发布需要 catalog:publish。");
+    expect(notice).toHaveTextContent(publicationSurfaceCopy.authorOnly);
   });
 
   it("shows the published name next to a monospace property key", async () => {

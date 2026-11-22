@@ -14,6 +14,7 @@ import type {
   Result,
 } from "../../parameter-catalog-contract/index";
 import type { CatalogReleaseBundle } from "../../catalog-kernel/compiler/types";
+import type { SubjectIdentityChange } from "../../contracts/dtoSchemas/catalogSubjectIdentity";
 import type { Database, Queryable } from "../../../shared/database/client";
 import type {
   CatalogPublicationStoreError,
@@ -28,13 +29,17 @@ export const CATALOG_CAPABILITY_CONTRACT_REVISION = "catalog-capability/v4" as c
 /** Standalone subject intent is additive; historical authoring contracts stay frozen. */
 export const CATALOG_STANDALONE_SUBJECT_CAPABILITY_REVISION = "catalog-capability/v5" as const;
 export const CATALOG_SUBJECT_OWNER_CAPABILITY_REVISION = "catalog-capability/v6" as const;
+export const CATALOG_SUBJECT_IDENTITY_CAPABILITY_REVISION = "catalog-capability/v7" as const;
+export const CATALOG_SUBJECT_RULES_CAPABILITY_REVISION = "catalog-capability/v8" as const;
 export const CATALOG_CAPABILITY_V3_REVISION = "catalog-capability/v3" as const;
 export const CATALOG_CAPABILITY_ALLOW_LIST_ID = "page-historical-definition-content" as const;
 export type CatalogCapabilityAllowListRevision =
   | typeof CATALOG_CAPABILITY_V3_REVISION
   | typeof CATALOG_CAPABILITY_CONTRACT_REVISION
   | typeof CATALOG_STANDALONE_SUBJECT_CAPABILITY_REVISION
-  | typeof CATALOG_SUBJECT_OWNER_CAPABILITY_REVISION;
+  | typeof CATALOG_SUBJECT_OWNER_CAPABILITY_REVISION
+  | typeof CATALOG_SUBJECT_IDENTITY_CAPABILITY_REVISION
+  | typeof CATALOG_SUBJECT_RULES_CAPABILITY_REVISION;
 
 export const M1_VALUE_SCHEMA_TYPES = [
   "integer",
@@ -103,6 +108,7 @@ export type SupportedDefinitionContent = {
   readonly unit?: M1AllowedUnit | null;
   readonly valueSchema: SupportedValueSchema;
   readonly examples?: readonly ContractJsonValue[] | null;
+  readonly dtsExamples?: readonly string[] | null;
   /**
    * Lifecycle the revision is minted with. Absent means `active` for a new
    * definition; the reversible lifecycle operations set it explicitly.
@@ -148,7 +154,10 @@ export type ReviseDefinitionChange = {
   readonly op: "revise-definition";
   readonly definitionId: string;
   readonly class: "documentation" | "semantic";
-  readonly content: SupportedDefinitionContent;
+  readonly content?: SupportedDefinitionContent;
+  /** A string deprecates or redirects. Null withdraws deprecation. */
+  readonly successorDefinitionId?: string | null;
+  readonly reason?: string;
 };
 
 export type CreateSubjectChange = Omit<CreateSubjectWithDefinitionsChange, "op" | "definitions"> & {
@@ -198,6 +207,7 @@ export const isDefinitionLifecycleChange = (
   change.op === "retire-definition" || change.op === "restore-definition";
 
 export type CatalogChange =
+  | SubjectIdentityChange
   | CreateDefinitionChange
   | CreateSubjectWithDefinitionsChange
   | CreateSubjectChange
@@ -305,6 +315,8 @@ export type CapabilityAllowListIdentity = {
     readonly maxDocumentationChars: number;
     readonly maxDescriptionChars: number;
     readonly maxExamples: number;
+    readonly maxDtsExamples?: number;
+    readonly maxDtsExampleChars?: number;
     readonly maxChangeSetOps: number;
     readonly maxArraySchemaDepth?: number;
     readonly maxSchemaContainerNodes?: number;
@@ -313,7 +325,7 @@ export type CapabilityAllowListIdentity = {
 };
 
 export type CapabilityContract = JsonObject & {
-  readonly revision: typeof CATALOG_CAPABILITY_CONTRACT_REVISION | typeof CATALOG_STANDALONE_SUBJECT_CAPABILITY_REVISION | typeof CATALOG_SUBJECT_OWNER_CAPABILITY_REVISION;
+  readonly revision: Exclude<CatalogCapabilityAllowListRevision, typeof CATALOG_CAPABILITY_V3_REVISION>;
   readonly allowListId: typeof CATALOG_CAPABILITY_ALLOW_LIST_ID;
   readonly allowListDigest: string;
   readonly valueTypes: readonly ContractJsonValue[];
@@ -383,6 +395,7 @@ export type CatalogImpactReport = {
 };
 
 export type BuiltReleaseArtifact = {
+  readonly storageFormat?: "successor-v1";
   readonly id: CatalogArtifactId;
   readonly artifactDigest: string;
   readonly artifactBytes: Uint8Array;

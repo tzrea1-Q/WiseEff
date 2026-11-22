@@ -548,6 +548,12 @@ function mapDefinitionReplacementFailure(
     case "registration-required":
       return conflict(requestId, "registration-required");
     case "preview-unavailable":
+      if (error.reason === "publication-frozen" || error.reason === "publication-policy-disabled" ||
+          error.reason === "publication-self-approval-forbidden") {
+        return catalogGovernanceError({ status: error.reason === "publication-frozen" ? 409 : 403,
+          code: error.reason === "publication-frozen" ? "CONFLICT" : "FORBIDDEN", requestId,
+          reason: error.reason, message: "Current publication policy blocks this replacement." });
+      }
       return catalogGovernanceError({
         status: 409,
         code: "CONFLICT",
@@ -732,8 +738,7 @@ async function handleUpdatePlacement(
   } catch {
     return validationFailed(request.requestId, "registrationId");
   }
-  const placement = parsePlacement(parsed.data.placement);
-  if (!placement) return validationFailed(request.requestId, "placement");
+  const placementUpdate = "placement" in parsed.data ? parsed.data : undefined;
   const context = registrationContext(scope, request.requestId);
   if (!context) return forbidden(request.requestId);
   const organizationId = request.params.organizationId ?? scope.organizationId;
@@ -749,20 +754,31 @@ async function handleUpdatePlacement(
   if (!/^\d+$/.test(expectedPlacementVersion) || offered !== placementEtag(existing.placement.id, expectedPlacementVersion)) {
     return revisionConflict(request.requestId);
   }
-  const subjectKind = await resolveSubjectKind(ports, scope, existing.subjectId);
-  if (!subjectKind) return validationFailed(request.requestId, "subjectId");
-  const destinationModuleId = parsed.data.newDestination
-    ? `pmod_canonical_${createHash("sha256").update(JSON.stringify([organizationId, registrationId, idempotencyKey])).digest("hex").slice(0, 32)}`
-    : await resolveDestinationModuleId(ports, scope, {
-    organizationId,
-    subjectKind,
-    placement,
-    destinationModuleId: parsed.data.destinationModuleId,
-  });
-  if (!destinationModuleId) return validationFailed(request.requestId, "destinationModuleId");
+  let displayAlias: Extract<RegistrationCommand, { kind: "move-placement" }>["displayAlias"];
+  if (parsed.data.displayAlias) {
+    const { registrationEtag, value } = parsed.data.displayAlias;
+    const registrationPrefix = `${registrationId}:`;
+    const registrationToken = unquoteEtag(registrationEtag);
+    const expectedRegistrationVersion = registrationToken.startsWith(registrationPrefix) ? registrationToken.slice(registrationPrefix.length) : "";
+    if (!/^active:\d+$/.test(expectedRegistrationVersion) || registrationEtag !== `"${registrationPrefix}${expectedRegistrationVersion}"`) {
+      return revisionConflict(request.requestId);
+    }
+    displayAlias = { value, expectedRegistrationVersion };
+  }
+  let destinationModuleId: string | undefined;
+  if (placementUpdate) {
+    const placement = parsePlacement(placementUpdate.placement);
+    if (!placement) return validationFailed(request.requestId, "placement");
+    const subjectKind = await resolveSubjectKind(ports, scope, existing.subjectId);
+    if (!subjectKind) return validationFailed(request.requestId, "subjectId");
+    destinationModuleId = placementUpdate.newDestination
+      ? `pmod_canonical_${createHash("sha256").update(JSON.stringify([organizationId, registrationId, idempotencyKey])).digest("hex").slice(0, 32)}`
+      : await resolveDestinationModuleId(ports, scope, { organizationId, subjectKind, placement, destinationModuleId: placementUpdate.destinationModuleId }) ?? undefined;
+    if (!destinationModuleId) return validationFailed(request.requestId, "destinationModuleId");
+  }
   let replacement: Extract<RegistrationCommand, { kind: "move-placement" }>["replacement"];
-  if (parsed.data.replacement) {
-    const choice = parsed.data.replacement;
+  if (placementUpdate?.replacement) {
+    const choice = placementUpdate.replacement;
     if (choice.registrationId === registrationId) return validationFailed(request.requestId, "replacement");
     const displaced = await ports.getRegistration({
       ...queryScope(scope, request, pin.pin),
@@ -797,7 +813,8 @@ async function handleUpdatePlacement(
     registrationId,
     expectedRelease: pin.pin,
     destinationModuleId,
-    ...(parsed.data.newDestination ? { newDestination: parsed.data.newDestination } : {}),
+    ...(displayAlias ? { displayAlias } : {}),
+    ...(placementUpdate?.newDestination ? { newDestination: placementUpdate.newDestination } : {}),
     expectedPlacementVersion,
     ...(replacement ? { replacement } : {}),
     idempotencyKey,
@@ -805,7 +822,7 @@ async function handleUpdatePlacement(
   };
   const result = await ports.executeRegistration(command);
   if (!result.ok) return mapRegistrationFailure(result.error, request.requestId);
-  const placementDto = placementFromResult(result.value);
+  const placementDto = placementUpdate ? placementFromResult(result.value) : existing.placement;
   return catalogGovernanceOk({
     body: { item: mapPlacement(placementDto) },
     requestId: request.requestId,
@@ -951,10 +968,13 @@ async function handleListReviewItems(
   if (denied) return denied;
   const pin = await requirePin(ports, request, { requireHeader: false });
   if (!pin.ok) return pin.response;
+  const status = queryValue(request.query, "status");
+  if (status !== undefined && status !== "out-of-scope") return validationFailed(request.requestId, "status");
   const result = await ports.listReviewQueue({
     organizationId: request.params.organizationId ?? scope.organizationId,
     capturedRelease: pin.pin,
     context: reviewContext(scope),
+    ...(status ? { status } : {}),
   });
   if (!result.ok) return mapReviewFailure(result.error, request.requestId);
   const details = await ports.readReviewItemDetails?.({
@@ -1090,6 +1110,8 @@ async function handleResolveReviewItem(
       resolution: "mark-out-of-scope",
       outOfScopeReason: parsed.data.reason,
     };
+  } else if (resolution.type === "reopen-out-of-scope") {
+    command = { ...base, resolution: "reopen-out-of-scope", correctionReason: parsed.data.reason.trim() };
   } else {
     command = {
       ...base,
@@ -1400,6 +1422,7 @@ function supportedContentFromPreview(
     unit?: string;
     valueSchema: unknown;
     examples?: unknown[];
+    dtsExamples?: string[];
   },
 ): SupportedDefinitionContent {
   return {
@@ -1411,6 +1434,7 @@ function supportedContentFromPreview(
     ...(parsed.examples === undefined
       ? {}
       : { examples: parsed.examples as SupportedDefinitionContent["examples"] }),
+    ...(parsed.dtsExamples === undefined ? {} : { dtsExamples: parsed.dtsExamples }),
   };
 }
 
@@ -1434,11 +1458,14 @@ async function handlePreviewDefinitionReplacement(
   if (!context) return forbidden(request.requestId);
   const result = await migration.previewDefinitionReplacement({
     organizationId,
+    ...(scope.trustedActor?.initiator === "user" ? { authorOrganizationId: scope.trustedActor.principal.organization.id } : {}),
     oldDefinitionId: parsed.data.oldDefinitionId,
     newSubjectId: parsed.data.newSubjectId,
     newPropertyKey: parsed.data.newPropertyKey,
     proposedContent: supportedContentFromPreview(parsed.data),
     projectIds: parsed.data.projectIds,
+    mergeIntoDefinitionId: parsed.data.mergeIntoDefinitionId,
+    mergeChoices: parsed.data.mergeChoices,
     reason: parsed.data.reason,
     expectedRelease: pin.pin,
     context,
@@ -1563,10 +1590,8 @@ async function handleContinueDefinitionReplacement(
   const context = migrationContext(scope, organizationId);
   if (!context) return forbidden(request.requestId);
   const replacementId = request.params.replacementId ?? "";
-  const current = await migration.getDefinitionReplacement({ organizationId, replacementId });
-  if (!current.ok) return mapDefinitionReplacementFailure(current.error, request.requestId);
   const expectedVersion = parseEtagVersion(offered);
-  if (expectedVersion === null || expectedVersion !== current.value.version) {
+  if (expectedVersion === null || unquoteEtag(offered) !== unquoteEtag(replacementEtag(replacementId, expectedVersion))) {
     return revisionConflict(request.requestId);
   }
   const result = await migration.continueDefinitionReplacement({
@@ -1576,6 +1601,8 @@ async function handleContinueDefinitionReplacement(
     idempotencyKey: parsed.data.idempotencyKey,
     expectedRelease: pin.pin,
     context,
+    expectedVersion,
+    ...(scope.trustedActor ? { trustedActor: scope.trustedActor } : {}),
   });
   if (!result.ok) return mapDefinitionReplacementFailure(result.error, request.requestId);
   return catalogGovernanceOk({

@@ -14,7 +14,6 @@ import {
   assertTrustedInvocationContext,
   type TrustedInvocationContext,
 } from "../../auth/trustedInvocation";
-import type { BackendPermission } from "../../auth/types";
 import {
   CatalogCandidateId,
   CatalogReleaseDigest,
@@ -58,17 +57,6 @@ const fail = (
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === "object" && !Array.isArray(value);
 
-const hasPermission = (
-  actor: TrustedInvocationContext,
-  permission: BackendPermission,
-): boolean => {
-  const trusted = assertTrustedInvocationContext(actor);
-  if (trusted.initiator === "system" || trusted.initiator === "integration") {
-    return false;
-  }
-  return trusted.principal.permissions.includes(permission);
-};
-
 const realUserPrincipalId = (actor: TrustedInvocationContext): string | null => {
   const trusted = assertTrustedInvocationContext(actor);
   if (trusted.initiator !== "user") {
@@ -79,17 +67,6 @@ const realUserPrincipalId = (actor: TrustedInvocationContext): string | null => 
   }
   return trusted.principal.user.id;
 };
-
-const isOrgAdmin = (actor: TrustedInvocationContext): boolean => {
-  const trusted = assertTrustedInvocationContext(actor);
-  if (trusted.initiator !== "user") {
-    return false;
-  }
-  return trusted.principal.roles.some((role) => role.roleId === "admin");
-};
-
-const orgAdminMaySelfPublish = (actor: TrustedInvocationContext): boolean =>
-  isOrgAdmin(actor) && hasPermission(actor, "catalog:publish");
 
 const authorPrincipalIdFromCandidate = (
   candidate: PublicationCandidateRecord,
@@ -201,58 +178,34 @@ const revokeExistsFor = async (
 const evaluateApprovalGate = (input: {
   riskClass: PublicationRiskClass;
   actor: TrustedInvocationContext;
-  authorPrincipalId: string;
   publicationEnabled: boolean;
-  lowRiskSingleActorPublish: boolean;
+  requiresPlatformAdmin: boolean;
 }): PublicationAuthorizationFailure | null => {
   if (!input.publicationEnabled) {
     return { reason: "publication-policy-disabled" };
   }
 
-  const actorId = realUserPrincipalId(input.actor);
-  if (actorId === null) {
-    if (assertTrustedInvocationContext(input.actor).initiator !== "user") {
-      return {
-        reason: "publication-not-authorized",
-        detail: "worker, agent, and service accounts cannot approve publication",
-      };
-    }
+  const actor = assertTrustedInvocationContext(input.actor);
+  if (actor.initiator !== "user") {
+    return {
+      reason: "publication-not-authorized",
+      detail: "worker, agent, and service accounts cannot approve publication",
+    };
+  }
+  if (!actor.principal.user.isActive) {
     return { reason: "publication-capability-missing", detail: "actor is inactive" };
   }
+  if (input.requiresPlatformAdmin &&
+      !actor.principal.roles.some(role => role.roleId === "platform-admin" && role.projectId === null)) {
+    return { reason: "publication-capability-missing", detail: "shared identity corrections require a platform administrator" };
+  }
 
-  if (input.riskClass === "high") {
-    if (actorId === input.authorPrincipalId) {
-      if (orgAdminMaySelfPublish(input.actor)) {
-        return null;
-      }
-      return { reason: "publication-self-approval-forbidden" };
-    }
-    if (!hasPermission(input.actor, "catalog:review-high-risk")) {
-      return { reason: "publication-capability-missing" };
-    }
+  const { permissions } = actor.principal;
+  if (permissions.includes("catalog:review-high-risk") ||
+      (input.riskClass === "low" && permissions.includes("catalog:publish"))) {
     return null;
   }
-
-  if (actorId === input.authorPrincipalId) {
-    if (orgAdminMaySelfPublish(input.actor)) {
-      return null;
-    }
-    if (!input.lowRiskSingleActorPublish) {
-      return { reason: "publication-self-approval-forbidden" };
-    }
-    if (!hasPermission(input.actor, "catalog:publish")) {
-      return { reason: "publication-capability-missing" };
-    }
-    return null;
-  }
-
-  if (
-    !hasPermission(input.actor, "catalog:publish") &&
-    !hasPermission(input.actor, "catalog:review-high-risk")
-  ) {
-    return { reason: "publication-capability-missing" };
-  }
-  return null;
+  return { reason: "publication-capability-missing" };
 };
 
 export async function authorizePublish(
@@ -302,9 +255,8 @@ export async function authorizePublish(
   const gate = evaluateApprovalGate({
     riskClass: classified.value,
     actor: input.trustedActor,
-    authorPrincipalId: allocatedAuthor,
     publicationEnabled: policy.value.publicationEnabled,
-    lowRiskSingleActorPublish: policy.value.lowRiskSingleActorPublish,
+    requiresPlatformAdmin: input.impactFacts.operations.some(operation => operation.op === "correct-subject-identity"),
   });
   if (gate) {
     return { ok: false, error: gate };
@@ -487,9 +439,8 @@ export async function verifyAuthorizationForActivation(
   const gate = evaluateApprovalGate({
     riskClass,
     actor: input.trustedActor,
-    authorPrincipalId,
     publicationEnabled: policy.value.publicationEnabled,
-    lowRiskSingleActorPublish: policy.value.lowRiskSingleActorPublish,
+    requiresPlatformAdmin: input.impactFacts.operations.some(operation => operation.op === "correct-subject-identity"),
   });
   if (gate) {
     return { ok: false, error: gate };

@@ -79,14 +79,6 @@ export function formatParameterRuntimeError(error: unknown): string {
   return parameterRuntimeFailureNotification;
 }
 
-export type ParameterRuntimeSnapshot = {
-  projects: ProjectSummary[];
-  parameters: ParameterRecord[];
-  changeRequests: ChangeRequest[];
-  parameterSubmissionRounds: ParameterSubmissionRound[];
-  parameterDrafts: ParameterDraftDto[];
-};
-
 export type HydrateParameterRuntimeAction = {
   type: "HYDRATE_PARAMETER_RUNTIME";
   projects: ProjectSummary[];
@@ -96,19 +88,33 @@ export type HydrateParameterRuntimeAction = {
   parameterDrafts?: ParameterDraftDto[];
 };
 
+export type ProjectParameterStatus = "idle" | "loading" | "ready" | "error";
+
+export type ProjectParameterRuntimeAction =
+  | { type: "HYDRATE_PARAMETER_PROJECTS"; projects: ProjectSummary[] }
+  | {
+      type: "UPDATE_PROJECT_PARAMETER_CACHE";
+      projectId: string;
+      status?: ProjectParameterStatus;
+      parameters?: ParameterRecord[];
+      drafts?: ParameterDraftDto[];
+    };
+
 export type ParameterRuntimeActionFailure = {
   notification: string;
   alreadyNotified?: boolean;
 };
 
 export type ParameterRuntimeVoidResult = void | ParameterRuntimeActionFailure;
-export type ParameterRuntimeRefreshResult = ParameterRuntimeSnapshot | ParameterRuntimeActionFailure | void;
+export type ParameterRuntimeRefreshResult = { projects: ProjectSummary[] } | ParameterRuntimeVoidResult;
 export type ParameterRuntimeRefreshOptions = {
   notifyOnFailure?: boolean;
 };
 
 type ParameterRuntimeDispatchAction =
   | HydrateParameterRuntimeAction
+  | ProjectParameterRuntimeAction
+  | { type: "CLEAR_API_RUNTIME_DOMAIN"; domain: "parameters" }
   | {
       type: "ADD_PARAMETER_SUBMISSION_ROUND";
       items: ParameterDraftItem[];
@@ -137,6 +143,16 @@ export type ParameterRuntimeActions = {
   applyImportBatch(input: ApplyParameterImportBatchInput): Promise<ParameterImportBatchDto | ParameterRuntimeVoidResult>;
   parseDtsImport(input: ParseDtsImportInput): Promise<DtsImportParseResult>;
   refresh(options?: ParameterRuntimeRefreshOptions): Promise<ParameterRuntimeRefreshResult>;
+  loadProjectParameters(projectId: string, options?: { force?: boolean }): ProjectParameterRead;
+  ensureProjectParameters(projectIds: readonly string[], options?: ProjectParameterLoadOptions): Promise<ParameterRuntimeVoidResult>;
+};
+
+type ProjectParameterLoadOptions = ParameterRuntimeRefreshOptions & { force?: boolean };
+
+type ProjectParameterRead = {
+  bindings: ReturnType<NonNullable<ParameterCatalogRepository["listProtectedProjectBindings"]>>;
+  drafts: Promise<ParameterDraftDto[]>;
+  settled: Promise<ParameterRuntimeVoidResult>;
 };
 
 type ParameterRuntimeOptions = {
@@ -174,6 +190,89 @@ export function createParameterRuntimeActions({
   getParameterProjectId
 }: ParameterRuntimeOptions): ParameterRuntimeActions {
   let refreshGeneration = 0;
+  // Entry identity is the generation for both reads. A forced load supersedes
+  // in-flight work for this project alone.
+  const projectReads = new Map<string, ProjectParameterRead>();
+  let visibleProjectIds: Set<string> | undefined;
+
+  const loadProjectParameters: ParameterRuntimeActions["loadProjectParameters"] = (projectId, options) => {
+    if (runtimeMode !== "api" || !projectId || (visibleProjectIds && !visibleProjectIds.has(projectId))) {
+      const unavailable = Promise.reject(new Error("Project parameters are unavailable in this scope."));
+      return { bindings: unavailable, drafts: unavailable, settled: unavailable.catch(() => undefined) };
+    }
+    const cached = projectReads.get(projectId);
+    if (cached && !options?.force) return cached;
+
+    const readProject = async <T,>(
+      read: () => Promise<T>,
+      latest: (read: ProjectParameterRead) => Promise<T>,
+      publish: (value?: T) => void
+    ): Promise<T> => {
+      try {
+        const value = await read();
+        if (projectReads.get(projectId) === entry) {
+          publish(value);
+          return value;
+        }
+      } catch (error) {
+        if (projectReads.get(projectId) === entry) {
+          if (error instanceof WiseEffApiError && (error.code === "FORBIDDEN" || error.code === "UNAUTHENTICATED")) publish();
+          throw error;
+        }
+      }
+      const current = projectReads.get(projectId);
+      if (!current) throw new Error("Parameter project scope changed.");
+      return latest(current);
+    };
+
+    let fullRead: Pick<ProjectParameterRead, "bindings" | "settled"> | undefined;
+    const readBindings = () => {
+      if (fullRead) return fullRead;
+      dispatch({ type: "UPDATE_PROJECT_PARAMETER_CACHE", projectId, status: "loading" });
+      const bindings = readProject(async () => {
+        if (!canonicalRepository?.listProtectedProjectBindings) throw new Error("Canonical Binding repository is required in api runtime mode.");
+        return canonicalRepository.listProtectedProjectBindings(projectId);
+      }, (current) => current.bindings, (response) => dispatch({
+        type: "UPDATE_PROJECT_PARAMETER_CACHE",
+        projectId,
+        parameters: (response?.items ?? [])
+          .filter((binding) => !binding.projectId || binding.projectId === projectId)
+          .map((binding) => parameterRecordFromBinding(projectId, binding))
+      }));
+      const settled = Promise.allSettled([bindings, entry.drafts]).then((results) => {
+        if (projectReads.get(projectId) !== entry) return projectReads.get(projectId)?.settled;
+        const failure = results.find((result) => result.status === "rejected");
+        dispatch({ type: "UPDATE_PROJECT_PARAMETER_CACHE", projectId, status: failure ? "error" : "ready" });
+        if (failure) return { notification: formatParameterRuntimeError(failure.reason) };
+      });
+      fullRead = { bindings, settled };
+      return fullRead;
+    };
+    const entry: ProjectParameterRead = {
+      get bindings() { return readBindings().bindings; },
+      drafts: readProject(async () => requireRepository(repository).listDrafts(projectId),
+        (current) => current.drafts, (drafts) => dispatch({
+          type: "UPDATE_PROJECT_PARAMETER_CACHE",
+          projectId,
+          drafts: (drafts ?? []).filter((draft) => draft.projectId === projectId)
+        })),
+      get settled() { return readBindings().settled; }
+    };
+    projectReads.set(projectId, entry);
+    // Draft-only consumers can await this rejection without starting a binding read.
+    void entry.drafts.catch(() => undefined);
+    return entry;
+  };
+
+  const ensureProjectParameters: ParameterRuntimeActions["ensureProjectParameters"] = async (projectIds, options) => {
+    if (runtimeMode !== "api") return;
+    const results = await Promise.all([...new Set(projectIds)]
+      .filter((projectId) => projectId && (!visibleProjectIds || visibleProjectIds.has(projectId)))
+      .map((projectId) => loadProjectParameters(projectId, options).settled));
+    const failure = results.find((result) => result?.notification);
+    if (failure) return notifyFailure(dispatch, { notifyOnFailure: false, ...options }, failure.notification);
+  };
+
   const refresh = async (options: ParameterRuntimeRefreshOptions = {}): Promise<ParameterRuntimeRefreshResult> => {
     if (runtimeMode !== "api") {
       return undefined;
@@ -181,39 +280,31 @@ export function createParameterRuntimeActions({
     const generation = ++refreshGeneration;
 
     try {
-      const api = requireRepository(repository);
-      if (!canonicalRepository?.listProtectedProjectBindings) throw new Error("Canonical Binding repository is required in api runtime mode.");
-      const listBindings = canonicalRepository.listProtectedProjectBindings.bind(canonicalRepository);
-      const projectsPromise = api.listProjects();
-      const projects = await projectsPromise;
-      const [parameterGroups, draftGroups] = await Promise.all([
-        Promise.all(projects.map(async (project) =>
-          (await listBindings(project.id)).items.map((binding) => parameterRecordFromBinding(project.id, binding))
-        )),
-        Promise.all(projects.map((project) => api.listDrafts(project.id)))
-      ]);
-      const parameterDrafts = draftGroups.flat();
-      const parameters = parameterGroups.flat();
-      const snapshot = { projects, parameters, changeRequests: [], parameterSubmissionRounds: [], parameterDrafts };
-
+      const projects = await requireRepository(repository).listProjects();
       if (generation !== refreshGeneration) return undefined;
-      dispatch({ type: "HYDRATE_PARAMETER_RUNTIME", ...snapshot });
-      return snapshot;
+      visibleProjectIds = new Set(projects.map((project) => project.id));
+      for (const projectId of projectReads.keys()) {
+        if (!visibleProjectIds.has(projectId)) projectReads.delete(projectId);
+      }
+      dispatch({ type: "HYDRATE_PARAMETER_PROJECTS", projects });
+      return { projects };
     } catch (error) {
       if (generation !== refreshGeneration) return undefined;
+      projectReads.clear();
+      visibleProjectIds = new Set();
+      dispatch({ type: "CLEAR_API_RUNTIME_DOMAIN", domain: "parameters" });
       return notifyFailure(dispatch, options, formatParameterRuntimeError(error));
     }
   };
 
-  const runApiMutation = async (
-    mutation: (api: ParameterRepository) => Promise<unknown>,
+  const runApiMutation = async <T,>(
+    mutation: (api: ParameterRepository) => Promise<T>,
+    affectedProjects: (result: T) => readonly string[],
     options: ParameterRuntimeRefreshOptions = {}
   ): Promise<ParameterRuntimeVoidResult> => {
     try {
-      const api = requireRepository(repository);
-      await mutation(api);
-      const result = await refresh(options);
-      return result && "notification" in result ? result : undefined;
+      const result = await mutation(requireRepository(repository));
+      return await ensureProjectParameters(affectedProjects(result), { notifyOnFailure: true, ...options, force: true });
     } catch (error) {
       return notifyFailure(dispatch, options, formatParameterRuntimeError(error));
     }
@@ -239,7 +330,7 @@ export function createParameterRuntimeActions({
         return undefined;
       }
 
-      return runApiMutation((api) => api.submitParameterChanges(input));
+      return runApiMutation((api) => api.submitParameterChanges(input), () => [input.projectId]);
     },
     async stashChanges(items) {
       if (runtimeMode !== "api") {
@@ -247,22 +338,17 @@ export function createParameterRuntimeActions({
         return undefined;
       }
 
+      const drafts = items.map((item) => ({ ...item, projectId: getParameterProjectId?.(item.parameterId) }));
+      if (drafts.some((draft) => !draft.projectId)) return notifyFailure(dispatch);
+      const projectIds = drafts.map((draft) => draft.projectId!);
       return runApiMutation(async (api) => {
-        await Promise.all(
-          items.map((item) => {
-            const projectId = getParameterProjectId?.(item.parameterId);
-            if (!projectId) {
-              throw new Error(`Cannot resolve project for parameter ${item.parameterId}.`);
-            }
-            return api.saveDraft({
-              projectId,
-              parameterId: item.parameterId,
-              targetValue: item.targetValue,
-              reason: item.reason
-            });
-          })
-        );
-      });
+        const results = await Promise.allSettled(drafts.map((draft) => api.saveDraft({ ...draft, projectId: draft.projectId! })));
+        const failure = results.find((result) => result.status === "rejected");
+        if (failure) {
+          await ensureProjectParameters(projectIds, { force: true });
+          throw failure.reason;
+        }
+      }, () => projectIds);
     },
     async discardDrafts(input) {
       if (runtimeMode !== "api") {
@@ -278,8 +364,13 @@ export function createParameterRuntimeActions({
         const drafts = await api.listDrafts(input.projectId);
         const parameterIds = new Set(input.parameterIds);
         const draftsToDelete = drafts.filter((draft) => parameterIds.has(draft.parameterId));
-        await Promise.all(draftsToDelete.map((draft) => api.deleteDraft(draft.id, input.projectId)));
-      });
+        const results = await Promise.allSettled(draftsToDelete.map((draft) => api.deleteDraft(draft.id, input.projectId)));
+        const failure = results.find((result) => result.status === "rejected");
+        if (failure) {
+          await ensureProjectParameters([input.projectId], { force: true });
+          throw failure.reason;
+        }
+      }, () => [input.projectId]);
     },
     async withdrawSubmissionRound(roundId) {
       if (runtimeMode !== "api") {
@@ -287,7 +378,7 @@ export function createParameterRuntimeActions({
         return undefined;
       }
 
-      return runApiMutation((api) => api.withdrawSubmissionRound(roundId));
+      return runApiMutation((api) => api.withdrawSubmissionRound(roundId), (round) => [round.projectId]);
     },
     async reviewChange(input, options) {
       if (runtimeMode !== "api") {
@@ -299,7 +390,9 @@ export function createParameterRuntimeActions({
         return undefined;
       }
 
-      return runApiMutation((api) => api.reviewChange(input), options);
+      return runApiMutation((api) => api.reviewChange(input), (request) => [
+        request.projectId ?? getParameterProjectId?.(request.parameterId) ?? ""
+      ], options);
     },
     async createImportPreview(input) {
       if (runtimeMode !== "api") {
@@ -334,8 +427,8 @@ export function createParameterRuntimeActions({
 
       try {
         const preview = await requireRepository(repository).createImportPreview(input);
-        const result = await refresh();
-        return result && "notification" in result ? result : preview;
+        const result = await ensureProjectParameters([input.projectId], { force: true, notifyOnFailure: true });
+        return result ?? preview;
       } catch (error) {
         return notifyFailure(dispatch, {}, formatParameterRuntimeError(error));
       }
@@ -374,8 +467,8 @@ export function createParameterRuntimeActions({
 
       try {
         const staged = await requireRepository(repository).applyImportBatch(input);
-        const result = await refresh();
-        return result && "notification" in result ? result : staged;
+        const result = await ensureProjectParameters([staged.projectId], { force: true, notifyOnFailure: true });
+        return result ?? staged;
       } catch (error) {
         return notifyFailure(dispatch, {}, formatParameterRuntimeError(error));
       }
@@ -386,6 +479,8 @@ export function createParameterRuntimeActions({
       }
       return requireRepository(repository).parseDtsImport(input);
     },
-    refresh
+    refresh,
+    loadProjectParameters,
+    ensureProjectParameters
   };
 }

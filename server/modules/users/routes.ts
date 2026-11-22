@@ -9,6 +9,7 @@ import {
   approveRegistrationRoleRequest,
   enableBasicRegistrationRoleRequest,
   createUser,
+  correctLocalUsername,
   deactivateUser,
   deleteUser,
   getHomeOrganization,
@@ -28,6 +29,7 @@ import {
 } from "./service";
 import {
   createUserBodySchema,
+  correctLocalUsernameBodySchema,
   setOidcIdentityBodySchema,
   listRegistrationRoleRequestsQuerySchema,
   replaceUserRolesBodySchema,
@@ -371,6 +373,15 @@ export function registerUserRoutes(
     const body = parseWithSchema(updateUserBodySchema, request.body);
     const item = await updateUserProfile(db, await operatingInvocation(db, auth, request), params.userId, body, { requestId: request.requestId });
 
+    return { status: 200, body: { item } };
+  });
+
+  router.patch("/api/v1/users/:userId/username", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    const { userId } = parseWithSchema(userIdParamsSchema, request.params);
+    const { username } = parseWithSchema(correctLocalUsernameBodySchema, request.body);
+    const item = await correctLocalUsername(db, await operatingInvocation(db, auth, request), userId, username, { requestId: request.requestId });
     return { status: 200, body: { item } };
   });
 

@@ -1,4 +1,5 @@
-import { catalogApiFailureReasonSchema, catalogOwnerDeclarationSchema } from "../../contracts/dtoSchemas/parameterCatalog";
+import { catalogApiFailureReasonSchema, catalogDefinitionReplacementSummarySchema, catalogDefinitionSuccessorChangeSummarySchema, catalogOwnerDeclarationSchema } from "../../contracts/dtoSchemas/parameterCatalog";
+import { isSubjectIdentityOp, subjectIdentityImpactSchema } from "../../contracts/dtoSchemas/catalogSubjectIdentity";
 import { planClaimedOwners } from "../../catalog-publication/claimedOwners";
 import {
   CatalogCandidateId,
@@ -23,6 +24,7 @@ import {
   type PreparedPredecessorArtifact,
 } from "../../catalog-publication/builder/preparedPredecessor";
 import { planMarkdownImport } from "../../catalog-publication/import/markdownImport";
+import { dtsExampleMessages } from "../../../../src/domain/parameter-catalog/dtsExamples";
 
 import { modulePath, readPlacementHintEvidence } from "../../parameter-governance/registration/readRepository";
 import {
@@ -45,7 +47,25 @@ import type {
   PublicationCandidateView,
   PublicationJobView,
   PublicationSurfaceView,
+  TrustedPublicationScope,
 } from "./types";
+
+async function readImportCompatibleRules(pool: CatalogPointerPool, organizationId: string) {
+  const { rows } = await pool.query<{ subject_id: string; compatibles: string[] }>(
+    `select registration.subject_id, rule.compatibles
+       from public.registration_recognition_rules rule
+       join parameter_catalog.organization_subject_registrations registration
+         on registration.id = rule.registration_id and registration.organization_id = rule.organization_id
+      where rule.organization_id = $1 and registration.status = 'active'`,
+    [organizationId],
+  );
+  const rules = new Map<string, string[]>();
+  for (const row of rows) for (const compatible of row.compatibles) {
+    if (!rules.has(compatible)) rules.set(compatible, []);
+    rules.get(compatible)!.push(row.subject_id);
+  }
+  return rules;
+}
 
 function publicImportEntries(entries: ReturnType<typeof planMarkdownImport>["entries"]) {
   return entries.map((entry) => {
@@ -98,13 +118,19 @@ const impactSummaryOf = (
     ? record.addedSubjectIds.filter((id): id is string => typeof id === "string")
     : allocatedIds;
   const owners = catalogOwnerDeclarationSchema.array().safeParse(record?.ownerDeclarations);
+  const identity = subjectIdentityImpactSchema.safeParse(record?.subjectIdentity);
+  const successorChange = catalogDefinitionSuccessorChangeSummarySchema.safeParse(record?.definitionSuccessorChange);
+  const replacement = catalogDefinitionReplacementSummarySchema.safeParse(record?.definitionReplacement);
   return {
     addedDefinitionCount,
     changedDefinitionCount,
     addedSubjectCount,
     ...(addedSubjectIds.length > 0 ? { addedSubjectIds } : {}),
     ...(owners.success ? { ownerDeclarations: owners.data } : {}),
+    ...(identity.success ? { subjectIdentity: identity.data } : {}),
     ...(typeof record?.ownerPublicationOnly === "boolean" ? { ownerPublicationOnly: record.ownerPublicationOnly } : {}),
+    ...(successorChange.success ? { definitionSuccessorChange: successorChange.data } : {}),
+    ...(replacement.success ? { definitionReplacement: replacement.data } : {}),
   };
 };
 
@@ -135,6 +161,24 @@ const inScope = (
   authorOrganizationId: string,
   organizationId: string,
 ): boolean => authorOrganizationId === organizationId;
+
+function isPlatformSubjectReviewer(scope: Pick<TrustedPublicationScope, "actorKind" | "trustedActor">) {
+  return scope.actorKind === "platform-admin" && scope.trustedActor.initiator === "user" &&
+    scope.trustedActor.principal.roles.some(role => role.roleId === "platform-admin" && role.projectId === null);
+}
+
+function projectSubjectRulesImpact(view: PublicationCandidateView, scope: Pick<TrustedPublicationScope, "organizationId" | "projectScope">): PublicationCandidateView {
+  const identity = view.impactSummary.subjectIdentity;
+  if (!identity?.rules || scope.projectScope?.kind === "all") return view;
+  const { rules } = identity;
+  const projectIds = new Set(scope.projectScope?.kind === "only" ? scope.projectScope.ids : []);
+  const canSee = (projectId: string, organizationId = view.authorOrganizationId) =>
+    organizationId === scope.organizationId && projectIds.has(projectId);
+  return { ...view, impactSummary: { ...view.impactSummary, subjectIdentity: { ...identity, rules: {
+    ...rules, projects: rules.projects.filter(row => canSee(row.id, row.organizationId)),
+    conflicts: rules.conflicts.filter(row => !row.projectId || canSee(row.projectId, row.organizationId)),
+  } } } };
+}
 
 const jobFailure = (
   job: PublicationJobRecord,
@@ -208,6 +252,7 @@ const mapPreviewError = (kind: string, detail?: string): CatalogPublicationFailu
     return { kind: "reason", reason: "predecessor-incomplete" };
   }
   if (kind === "unsupported-catalog-capability") {
+    if (detail && Object.hasOwn(dtsExampleMessages, detail)) return { kind: "validation", field: "dtsExamples", reason: detail };
     return { kind: "reason", reason: "unsupported-catalog-capability" };
   }
   if (kind === "unsupported-change-op") {
@@ -222,6 +267,7 @@ const mapPreviewError = (kind: string, detail?: string): CatalogPublicationFailu
   if (kind === "definition-already-exists") {
     return { kind: "reason", reason: "definition-already-exists" };
   }
+  if (kind === "subject-selector-occupied") return { kind: "reason", reason: kind };
   if (kind === "invalid-input") {
     return { kind: "validation", field: detail ?? "changeSet" };
   }
@@ -274,7 +320,10 @@ export function bindCatalogPublicationCommands(input: {
         const snapshot = bundle ? targetReleaseOf(bundle) : null;
         if (!snapshot) return { ok: false, error: { kind: "reason", reason: "predecessor-incomplete" } };
         plan = planMarkdownImport(command.markdownImport.document, command.markdownImport.fileName, snapshot,
-          command.markdownImport.additionalDocuments);
+          command.markdownImport.additionalDocuments, {
+            rules: pool ? await readImportCompatibleRules(pool, command.organizationId) : new Map(),
+            selections: command.markdownImport.organizationSubjectSelections,
+          });
         placementHints = plan.placementHints;
         const semanticIds = plan.entries.flatMap((entry) => {
           if (entry.outcome !== "revise" || entry.revisionClass !== "semantic" || !entry.definitionId) return [];
@@ -317,6 +366,10 @@ export function bindCatalogPublicationCommands(input: {
       }
       const parsed = claimedChanges ?? plan?.changeSet ?? parsePublicationChangeSet(command.changeSet);
       if ("error" in parsed) return { ok: false, error: mapPreviewError(parsed.error.kind, parsed.error.kind) };
+      if (parsed.some(change => isSubjectIdentityOp(change.op)) &&
+        (!isPlatformSubjectReviewer(command) || !command.permissions.includes("catalog:author"))) {
+        return { ok: false, error: { kind: "forbidden", reason: "publication-capability-missing" } };
+      }
       const previewed = await previewPublicationCandidate({
         db,
         predecessorDigest: pointer.current.digest,
@@ -329,7 +382,9 @@ export function bindCatalogPublicationCommands(input: {
         markdownSource: plan?.source,
       });
       if (!previewed.ok) {
-        return { ok: false, error: mapPreviewError(previewed.error.kind) };
+        return { ok: false, error: mapPreviewError(previewed.error.kind,
+          previewed.error.kind === "invalid-input" ? previewed.error.reason
+            : previewed.error.kind === "unsupported-catalog-capability" ? previewed.error.detail : undefined) };
       }
       if (plan?.changeSet) {
         const facts = previewed.value.impactFacts;
@@ -346,7 +401,7 @@ export function bindCatalogPublicationCommands(input: {
           return { ...entry, ...(classified.ok ? { riskClass: classified.value } : {}) };
         });
       }
-      const candidate = {
+      const candidate = projectSubjectRulesImpact({
         id: previewed.value.candidate.id,
         expectedBaseReleaseId: previewed.value.candidate.expectedBaseReleaseId,
         expectedBaseReleaseDigest: previewed.value.candidate.expectedBaseReleaseDigest,
@@ -354,7 +409,7 @@ export function bindCatalogPublicationCommands(input: {
         impactSummary: previewed.value.impactSummary,
         capabilityContract: capabilityOf(previewed.value.candidate),
         authorOrganizationId: command.organizationId,
-      };
+      }, command);
       return { ok: true, value: command.claimedOwners ? { candidate, noChange: false }
         : plan ? { candidate, noChange: plan.noChange, entries: publicImportEntries(plan.entries), source: plan.source, placementHints } : candidate };
     },
@@ -373,7 +428,11 @@ export function bindCatalogPublicationCommands(input: {
       if (!view || !inScope(view.authorOrganizationId, query.organizationId)) {
         return { ok: false, error: { kind: "not-found" } };
       }
-      return { ok: true, value: view };
+      if (view.impactSummary.subjectIdentity?.rules && (!isPlatformSubjectReviewer(query) ||
+        !query.permissions.some(permission => permission === "catalog:author" || permission === "catalog:publish" || permission === "catalog:review-high-risk"))) {
+        return { ok: false, error: { kind: "not-found" } };
+      }
+      return { ok: true, value: projectSubjectRulesImpact(view, query) };
     },
     async publishCandidate(command) {
       const loaded = await withPublicationCoordinator(db, (tx) => {
@@ -390,12 +449,19 @@ export function bindCatalogPublicationCommands(input: {
       if (authorOrganizationId === null || !inScope(authorOrganizationId, command.organizationId)) {
         return { ok: false, error: { kind: "not-found" } };
       }
-      if (impactFactsFromAllocation(loaded.value.identityAllocation) === null) {
+      const facts = impactFactsFromAllocation(loaded.value.identityAllocation);
+      if (facts === null) {
         return { ok: false, error: { kind: "reason", reason: "candidate-tampered" } };
+      }
+      if (facts.operations.some(operation => operation.op === "correct-subject-identity") && command.actorKind !== "platform-admin") {
+        return { ok: false, error: { kind: "forbidden", reason: "publication-capability-missing" } };
       }
       const view = candidateView(loaded.value);
       if (!view) {
         return { ok: false, error: { kind: "reason", reason: "candidate-tampered" } };
+      }
+      if (view.impactSummary.subjectIdentity?.rules?.conflictCounts.length) {
+        return { ok: false, error: { kind: "reason", reason: "candidate-stale", httpStatus: 409 } };
       }
       const enqueued = await enqueuePublicationJob({
         db,

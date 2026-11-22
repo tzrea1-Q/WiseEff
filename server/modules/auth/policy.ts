@@ -124,6 +124,9 @@ const rolePermissions: Record<BackendRoleId, BackendPermission[]> = {
     "parameter:review",
     "admin:access",
     "users:manage",
+    "catalog:author",
+    "catalog:publish",
+    "catalog:review-high-risk",
     "platform:access",
     "platform:schema-promote"
   ]

@@ -55,6 +55,8 @@ Every change to the bundle publishes a new immutable Catalog Release, including 
 
 Every persisted content change to one formal definition mints a new immutable **DefinitionRevision**. This includes value shape, constraints, units, schema default, definition-level lifecycle or matching metadata, display text, examples, and documentation-only corrections. Existing revisions are never updated or deleted. A documentation-only revision advances the ParameterDefinition head, but it does not change any Binding `effective_revision_id`, create or replace a Binding, or cut over current or historical ProjectValues. A release-only change that does not alter any persisted definition snapshot, such as release provenance or a subject-selector alias, does not manufacture a DefinitionRevision.
 
+Driver and NodeType revisions may include optional `dtsExamples` containing source-form property examples. They are stored separately from JSON `examples`, are validated against the property key and value schema, and contribute to the revision digest only when present. A change confined to `dtsExamples` is a documentation-only revision.
+
 The stable definition identity remains typed formal subject plus permanent property key, with the opaque IDs and relational current-head constraints fixed by [ADR-0040](0040-canonical-parameter-catalog-relational-model.md). Catalog Release and DefinitionRevision are different clocks, but the release is the only source from which the synchronizer may mint a revision.
 
 ### 3. Aliases are selector aliases, not alternate identities

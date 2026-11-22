@@ -1,5 +1,6 @@
-export { compileCatalogRelease } from "./compileCatalogRelease";
+export { compileCatalogRelease, createCatalogReleaseDigestValidator, validateCatalogReleaseDigest, validateIdentityAppendDigest } from "./compileCatalogRelease";
 export { isCatalogReleaseBundle } from "./validation";
+export { freezeCatalogJson } from "./contractArtifacts";
 export {
   catalogCompilerContract,
   catalogCompilerContractFingerprint,

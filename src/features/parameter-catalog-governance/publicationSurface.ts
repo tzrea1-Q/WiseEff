@@ -31,8 +31,8 @@ export const publicationSurfaceCopy = {
   adoptionHandbook: "操作员手册：inspect/adopt。",
   capabilityMissing: "当前会话缺少目录编写或发布权限。",
   notAuthorized: "当前身份不能发起目录发布。",
-  authorOnly: "可以保存草稿并预览，但发布需要 catalog:publish。",
-  reviewRequired: "高风险变更需要另一位具备 catalog:review-high-risk 的人员批准。",
+  authorOnly: "可以保存草稿并预览。确认发布需要发布或高风险复核权限。",
+  reviewRequired: "高风险变更需要具备高风险复核权限的人员确认。",
   noOps: "本页不提供提权、改策略表、解除 freeze 或数据库 provisioning。",
   fetchFailed: "无法读取发布状态，编写和发布已暂停。"
 } as const;
@@ -64,7 +64,7 @@ export function publicationSurfaceAdvisory(surface: PublicationSurfaceItem): {
   if (surface.blockers.includes("publication-capability-missing")) {
     return { tone: "info", message: publicationSurfaceCopy.capabilityMissing, next: "请具备权限的管理员授予真实 capability，而不是默认 admin。" };
   }
-  if (surface.authoringAllowed && !surface.publishingAllowed) {
+  if (surface.authoringAllowed && !surface.publishingAllowed && !surface.reviewHighRiskAllowed) {
     return { tone: "info", message: publicationSurfaceCopy.authorOnly, next: publicationSurfaceCopy.reviewRequired };
   }
   return null;

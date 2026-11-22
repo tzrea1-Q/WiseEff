@@ -132,6 +132,7 @@ describe("parameter catalog stable failures", () => {
       "release-drift",
       "subject-not-published",
       "subject-retired",
+      "subject-selector-occupied",
       "definition-not-found",
       "definition-already-exists",
       "definition-retired",

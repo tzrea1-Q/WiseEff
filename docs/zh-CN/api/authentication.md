@@ -80,12 +80,16 @@ AUTH_PROVIDER=local
 | `PATCH /api/v1/me/profile` | 更新当前用户的姓名和职务。 |
 | `POST /api/v1/me/password` | 当前用户改密（`{ currentPassword, newPassword }`）。校验当前密码、更新 salted `scrypt` 哈希、保留当前会话，并吊销该用户其它会话。 |
 | `POST /api/v1/users` | 让 Admin 在当前组织中创建已启用的本地账号，并设置用户名、初始密码、职务和角色绑定。 |
+| `PATCH /api/v1/users/:userId` | 维护成员姓名、职务或资料邮箱，需要 `users:manage`。 |
+| `PATCH /api/v1/users/:userId/username` | 平台超级管理员可更正操作组织内的本地登录名（`{ username }`）。下次登录使用新登录名和原密码，当前会话继续有效。 |
 | `POST /api/v1/users/:userId/password` | 让 Admin 重置用户本地密码（`{ password }`）。需要 `users:manage`。吊销该用户全部会话。 |
 | `GET /api/v1/users/registration-role-requests` | 让 Admin 查看待审批的本地 Committer 注册申请。 |
 | `POST /api/v1/users/registration-role-requests/:requestId/approve` | 让 Admin 批准待审批的 Committer 角色申请。 |
 | `POST /api/v1/users/registration-role-requests/:requestId/reject` | 让 Admin 拒绝待审批的 Committer 角色申请。 |
 
-注册请求包含 `name`、`username`、`roleId` 和 `password`。遗留的可选 `organization` 字段会被忽略，且不得再创建硬件部 / 软件部租户。自助注册永远不接受 `admin`。操作者可用 `AUTH_LOCAL_SELF_REGISTER=false` 关闭该路由；`GET /api/v1/auth/local-config` 返回 `selfRegisterEnabled: false` 时，认证页隐藏「注册」。申请 `hardware-committer` 或 `software-committer` 时，账号会以 inactive 状态创建，先写入对应基础 User 角色，并创建待 Admin 审批的角色申请。该路径不会创建 session token，密码登录也会在审批前被拒绝；只有审批通过后才激活账号并授予申请的 Committer 角色。本地账号不再保存或返回 email 地址，用户名就是本地登录标识。当前暂时不支持邮箱验证，因此注册不能被当作已验证域名 onboarding 或邀请接受流程。
+注册请求包含 `name`、`username`、`roleId` 和 `password`。遗留的可选 `organization` 字段会被忽略，且不得再创建硬件部 / 软件部租户。自助注册永远不接受 `admin`。操作者可用 `AUTH_LOCAL_SELF_REGISTER=false` 关闭该路由；`GET /api/v1/auth/local-config` 返回 `selfRegisterEnabled: false` 时，认证页隐藏「注册」。申请 `hardware-committer` 或 `software-committer` 时，账号会以 inactive 状态创建，先写入对应基础 User 角色，并创建待 Admin 审批的角色申请。该路径不会创建 session token，密码登录也会在审批前被拒绝；只有审批通过后才激活账号并授予申请的 Committer 角色。当前暂时不支持邮箱验证，因此注册不能被当作已验证域名 onboarding 或邀请接受流程。
+
+`/organization/members` 的成员详情分别显示本地登录名和资料邮箱。资料接口校验邮箱格式，保留 OIDC Issuer、Subject 和迁移身份。更正登录名沿用创建时的格式规则，全平台忽略大小写判重，冲突时返回 `409`。账号 ID、角色绑定、项目成员关系和历史署名仍归属原账号。更正与 `user-username-correction` 审计事件在同一事务提交。
 
 管理员创建用户不走自助注册，而是使用 `POST /api/v1/users`。请求包含 `name`、`username`、`password`、可选 `title` 和 `roles`；后端会在一个事务中创建用户、密码凭据、角色绑定和审计事件。这类账号会立即启用，包括 Committer/MDE 角色，因为该操作本身已经要求 `users:manage` 权限。响应和审计 metadata 都不能返回或记录明文密码、密码哈希。
 

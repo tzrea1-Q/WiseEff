@@ -51,6 +51,7 @@ export function isRootDatabase(value: unknown): value is RootDatabase {
 
 type DatabaseOptions = {
   tracing?: Pick<TracingBoundary, "withSpan">;
+  pool?: Pick<pg.PoolConfig, "connectionTimeoutMillis" | "statement_timeout">;
 };
 
 /**
@@ -150,7 +151,7 @@ function statementType(text: string) {
 }
 
 export function createPostgresDatabase(connectionString: string, options: DatabaseOptions = {}): RootDatabase {
-  const pool = new pg.Pool({ connectionString });
+  const pool = new pg.Pool({ connectionString, ...options.pool });
   const connectionErrors = new WeakMap<pg.PoolClient, Error>();
   const recordConnectionError = (error: Error, client: pg.PoolClient) => {
     if (connectionErrors.has(client)) return;

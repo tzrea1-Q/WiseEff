@@ -1,6 +1,6 @@
 import { NavigatorWorkbench } from "@/components/layout/NavigatorWorkbench";
 import { SectionEmpty } from "@/components/common/SectionState";
-import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useDeferredValue, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   Download,
   FileCode,
@@ -8,7 +8,7 @@ import {
 } from "lucide-react";
 import { SearchField } from "@/components/common/SearchField";
 import { ViewSwitch } from "@/components/ui/view-switch";
-import { filterItems } from "@/lib/search";
+import { createSearchIndex } from "@/lib/search";
 import { dtsWorkbenchRowSearchProfile } from "@/lib/search/profiles";
 
 import { useHorizontalDragScroll } from "@/hooks/useHorizontalDragScroll";
@@ -57,6 +57,7 @@ type PrimaryDtsSource = {
 
 export type DtsParameterWorkbenchProps = {
   projectId?: string;
+  organizationId?: string;
   projectName?: string;
   requestedBindingId?: string;
   pendingDrafts?: readonly PendingBindingDraft[];
@@ -186,6 +187,7 @@ function nodePath(roots: DtsWorkbenchTreeNode[], nodeId: string): string[] {
 
 export function DtsParameterWorkbench({
   projectId,
+  organizationId,
   projectName,
   requestedBindingId,
   pendingDrafts = [],
@@ -293,9 +295,12 @@ export function DtsParameterWorkbench({
     const key = `${projectId}:${requestedEditBindingId}:${editRequestToken}`;
     if (!requestedEditBindingId || handledEditRequest.current === key || !currentRows.some(row => row.bindingId === requestedEditBindingId)) return;
     handledEditRequest.current = key;
+    setQuery("");
+    setModuleFilter([]);
+    setSelectedNodeId(null);
     setSelectedBindingId(requestedEditBindingId);
     setResultsMode("parameters");
-  }, [currentRows, editRequestToken, projectId, requestedEditBindingId]);
+  }, [currentRows, editRequestToken, projectId, requestedEditBindingId, setSelectedNodeId]);
 
   const [dtsSourceStatus, setDtsSourceStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
   const [dtsSource, setDtsSource] = useState<PrimaryDtsSource | null>(null);
@@ -389,15 +394,17 @@ export function DtsParameterWorkbench({
     if (moduleFocusLine !== null) return null;
     return "当前模块暂无源码行定位";
   }, [moduleFocusLine, resultsMode, subtreeBindingIds]);
+  const deferredQuery = useDeferredValue(query);
+  const searchIndex = useMemo(() => createSearchIndex(currentRows, dtsWorkbenchRowSearchProfile), [currentRows]);
   const scopedRows = useMemo(
     () => {
       const searched =
         resultsMode === "dtsSource"
           ? currentRows
-          : filterItems(currentRows, query, dtsWorkbenchRowSearchProfile);
+          : searchIndex.search(deferredQuery).map((hit) => hit.item);
       return searched.filter((row) => subtreeBindingIds === null || subtreeBindingIds.has(row.bindingId));
     },
-    [currentRows, query, resultsMode, subtreeBindingIds]
+    [currentRows, deferredQuery, resultsMode, searchIndex, subtreeBindingIds]
   );
   const moduleFilterNodes = useMemo(
     () =>
@@ -510,12 +517,23 @@ export function DtsParameterWorkbench({
     });
   };
 
-  const selectBinding = (bindingId: string) => {
+  const selectBinding = useCallback((bindingId: string) => {
     detailOpenerRef.current = document.activeElement instanceof HTMLElement
       ? document.activeElement
       : null;
     setSelectedBindingId(bindingId);
     onSelectBinding(bindingId);
+  }, [onSelectBinding]);
+
+  const resumeUnsavedDraft = () => {
+    const bindingId = Object.entries(localDraftBag).find(([, draft]) => !draft.saved)?.[0];
+    if (!bindingId) return;
+    if (!visibleRows.some((row) => row.bindingId === bindingId)) {
+      setQuery("");
+      setModuleFilter([]);
+      setSelectedNodeId(null);
+    }
+    selectBinding(bindingId);
   };
 
   const useCompareAsDraft = (input: { rawValue: string; reason: string }) => {
@@ -775,7 +793,7 @@ export function DtsParameterWorkbench({
         context={<>
           <div className="parameter-workbench-context" aria-label="当前参数范围">
             <div><span title={scopeLabel}>{scopeLabel}</span><span role="status">{visibleRows.length} / {currentRows.length} 个参数</span>{activeModuleFilter.length ? <span>已筛选 {activeModuleFilter.length} 个模块</span> : null}</div>
-            <div>{localChangeCount ? <button className="button subtle" type="button" onClick={() => selectBinding(Object.entries(localDraftBag).find(([, draft]) => !draft.saved)![0])}>继续未保存修改（{localChangeCount}）</button> : null}{query || effectiveSelectedNodeId || activeModuleFilter.length ? <button className="button subtle" type="button" onClick={() => { setQuery(""); setModuleFilter([]); setSelectedNodeId(null); }}>清除筛选</button> : null}</div>
+            <div>{localChangeCount ? <button className="button subtle" type="button" onClick={resumeUnsavedDraft}>继续未保存修改（{localChangeCount}）</button> : null}{query || effectiveSelectedNodeId || activeModuleFilter.length ? <button className="button subtle" type="button" onClick={() => { setQuery(""); setModuleFilter([]); setSelectedNodeId(null); }}>清除筛选</button> : null}</div>
           </div>
         {currentEdits ? <div
           className="dts-parameter-workbench__current-edits dts-draft-tray"
@@ -819,6 +837,7 @@ export function DtsParameterWorkbench({
                 <div className="dts-workbench-list__scroll-y">
                   <DtsParameterWorkbenchTable
                     rows={visibleRows}
+                    scopeKey={JSON.stringify([projectId, configSetId, deferredQuery, effectiveSelectedNodeId])}
                     moduleFilterSelected={activeModuleFilter}
                     moduleFilterNodes={moduleFilterNodes}
                     onModuleFilterChange={setModuleFilter}
@@ -864,6 +883,7 @@ export function DtsParameterWorkbench({
         <DtsBindingDetailDialog
           key={selectedRow.bindingId}
           row={selectedRow}
+          organizationId={organizationId}
           canEdit={canEdit && Boolean(onCreateDraft)}
           historyEntries={historyEntries}
           compareEntries={compareEntries}

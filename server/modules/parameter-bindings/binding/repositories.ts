@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 
 import type pg from "pg";
 import type { Queryable } from "../../../shared/database/client";
-import { readOrganizationSubjectOwner } from "../../catalog-kernel/ownerSchema";
+import { hasActiveOrganizationSubjectOwner } from "../../catalog-kernel/ownerSchema";
 
 import {
   serializeContract,
@@ -135,13 +135,24 @@ export const loadSourceRegistrationAgreement = async (
   return await activeOwnerRegistered(client as BindingWriterClient, input.organizationId, input.subjectId) ? result.rows[0]! : null;
 };
 
-export const activeOwnerRegistered = async (client: BindingWriterClient, organizationId: string, subjectId: string): Promise<boolean> => {
-  const owner = await readOrganizationSubjectOwner(client as unknown as pg.Client, organizationId, subjectId);
-  if (!owner) return true;
-  const result = await client.query(`select 1 from parameter_catalog.organization_subject_registrations
-    where organization_id=$1 and subject_id=$2 and status='active'`, [organizationId, owner]);
-  return result.rows.length === 1;
-};
+export const activeOwnerRegistered = (client: BindingWriterClient, organizationId: string, subjectId: string): Promise<boolean> =>
+  hasActiveOrganizationSubjectOwner(client as unknown as pg.Client, organizationId, subjectId);
+
+export async function loadStoredProjectBindings(
+  client: BindingWriterClient,
+  organizationId: string,
+  projectId: string,
+  bindingIds: readonly string[],
+): Promise<BindingRow[]> {
+  const result = await client.query<BindingRow>(
+    `select id, organization_id, catalog_release_id, project_id, logical_node_id, source_occurrence_id,
+            registration_id, subject_id, definition_id, effective_revision_id, current_value_id
+       from parameter_catalog.project_parameter_bindings
+      where organization_id = $1 and project_id = $2 and id = any($3::text[])`,
+    [organizationId, projectId, bindingIds],
+  );
+  return result.rows;
+}
 
 export const loadBindingByComposite = async (
   client: BindingWriterClient,

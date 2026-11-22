@@ -32,6 +32,7 @@ import {
   lockDestinationModule,
   reserveIdempotency,
   updatePlacementModule,
+  updateRegistrationDisplayAlias,
   updateRegistrationStatus,
   type DestinationModuleRow,
   type PlacementRow,
@@ -366,18 +367,20 @@ const writeMove = async (
       placementId: pair.placement.id,
     });
   }
-  if (command.newDestination) {
-    const created = await createRegistrationDestination(client, command);
+  const { destinationModuleId, displayAlias } = command;
+  if (displayAlias && `${pair.registration.status}:${pair.registration.version}` !== displayAlias.expectedRegistrationVersion) {
+    return fail({ kind: "placement-conflict", registrationId: pair.registration.id, placementId: pair.placement.id });
+  }
+  if (command.newDestination && destinationModuleId) {
+    const created = await createRegistrationDestination(client, { ...command, destinationModuleId });
     if (!created) return fail({ kind: "invalid-placement-parent", destinationModuleId: command.newDestination.parentModuleId });
   }
-  const destination = await requireDestination(
-    client,
-    command.organizationId,
-    command.destinationModuleId,
-  );
-  if (!destination.ok) return destination;
+  if (destinationModuleId) {
+    const destination = await requireDestination(client, command.organizationId, destinationModuleId);
+    if (!destination.ok) return destination;
+  }
   let replacement: RegistrationResult["replacement"];
-  if (command.replacement) {
+  if (command.replacement && destinationModuleId) {
     const expected = command.replacement;
     const displaced = await loadStoredPair(client, command.organizationId, expected.registrationId);
     if (displaced) {
@@ -385,7 +388,7 @@ const writeMove = async (
     }
     if (!displaced || displaced.placement.id !== expected.placementId ||
         displaced.placement.registration_id !== displaced.registration.id ||
-        displaced.placement.module_id !== command.destinationModuleId ||
+        displaced.placement.module_id !== destinationModuleId ||
         displaced.placement.version !== expected.expectedPlacementVersion ||
         `${displaced.registration.status}:${displaced.registration.version}` !== expected.expectedRegistrationVersion) {
       return fail({ kind: "placement-conflict", registrationId: pair.registration.id, placementId: pair.placement.id });
@@ -395,7 +398,7 @@ const writeMove = async (
       registrationId: SubjectRegistrationId(displaced.registration.id),
       placementId: SubjectPlacementId(detached.id),
       subjectId: CatalogSubjectId(displaced.registration.subject_id),
-      previousModuleId: command.destinationModuleId,
+      previousModuleId: destinationModuleId,
       moduleId: null,
       placementVersion: detached.version,
       registrationStatus: displaced.registration.status,
@@ -404,9 +407,12 @@ const writeMove = async (
     };
   }
   const placement =
-    pair.placement.module_id === command.destinationModuleId
+    !destinationModuleId || pair.placement.module_id === destinationModuleId
       ? pair.placement
-      : await updatePlacementModule(client, pair.placement.id, command.destinationModuleId);
+      : await updatePlacementModule(client, pair.placement.id, destinationModuleId);
+  if (displayAlias) {
+    pair.registration.version = await updateRegistrationDisplayAlias(client, command.organizationId, pair.registration.id, displayAlias.value);
+  }
   const result = { ...toResult(pair.registration, placement, command, fingerprint, "committed"),
     ...(replacement ? { replacement } : {}) };
   await commitIdempotency(client, command, pair.registration.id, replacement ? result : undefined);
@@ -447,7 +453,8 @@ export const writeGuardedRegistration = async (
     const subjectId = await subjectIdForGuard(client, command);
     if (!subjectId.ok) return subjectId;
     const ownerId = await readOrganizationSubjectOwner(client, command.organizationId, subjectId.value);
-    if (ownerId && ((command.kind === "register" && command.method !== "automatic") || command.kind === "move-placement")) {
+    if (ownerId && ((command.kind === "register" && command.method !== "automatic") ||
+        (command.kind === "move-placement" && command.destinationModuleId !== undefined))) {
       return fail({ kind: "invalid-command", reason: command.kind === "register" ? "请登记其所属驱动" : "请调整其所属驱动的归属" });
     }
     if (ownerId && command.kind === "register" && command.proof.ownerSubjectId !== ownerId) {

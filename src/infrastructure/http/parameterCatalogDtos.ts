@@ -216,6 +216,7 @@ export type CatalogNodeEnablementDraftResponse = z.infer<typeof nodeEnablementDr
 export type CatalogListQuery = {
   /** Current business library; historical Catalog reads retain their existing contract. */
   view?: "library";
+  status?: "out-of-scope";
   cursor?: string;
   limit?: number;
   type?: "driver" | "node-type" | "configuration-schema";

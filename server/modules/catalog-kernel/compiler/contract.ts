@@ -6,7 +6,7 @@ import {
   type ContractJsonValue,
 } from "../../parameter-catalog-contract/index";
 
-import { ownerBundleContractArtifactDigest, s1BundleContractArtifactDigest } from "./contractArtifacts";
+import { dtsExamplesBundleContractArtifactDigest, ownerBundleContractArtifactDigest, s1BundleContractArtifactDigest } from "./contractArtifacts";
 
 const deepFreeze = <Value>(value: Value): Value => {
   if (value !== null && typeof value === "object" && !Object.isFrozen(value)) {
@@ -47,3 +47,15 @@ export const catalogCompilerOwnerContractFingerprint = `sha256:${createHash("sha
     input: { ...catalogCompilerContract.input, s1BundleContractArtifactDigest: ownerBundleContractArtifactDigest,
       subjectOwnership: "driver-scoped-v1" } } as unknown as ContractJsonValue))
   .digest("hex")}`;
+
+export const catalogCompilerDtsContract = (owned: boolean) => {
+  const schemaDigest = dtsExamplesBundleContractArtifactDigest(owned);
+  const contract = {
+    ...catalogCompilerContract,
+    contractVersion: "1.2.0",
+    input: { ...catalogCompilerContract.input, s1BundleContractArtifactDigest: schemaDigest,
+      ...(owned ? { subjectOwnership: "driver-scoped-v1" } : {}), definitionDtsExamples: "verbatim-v1" },
+  };
+  return { schemaDigest, compilerFingerprint: `sha256:${createHash("sha256")
+    .update(serializeContract(contract as unknown as ContractJsonValue)).digest("hex")}` };
+};

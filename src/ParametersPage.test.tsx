@@ -1,3 +1,4 @@
+import * as parameterSearch from "@/lib/search";
 import { selectControlOption } from "@/test/selectControlOption";
 import userEvent from "@testing-library/user-event";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
@@ -1604,6 +1605,26 @@ describe("ParametersPage API topology workspace", () => {
     await waitFor(() => expect(onNavigate).toHaveBeenCalledWith("/parameters?project=nebula&binding=pbind_nebula"));
   });
 
+  it("looks up a mapped Binding's owner by exact ID when its project is not cached", async () => {
+    const onNavigate = vi.fn();
+    const binding = { ...initialState.parameters[0], id: "pbind_nebula", projectId: "nebula" };
+    const getParameter = vi.fn().mockResolvedValue(binding);
+    const getLegacyIdentifier = vi.fn().mockResolvedValue({ item: {
+      legacyType: "project-parameter-binding", legacyId: "old-in-nebula", disposition: "mapped",
+      target: { kind: "parameter-binding", id: binding.id, href: "/api/v2/catalog" }, historicalOnly: false
+    } });
+    render(<TopBarActionsHarness><ParametersPage
+      state={createParametersPageState({ parameters: [] })} dispatch={vi.fn()} onNavigate={onNavigate}
+      search="?project=aurora&parameter=old-in-nebula" runtimeMode="api" canEdit={false}
+      parameterRepository={{ getParameter }} topologyRepository={createApiBoundaryRepository()}
+      canonicalRepository={{ ...createTestAppPorts().parameterCatalogRepository, getLegacyIdentifier }}
+      listConfigSets={async () => [{ id: API_SENTINEL_CONFIG_SET_ID, name: "default" }]}
+    /></TopBarActionsHarness>);
+
+    await waitFor(() => expect(onNavigate).toHaveBeenCalledWith("/parameters?project=nebula&binding=pbind_nebula"));
+    expect(getParameter).toHaveBeenCalledExactlyOnceWith(binding.id);
+  });
+
   it.each(["NOT_FOUND", "CONFLICT", "GONE"])("keeps an unmapped old ?parameter= link visibly historical (%s)", async (code) => {
     const onNavigate = vi.fn();
     const parameterActions = createParameterActions();
@@ -1819,4 +1840,55 @@ describe("ParametersPage API topology workspace", () => {
     expect(screen.queryByText("当前 → 推荐", { exact: false })).not.toBeInTheDocument();
     expect(screen.queryByText("推荐值", { exact: false })).not.toBeInTheDocument();
   });
+});
+
+it("shares a single project search index with the controlled table and displays hidden-field hints", () => {
+  const createIndex = vi.spyOn(parameterSearch, "createSearchIndex");
+  try {
+    const parameters = initialState.parameters.map((record) => ({
+      ...record,
+      explanation: "uniquefixtureexplanation"
+    }));
+    const state = createParametersPageState({ parameters });
+    const props = { dispatch: vi.fn(), onNavigate: vi.fn(), search: "" };
+    const page = (nextState: typeof state) => (
+      <TopBarActionsHarness><ParametersPage {...props} state={nextState} /></TopBarActionsHarness>
+    );
+    const { rerender } = render(page(state));
+    expect(createIndex).toHaveBeenCalledTimes(1);
+    const search = vi.spyOn(createIndex.mock.results[0].value, "search");
+    fireEvent.change(screen.getByLabelText("搜索参数名、描述、模块或路径"), {
+      target: { value: "uniquefixtureexplanation" }
+    });
+    expect(screen.getAllByText("命中：说明").length).toBeGreaterThan(0);
+    expect(search).toHaveBeenCalledTimes(1);
+    expect(createIndex).toHaveBeenCalledTimes(1);
+
+    rerender(page({ ...state, parameters: [...parameters] }));
+    expect(createIndex).toHaveBeenCalledTimes(2);
+    expect(screen.getAllByText("命中：说明").length).toBeGreaterThan(0);
+  } finally {
+    createIndex.mockRestore();
+  }
+});
+
+it("opens the page containing a parameter deep link", () => {
+  const record = initialState.parameters.find((item) => item.projectId === initialState.activeProjectId)!;
+  const parameters = Array.from({ length: 250 }, (_, index) => ({
+    ...record,
+    id: `link-${index + 1}`,
+    name: `linked_parameter_${index + 1}`
+  }));
+  render(
+    <TopBarActionsHarness>
+      <ParametersPage
+        state={createParametersPageState({ parameters })}
+        dispatch={vi.fn()}
+        onNavigate={vi.fn()}
+        search="?parameter=link-180"
+      />
+    </TopBarActionsHarness>
+  );
+  expect(screen.getByText("第 2 / 3 页")).toBeInTheDocument();
+  expect(screen.getByText("linked_parameter_180").closest("tr")).toHaveClass("parameters-table-row-focused");
 });

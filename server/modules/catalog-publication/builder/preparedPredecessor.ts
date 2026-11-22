@@ -1,4 +1,5 @@
 import type { CatalogReleaseBundle } from "../../catalog-kernel/compiler/types";
+import { freezeCatalogJson } from "../../catalog-kernel/compiler/index";
 import { parseBundleBytes } from "./bundleCodec";
 
 declare const preparedPredecessor: unique symbol;
@@ -13,12 +14,6 @@ export type PreparedPredecessorArtifact = {
 // every historical bundle. Only handles created here can reuse a parsed graph.
 const bundles = new WeakMap<PreparedPredecessorArtifact, CatalogReleaseBundle>();
 
-const freezeJson = (value: unknown): void => {
-  if (value === null || typeof value !== "object" || Object.isFrozen(value)) return;
-  for (const child of Object.values(value)) freezeJson(child);
-  Object.freeze(value);
-};
-
 export function preparePredecessorArtifact(input: {
   readonly digest: string;
   readonly bytes: Uint8Array;
@@ -28,7 +23,7 @@ export function preparePredecessorArtifact(input: {
   if (!parsed.ok) return parsed;
   // Planning and building share one graph. Neither the caller's original byte
   // buffer nor a planner may mutate that graph between those stages.
-  freezeJson(parsed.bundle);
+  freezeCatalogJson(parsed.bundle);
   const artifact = Object.freeze({ digest: input.digest }) as PreparedPredecessorArtifact;
   bundles.set(artifact, parsed.bundle);
   return { ok: true, artifact };

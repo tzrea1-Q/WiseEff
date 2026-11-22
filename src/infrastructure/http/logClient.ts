@@ -40,6 +40,7 @@ import {
   logSkillSampleReplaceResponseSchema,
   logSourceSnapshotListResponseSchema,
   logSourceSnapshotResponseSchema,
+  logSourceSnapshotLabelPreviewResponseSchema,
   logSourceEvidenceResponseSchema,
   logSourceLocateResponseSchema,
   logDomainResponseSchema,
@@ -195,6 +196,9 @@ export function createIntegrationCredentialClient(apiClient: ApiClient = createD
     },
     async issueIntegrationCredential(input: { name: string; skillId?: string | null }) {
       return parseContractDto(logIntegrationCredentialSecretResponseSchema, await apiClient.post(path(), input), "LogIntegrationCredentialSecretResponse");
+    },
+    async renameIntegrationCredential(id: string, name: string) {
+      return parseContractDto(logIntegrationCredentialResponseSchema, await apiClient.patch(path(`/${encodeURIComponent(id)}`), { name }), "LogIntegrationCredentialResponse").item;
     },
     async rotateIntegrationCredential(id: string) {
       return parseContractDto(logIntegrationCredentialSecretResponseSchema, await apiClient.post(path(`/${encodeURIComponent(id)}/rotate`), {}), "LogIntegrationCredentialSecretResponse");
@@ -516,6 +520,14 @@ export function createHttpLogAnalysisRepository(
     },
     async listSourceSnapshots(id) {
       return parseContractDto(logSourceSnapshotListResponseSchema, await apiClient.get(`/api/v1/log-skills/${encodeURIComponent(id)}/source-snapshots`), "LogSourceSnapshotListResponse").items;
+    },
+    async previewSourceSnapshotLabel(id, snapshotId, versionLabel) {
+      const path = `/api/v1/log-skills/${encodeURIComponent(id)}/source-snapshots/${encodeURIComponent(snapshotId)}/version-label/preview`;
+      return parseContractDto(logSourceSnapshotLabelPreviewResponseSchema, await apiClient.post(path, { versionLabel }), "LogSourceSnapshotLabelPreviewResponse");
+    },
+    async updateSourceSnapshotLabel(id, snapshotId, input) {
+      const path = `/api/v1/log-skills/${encodeURIComponent(id)}/source-snapshots/${encodeURIComponent(snapshotId)}`;
+      return parseContractDto(logSourceSnapshotResponseSchema, await apiClient.patch(path, input), "LogSourceSnapshotResponse").item;
     },
     async uploadSourceSnapshot(id, { versionLabel, file }) {
       const body = new FormData();

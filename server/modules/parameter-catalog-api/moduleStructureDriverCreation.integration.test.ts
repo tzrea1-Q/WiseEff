@@ -35,7 +35,7 @@ describe("module structure creates drivers through publication before atomic org
     await admin.connect();
     const predecessor = await bootstrapFirstAcme(getRootPostgresPool(db)!);
     await persistPredecessorArtifact(admin, predecessor);
-    await enablePublicationPolicy(admin, { publicationEnabled: true, lowRiskSingleActorPublish: true });
+    await enablePublicationPolicy(admin, { publicationEnabled: true, lowRiskSingleActorPublish: false });
     const runtime = await provisionPublicationRuntimeLogins(fixture.url, { mode: "lab", runToken });
     api = createPostgresDatabase(runtime.apiUrl);
     manager = createPostgresDatabase(runtime.managerUrl);
@@ -107,12 +107,7 @@ describe("module structure creates drivers through publication before atomic org
   async function activate() {
     const pool = getRootPostgresPool(manager)!;
     expect(await runPublicationManagerOnce({ db: manager, pool, installer: createCatalogInstaller(pool), ownerId: runToken,
-      resolvePublisherActor: async principalId => {
-        const user = (await manager.query<{ organization_id: string }>(`select u.organization_id from users u
-          join user_role_bindings r on r.user_id=u.id and r.organization_id=u.organization_id
-          where u.id=$1 and u.is_active and r.role_id='admin' and r.project_id is null`, [principalId])).rows[0];
-        return user ? createUserInvocation(makeTestAuthContext({ userId: principalId, organizationId: user.organization_id, roleId: "admin" })) : null;
-      },
+      resolvePublisherActor: async principalId => createUserInvocation(await getAuthContext(api, principalId)),
     })).toBe("claimed");
   }
 
@@ -244,7 +239,7 @@ describe("module structure creates drivers through publication before atomic org
     expect(await snapshot(id)).toEqual(before);
   });
 
-  it("isolates organizations and enforces publication capability independently of ordinary import access", async () => {
+  it("isolates organizations and lets a platform-only administrator publish their driver candidates", async () => {
     const id = "new-driver-auth", source = await organization(id);
     const other = await organization("new-driver-auth-other");
     const document = withDrivers(await source.exported(), "auth");
@@ -256,22 +251,17 @@ describe("module structure creates drivers through publication before atomic org
     expect(cross.status, cross.bodyText).toBe(403);
     const ownForeign = await other.preview(document);
     expect(ownForeign.status, ownForeign.bodyText).toBe(403);
-    // Production authentication reloads database roles and ignores permissions
-    // supplied by the verifier. Platform admins retain organization import access
-    // but require an explicit Catalog capability grant to publish.
-    await db.query("update user_role_bindings set role_id='platform-admin' where id=$1", [`${id}-role`]);
-    await db.query(`insert into roles(id,name,level,permissions)
-      values ('catalog-capability-module-driver-author','Driver author','user',array['catalog:author'])`);
-    await db.query(`insert into user_role_bindings(id,user_id,organization_id,role_id)
-      values ($1,$2,$3,'catalog-capability-module-driver-author')`, [`${id}-author`, `${id}-admin`, id]);
-    const restricted = await getAuthContext(api, `${id}-admin`);
-    expect(restricted.permissions).toContain("catalog:author");
-    expect(restricted.permissions).not.toContain("catalog:publish");
-    const allowedImport = await checkedPreview(source, document);
-    const rejected = await source.confirm("driver-publications", document, allowedImport.token, "without-publish");
-    expect(rejected.status, rejected.bodyText).toBe(403);
-    expect(rejected.body).toMatchObject({ error: { code: "FORBIDDEN", details: { reason: "publication-capability-missing" } } });
     expect(await snapshot(id)).toEqual(before);
+    await db.query("update user_role_bindings set role_id='platform-admin' where id=$1", [`${id}-role`]);
+    const platformAdmin = await getAuthContext(api, `${id}-admin`);
+    expect(platformAdmin.roles.map(({ roleId }) => roleId)).toEqual(["platform-admin"]);
+    expect(platformAdmin.permissions).toEqual(expect.arrayContaining(["catalog:author", "catalog:publish", "catalog:review-high-risk"]));
+    const allowedImport = await checkedPreview(source, document);
+    const published = await source.confirm("driver-publications", document, allowedImport.token, "self-approval");
+    expect(published.status, published.bodyText).toBe(200);
+    expect(published.body).toMatchObject({ driverCreation: { phase: "publishing" } });
+    await activate();
+    expect((await checkedPreview(source, document)).driverCreation?.phase).toBe("ready");
   });
 
   it("keeps a successful Catalog publication while rolling back organization writes on audit failure, then resumes", async () => {

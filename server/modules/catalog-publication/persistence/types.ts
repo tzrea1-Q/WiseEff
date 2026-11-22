@@ -12,6 +12,13 @@ import type {
   PublicationPolicyRevision,
   Result,
 } from "../../parameter-catalog-contract/index";
+import type { CatalogReleaseNode } from "../../catalog-kernel/compiler/types";
+
+export type PreviewSnapshot = {
+  readonly target: CatalogReleaseNode;
+  readonly hasSubjectRules: boolean;
+  readonly hasDtsExamples: boolean;
+};
 
 export type ArtifactSourceKind =
   | "typed-changeset"
@@ -45,7 +52,8 @@ export type CatalogPublicationStoreError =
       readonly reason:
         | "artifact-digest-bytes-mismatch"
         | "idempotency-key-conflict"
-        | "fencing-token-mismatch";
+        | "fencing-token-mismatch"
+        | "job-status-mismatch";
     }
   | {
       readonly kind: "not-found";
@@ -69,6 +77,9 @@ export type CatalogPublicationStoreError =
 export type CatalogPublicationStoreResult<T> = Result<T, CatalogPublicationStoreError>;
 
 export interface ReleaseArtifactRecord {
+  readonly storageFormat?: "successor-v1";
+  /** Checksum of the compact stored bytes when artifactBytes contains a reconstructed bundle. */
+  readonly storageBytesChecksum?: string;
   readonly id: CatalogArtifactId;
   readonly artifactDigest: string;
   readonly bytesChecksum: string;
@@ -83,6 +94,7 @@ export interface ReleaseArtifactRecord {
 }
 
 export interface PersistArtifactInput {
+  readonly storageFormat?: "successor-v1";
   readonly id: CatalogArtifactId;
   readonly artifactDigest: string;
   readonly artifactBytes: Uint8Array;
@@ -189,6 +201,7 @@ export interface JobExecutionPatch {
   readonly leaseUntil?: string | null;
   readonly fencingToken?: number;
   readonly expectedFencingToken?: number;
+  readonly expectedStatus?: PublicationJobStatus;
   readonly attemptCount?: number;
   readonly lastErrorClass?: string | null;
   readonly lastErrorReason?: string | null;

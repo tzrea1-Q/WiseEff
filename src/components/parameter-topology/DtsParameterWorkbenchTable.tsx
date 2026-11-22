@@ -1,4 +1,6 @@
-import { useMemo, useState } from "react";
+import { ParameterTablePager } from "@/components/ParameterTablePager";
+import { useWorkbenchPagination } from "./useWorkbenchPagination";
+import { memo, useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowDown,
   ArrowUp,
@@ -23,6 +25,7 @@ export type DtsWorkbenchSort = {
 
 export type DtsParameterWorkbenchTableProps = {
   rows: DtsParameterWorkbenchRow[];
+  scopeKey?: string;
   /** Legacy flat filter options for callers that have not migrated to tree mode. */
   moduleFilterOptions?: readonly string[];
   /** Legacy selected module names; empty means no column filter. */
@@ -159,6 +162,7 @@ function SortableHeader({
  */
 export function DtsParameterWorkbenchTable({
   rows,
+  scopeKey,
   moduleFilterOptions,
   moduleFilterSelected: controlledModuleFilterSelected,
   onModuleFilterToggle,
@@ -191,10 +195,6 @@ export function DtsParameterWorkbenchTable({
     [controlledModuleFilterSelected, moduleFilterControlled, treeModuleFilterControlled, uncontrolledModuleFilter]
   );
   const selectionEnabled = Boolean(onSelectedBindingIdsChange && selectedBindingIds);
-  const draftRows = useMemo(
-    () => rows.filter((row) => draftBindingIds.has(row.bindingId)),
-    [draftBindingIds, rows]
-  );
   const moduleValues = useMemo(() => {
     const source = moduleFilterOptions ?? rows.map((row) => row.moduleName);
     return Array.from(new Set(source.map((name) => name.trim()).filter(Boolean))).sort((left, right) =>
@@ -216,6 +216,12 @@ export function DtsParameterWorkbenchTable({
     if (!sort) return filteredRows;
     return [...filteredRows].sort((left, right) => compareRows(left, right, sort));
   }, [filteredRows, sort]);
+  const draftRows = useMemo(
+    () => filteredRows.filter((row) => draftBindingIds.has(row.bindingId)),
+    [draftBindingIds, filteredRows]
+  );
+  const focusIndex = useMemo(() => sortedRows.findIndex((row) => row.bindingId === selectedBindingId), [sortedRows, selectedBindingId]);
+  const { start, end, pager } = useWorkbenchPagination(sortedRows.length, JSON.stringify([scopeKey, moduleFilterSelected, sort]), selectedBindingId, focusIndex);
   const showDescription = filteredRows.some((row) => Boolean(row.description?.trim()));
 
   const updateSort = (key: DtsWorkbenchSortKey) => {
@@ -265,182 +271,210 @@ export function DtsParameterWorkbenchTable({
     onSelectedBindingIdsChange(next);
   };
 
-  const toggleRow = (bindingId: string) => {
+  const rowSelection = useRef({ onSelectedBindingIdsChange, selectedBindingIds, draftBindingIds });
+  useLayoutEffect(() => {
+    rowSelection.current = { onSelectedBindingIdsChange, selectedBindingIds, draftBindingIds };
+  }, [onSelectedBindingIdsChange, selectedBindingIds, draftBindingIds]);
+  const toggleRow = useCallback((bindingId: string) => {
+    const { onSelectedBindingIdsChange, selectedBindingIds, draftBindingIds } = rowSelection.current;
     if (!onSelectedBindingIdsChange || !selectedBindingIds) return;
     if (!draftBindingIds.has(bindingId)) return;
     const next = new Set(selectedBindingIds);
     if (next.has(bindingId)) next.delete(bindingId);
     else next.add(bindingId);
     onSelectedBindingIdsChange(next);
-  };
+  }, []);
 
   return (
-    <div role="table" aria-label="DTS 参数列表" className={`dts-parameter-workbench-table dts-parameter-workbench-table--surface-mvp${showDescription ? "" : " dts-parameter-workbench-table--without-description"}`}>
-      <div role="rowgroup" className="dts-parameter-workbench-table__head">
-        <div role="row" className="dts-parameter-workbench-table__header-row">
-          {selectionEnabled ? (
-            <span role="columnheader" className="dts-parameter-workbench-table__select">
-              <input
-                type="checkbox"
-                aria-label="全选已修改项"
-                checked={allDraftSelected}
-                disabled={draftRows.length === 0}
-                onChange={toggleAllDrafts}
-              />
+    <>
+      <div role="table" aria-label="DTS 参数列表" className={`dts-parameter-workbench-table dts-parameter-workbench-table--surface-mvp${showDescription ? "" : " dts-parameter-workbench-table--without-description"}`}>
+        <div role="rowgroup" className="dts-parameter-workbench-table__head">
+          <div role="row" className="dts-parameter-workbench-table__header-row">
+            {selectionEnabled ? (
+              <span role="columnheader" className="dts-parameter-workbench-table__select">
+                <input
+                  type="checkbox"
+                  aria-label="全选已修改项"
+                  checked={allDraftSelected}
+                  disabled={draftRows.length === 0}
+                  onChange={toggleAllDrafts}
+                />
+              </span>
+            ) : null}
+            <span role="columnheader">
+              <SortableHeader label="参数名" sortKey="propertyKey" sort={sort} onSort={updateSort} />
             </span>
-          ) : null}
-          <span role="columnheader">
-            <SortableHeader label="参数名" sortKey="propertyKey" sort={sort} onSort={updateSort} />
-          </span>
-          {showDescription ? <span role="columnheader">展示描述</span> : null}
-          <span role="columnheader" className="dts-parameter-workbench-table__module-filter-col">
-            <span className="dts-parameter-workbench-table__head-cell">
-              <span>所属模块</span>
-            {treeModuleFilterControlled ? (
-              <ColumnFilter
-                label="所属模块"
-                groupLabel="所属模块筛选"
-                mode="tree"
-                treeNodes={moduleFilterNodes ?? []}
-                selectedTreeIds={moduleFilterSelected}
-                onTreeChange={(next) => onModuleFilterChange?.(next)}
-                onClear={clearModuleFilter}
-                treeSearchable
-              />
-            ) : (
-              <ColumnFilter
-                label="所属模块"
-                groupLabel="所属模块筛选"
-                values={moduleValues}
-                selectedValues={activeModuleFilter}
-                onToggle={toggleModuleFilter}
-                onClear={clearModuleFilter}
-              />
-            )}
+            {showDescription ? <span role="columnheader">展示描述</span> : null}
+            <span role="columnheader" className="dts-parameter-workbench-table__module-filter-col">
+              <span className="dts-parameter-workbench-table__head-cell">
+                <span>所属模块</span>
+              {treeModuleFilterControlled ? (
+                <ColumnFilter
+                  label="所属模块"
+                  groupLabel="所属模块筛选"
+                  mode="tree"
+                  treeNodes={moduleFilterNodes ?? []}
+                  selectedTreeIds={moduleFilterSelected}
+                  onTreeChange={(next) => onModuleFilterChange?.(next)}
+                  onClear={clearModuleFilter}
+                  treeSearchable
+                />
+              ) : (
+                <ColumnFilter
+                  label="所属模块"
+                  groupLabel="所属模块筛选"
+                  values={moduleValues}
+                  selectedValues={activeModuleFilter}
+                  onToggle={toggleModuleFilter}
+                  onClear={clearModuleFilter}
+                />
+              )}
+              </span>
             </span>
-          </span>
-          <span role="columnheader" className="dts-parameter-workbench-table__driver-col">
-            <span className="dts-parameter-workbench-table__driver-col-label">器件 / 驱动</span>
-          </span>
-          <span role="columnheader">当前值</span>
-          <span role="columnheader">
-            <SortableHeader label="重要性" sortKey="importance" sort={sort} onSort={updateSort} />
-          </span>
-          <span role="columnheader" className="dts-parameter-workbench-table__actions-col">
-            操作
-          </span>
+            <span role="columnheader" className="dts-parameter-workbench-table__driver-col">
+              <span className="dts-parameter-workbench-table__driver-col-label">器件 / 驱动</span>
+            </span>
+            <span role="columnheader">当前值</span>
+            <span role="columnheader">
+              <SortableHeader label="重要性" sortKey="importance" sort={sort} onSort={updateSort} />
+            </span>
+            <span role="columnheader" className="dts-parameter-workbench-table__actions-col">
+              操作
+            </span>
+          </div>
+        </div>
+        <div role="rowgroup" className="dts-parameter-workbench-table__body">
+          {sortedRows.slice(start, end).map((row) => (
+            <WorkbenchRow key={row.bindingId} row={row} isDraft={draftBindingIds.has(row.bindingId)}
+              isSelected={selectedBindingId === row.bindingId} isChecked={selectedBindingIds?.has(row.bindingId) ?? false}
+              selectionEnabled={selectionEnabled} showDescription={showDescription}
+              toggleRow={toggleRow} onSelectBinding={onSelectBinding} />
+          ))}
         </div>
       </div>
-      <div role="rowgroup" className="dts-parameter-workbench-table__body">
-        {sortedRows.map((row) => {
-          const isDraft = draftBindingIds.has(row.bindingId);
-          const isSelected = selectedBindingId === row.bindingId;
-          const isChecked = selectedBindingIds?.has(row.bindingId) ?? false;
-          const actionContext = bindingActionContext(row);
-          const displayRaw = formatDtsValueForUi(row.rawValue, row.effectiveValue);
-          const displayName = row.currentDisplayName?.trim() || row.displayName?.trim();
-          const hasDisplayName = Boolean(displayName && displayName !== row.propertyKey);
-          return (
-            <div
-              role="row"
-              key={row.bindingId}
-              data-binding-id={row.bindingId}
-              aria-selected={isSelected}
-              className={`dts-parameter-workbench-table__row dts-parameter-workbench-table__card is-${row.governanceState}${isDraft ? " is-draft" : ""}${isSelected ? " is-selected" : ""}`}
-            >
-              {selectionEnabled ? (
-                <span role="cell" data-label="选择" className="dts-parameter-workbench-table__select">
-                  {isDraft ? (
-                    <input
-                      type="checkbox"
-                      aria-label={`选择 ${actionContext}`}
-                      checked={isChecked}
-                      onChange={() => toggleRow(row.bindingId)}
-                    />
-                  ) : (
-                    <span aria-hidden="true" />
-                  )}
-                </span>
-              ) : null}
-              <span role="cell" data-label="参数名" className="dts-parameter-workbench-table__property">
-                <span className="dts-parameter-workbench-table__property-primary">
-                  {hasDisplayName ? (
-                    <strong title={displayName}>{displayName}</strong>
-                  ) : (
-                    <code title={row.propertyKey}>{row.propertyKey}</code>
-                  )}
-                  {isDraft ? (
-                    <span
-                      className="dts-parameter-workbench-table__draft-badge"
-                      data-testid={`draft-${row.bindingId}`}
-                    >
-                      草稿
-                    </span>
-                  ) : null}
-                </span>
-                {hasDisplayName || row.nodeEnablementNotice ? (
-                  <span className="dts-parameter-workbench-table__property-secondary">
-                    {hasDisplayName ? <code title={row.propertyKey}>{row.propertyKey}</code> : null}
-                    {row.nodeEnablementNotice ? (
-                      <small
-                        className="dts-parameter-workbench-table__enablement-notice"
-                        title={row.nodeEnablementNotice}
-                      >
-                        {row.nodeEnablementNotice}
-                        {row.topologyPath ? (
-                          <span className="dts-parameter-workbench-table__enablement-path">
-                            {" "}
-                            · {row.topologyPath}
-                          </span>
-                        ) : null}
-                      </small>
-                    ) : null}
-                  </span>
-                ) : null}
-              </span>
-              {showDescription ? <span
-                role="cell"
-                data-label="展示描述"
-                className="dts-parameter-workbench-table__description"
-                title={row.description?.trim() || undefined}
-              >
-                {row.description?.trim() || "—"}
-              </span> : null}
-              <span role="cell" data-label="所属模块">
-                <span className="dts-parameter-workbench-table__module">
-                  <strong className={row.moduleName === "unset" ? "module-badge module-tone-2" : undefined}
-                    title={row.moduleName === "unset" ? "未分配模块，请重新归类" : row.modulePath.join(" / ")}>{row.moduleName === "unset" ? "unset（未分配）" : row.moduleName}</strong>
-                  <small className="dts-parameter-workbench-table__instance" title={row.sourceNodePath || row.topologyPath || row.instanceName || undefined}>{row.sourceNodePath || row.topologyPath || row.instanceName}</small>
-                </span>
-              </span>
-              <span role="cell" data-label="器件 / 驱动" className="dts-parameter-workbench-table__driver-col">
-                <DeviceIdentity row={row} />
-              </span>
-              <span role="cell" data-label="当前值">
-                <code title={displayRaw}>{displayRaw}</code>
-              </span>
-              <span role="cell" data-label="重要性">
-                <ImportanceCell row={row} />
-              </span>
-              <span
-                role="cell"
-                data-label="操作"
-                className="dts-parameter-workbench-table__actions dts-parameter-workbench-table__actions-col"
-              >
-                <button
-                  type="button"
-                  className="button subtle dts-parameter-workbench-table__icon-action"
-                  aria-label={`参数详情 ${actionContext}`}
-                  title={isDraft ? "查看并继续编辑草稿" : "参数详情"}
-                  onClick={() => onSelectBinding(row.bindingId)}
-                >
-                  <ArrowUpRight size={16} strokeWidth={1.9} aria-hidden="true" />
-                </button>
-              </span>
-            </div>
-          );
-        })}
-      </div>
-    </div>
+      {sortedRows.length > 50 ? <ParameterTablePager {...pager} /> : null}
+    </>
   );
 }
+
+const WorkbenchRow = memo(function WorkbenchRow({
+  row, isDraft, isSelected, isChecked, selectionEnabled, showDescription, toggleRow, onSelectBinding
+}: {
+  row: DtsParameterWorkbenchRow;
+  isDraft: boolean;
+  isSelected: boolean;
+  isChecked: boolean;
+  selectionEnabled: boolean;
+  showDescription: boolean;
+  toggleRow: (id: string) => void;
+  onSelectBinding: (id: string) => void;
+}) {
+  const actionContext = bindingActionContext(row);
+  const displayRaw = useMemo(() => formatDtsValueForUi(row.rawValue, row.effectiveValue), [row.rawValue, row.effectiveValue]);
+  const displayLines = displayRaw.split("\n");
+  const displayName = row.currentDisplayName?.trim() || row.displayName?.trim();
+  const hasDisplayName = Boolean(displayName && displayName !== row.propertyKey);
+  return (
+    <div
+      role="row"
+      data-binding-id={row.bindingId}
+      aria-selected={isSelected}
+      className={`dts-parameter-workbench-table__row dts-parameter-workbench-table__card is-${row.governanceState}${isDraft ? " is-draft" : ""}${isSelected ? " is-selected" : ""}`}
+    >
+      {selectionEnabled ? (
+        <span role="cell" data-label="选择" className="dts-parameter-workbench-table__select">
+          {isDraft ? (
+            <input
+              type="checkbox"
+              aria-label={`选择 ${actionContext}`}
+              checked={isChecked}
+              onChange={() => toggleRow(row.bindingId)}
+            />
+          ) : (
+            <span aria-hidden="true" />
+          )}
+        </span>
+      ) : null}
+      <span role="cell" data-label="参数名" className="dts-parameter-workbench-table__property">
+        <span className="dts-parameter-workbench-table__property-primary">
+          {hasDisplayName ? (
+            <strong title={displayName}>{displayName}</strong>
+          ) : (
+            <code title={row.propertyKey}>{row.propertyKey}</code>
+          )}
+          {isDraft ? (
+            <span
+              className="dts-parameter-workbench-table__draft-badge"
+              data-testid={`draft-${row.bindingId}`}
+            >
+              草稿
+            </span>
+          ) : null}
+        </span>
+        {hasDisplayName || row.nodeEnablementNotice ? (
+          <span className="dts-parameter-workbench-table__property-secondary">
+            {hasDisplayName ? <code title={row.propertyKey}>{row.propertyKey}</code> : null}
+            {row.nodeEnablementNotice ? (
+              <small
+                className="dts-parameter-workbench-table__enablement-notice"
+                title={row.nodeEnablementNotice}
+              >
+                {row.nodeEnablementNotice}
+                {row.topologyPath ? (
+                  <span className="dts-parameter-workbench-table__enablement-path">
+                    {" "}
+                    · {row.topologyPath}
+                  </span>
+                ) : null}
+              </small>
+            ) : null}
+          </span>
+        ) : null}
+      </span>
+      {showDescription ? <span
+        role="cell"
+        data-label="展示描述"
+        className="dts-parameter-workbench-table__description"
+        title={row.description?.trim() || undefined}
+      >
+        {row.description?.trim() || "—"}
+      </span> : null}
+      <span role="cell" data-label="所属模块">
+        <span className="dts-parameter-workbench-table__module">
+          <strong className={row.moduleName === "unset" ? "module-badge module-tone-2" : undefined}
+            title={row.moduleName === "unset" ? "未分配模块，请重新归类" : row.modulePath.join(" / ")}>{row.moduleName === "unset" ? "unset（未分配）" : row.moduleName}</strong>
+          <small className="dts-parameter-workbench-table__instance" title={row.sourceNodePath || row.topologyPath || row.instanceName || undefined}>{row.sourceNodePath || row.topologyPath || row.instanceName}</small>
+        </span>
+      </span>
+      <span role="cell" data-label="器件 / 驱动" className="dts-parameter-workbench-table__driver-col">
+        <DeviceIdentity row={row} />
+      </span>
+      <span role="cell" data-label="当前值">
+        {displayLines.length > 1 ? (
+          <span className="dts-parameter-workbench-table__value-summary" title={row.rawValue ?? displayRaw}>
+            <code>{displayRaw.replace(/\s+/g, " ")}</code>
+            <small>共 {displayLines.length} 行</small>
+          </span>
+        ) : <code title={displayRaw}>{displayRaw}</code>}
+      </span>
+      <span role="cell" data-label="重要性">
+        <ImportanceCell row={row} />
+      </span>
+      <span
+        role="cell"
+        data-label="操作"
+        className="dts-parameter-workbench-table__actions dts-parameter-workbench-table__actions-col"
+      >
+        <button
+          type="button"
+          className="button subtle dts-parameter-workbench-table__icon-action"
+          aria-label={`参数详情 ${actionContext}`}
+          title={isDraft ? "查看并继续编辑草稿" : "参数详情"}
+          onClick={() => onSelectBinding(row.bindingId)}
+        >
+          <ArrowUpRight size={16} strokeWidth={1.9} aria-hidden="true" />
+        </button>
+      </span>
+    </div>
+  );
+});

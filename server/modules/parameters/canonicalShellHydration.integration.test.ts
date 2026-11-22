@@ -90,18 +90,22 @@ describe("#1075 canonical shell source on the assembled API server", () => {
     const body = await response.json();
     expect(response.status, JSON.stringify(body)).toBe(200);
     expect(body).toMatchObject({ items: [{ id: bindingId, definitionId: "pdef_acme_power_iin_max" }] });
+    expect((await options.fetchImpl(`${baseUrl}/api/v1/parameters`)).status).toBe(500);
     const dispatch = vi.fn();
     const runtime = createParameterRuntimeActions({
       runtimeMode: "api", dispatch,
       repository: createHttpParameterRepository(createApiClient(options)),
       canonicalRepository: createParameterCatalogClient(options)
     });
-    expect(await runtime.refresh()).toMatchObject({
-      projects: [{ id: projectId }],
-      parameters: [{ id: bindingId, projectId, name: "iin_max", currentValue: "36.5\n" }],
-      parameterDrafts: []
+    expect(await runtime.refresh()).toMatchObject({ projects: [{ id: projectId }] });
+    expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({ type: "HYDRATE_PARAMETER_PROJECTS" }));
+    await runtime.ensureProjectParameters([projectId]);
+    expect(dispatch).toHaveBeenCalledWith({
+      type: "UPDATE_PROJECT_PARAMETER_CACHE", projectId,
+      parameters: [expect.objectContaining({ id: bindingId, projectId, name: "iin_max", currentValue: "36.5\n" })]
     });
-    expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({ type: "HYDRATE_PARAMETER_RUNTIME" }));
+    expect(dispatch).toHaveBeenCalledWith({ type: "UPDATE_PROJECT_PARAMETER_CACHE", projectId, drafts: [] });
+    expect(dispatch).toHaveBeenCalledWith({ type: "UPDATE_PROJECT_PARAMETER_CACHE", projectId, status: "ready" });
   });
 
   it("hydrates organization-visible projects while keeping foreign Bindings inaccessible", async () => {
@@ -134,7 +138,16 @@ describe("#1075 canonical shell source on the assembled API server", () => {
       repository: createHttpParameterRepository(createApiClient(options)),
       canonicalRepository: createParameterCatalogClient(options)
     });
-    expect(await runtime.refresh()).toMatchObject({ projects: [{ id: projectId }, { id: hiddenProjectId }], parameters: [{ id: bindingId }], parameterDrafts: [] });
+    expect(await runtime.refresh()).toMatchObject({ projects: [{ id: projectId }, { id: hiddenProjectId }] });
+    await runtime.ensureProjectParameters([projectId, hiddenProjectId]);
+    expect(dispatch).toHaveBeenCalledWith({
+      type: "UPDATE_PROJECT_PARAMETER_CACHE", projectId, parameters: [expect.objectContaining({ id: bindingId })]
+    });
+    expect(dispatch).toHaveBeenCalledWith({ type: "UPDATE_PROJECT_PARAMETER_CACHE", projectId: hiddenProjectId, parameters: [] });
+    for (const visibleProjectId of [projectId, hiddenProjectId]) {
+      expect(dispatch).toHaveBeenCalledWith({ type: "UPDATE_PROJECT_PARAMETER_CACHE", projectId: visibleProjectId, drafts: [] });
+      expect(dispatch).toHaveBeenCalledWith({ type: "UPDATE_PROJECT_PARAMETER_CACHE", projectId: visibleProjectId, status: "ready" });
+    }
     expect(unexpectedResponses).toEqual([]);
     const organizationRead = await options.fetchImpl(`${baseUrl}/api/v2/projects/${hiddenProjectId}/parameter-bindings`);
     expect(organizationRead.status).toBe(200);

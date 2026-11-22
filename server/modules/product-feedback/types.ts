@@ -94,6 +94,7 @@ export type ProductFeedbackAdminDto = {
   pagePath: string;
   pageTitle: string;
   feedbackType: ProductFeedbackType;
+  effectiveFeedbackType: ProductFeedbackType;
   description: string;
   status: ProductFeedbackStatus;
   resolutionCode: ProductFeedbackResolutionCode | null;
@@ -166,6 +167,7 @@ export type ListMyFeedbackResult = {
 };
 
 export type UpdateProductFeedbackPatch = {
+  effectiveFeedbackType?: ProductFeedbackType;
   status?: ProductFeedbackStatus;
   adminNote?: string | null;
   resolutionCode?: ProductFeedbackResolutionCode | null;
@@ -181,6 +183,7 @@ export type ReplyToProductFeedbackInput = {
 };
 
 export type ProductFeedbackStatsDto = {
+  byType: Record<ProductFeedbackType, number>;
   total: number;
   open: number;
   inProgress: number;

@@ -1,4 +1,4 @@
-import type pg from "pg";
+import pg from "pg";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { compileVendorCatalogSuccessor } from "../../../../scripts/compile-vendor-catalog-release";
@@ -7,13 +7,15 @@ import type { VerifiedPublicationAuthorization } from "../../catalog-publication
 import { encodeBundleBytes, refreshSuccessorSource } from "../../catalog-publication/builder/bundleCodec";
 import * as store from "../../catalog-publication/persistence/store";
 import type { CatalogActivationReceiptRecord, PublicationJobRecord } from "../../catalog-publication/persistence/types";
-import { CatalogArtifactId } from "../../parameter-catalog-contract/index";
+import { CatalogArtifactId, PublicationPolicyRevision } from "../../parameter-catalog-contract/index";
 import * as freeze from "../../catalog-publication/runtime/freeze";
-import { compileCatalogRelease } from "../compiler/index";
+import * as compiler from "../compiler/index";
 import type { CatalogReleaseDocument } from "../compiler/types";
+import * as verification from "../verification/index";
 import * as currentPointer from "./currentPointer";
+import { installPublishedRelease } from "./installer";
 import * as materialization from "./materializeRelease";
-import { activateOnlinePublication, refuseRetiredOwnerDefinitionChanges } from "./publicationActivation";
+import { refuseRetiredOwnerDefinitionChanges } from "./publicationActivation";
 import type { InstallPublishedReleaseCommand } from "../interface";
 
 afterEach(() => vi.restoreAllMocks());
@@ -35,7 +37,7 @@ function successor(documents: readonly CatalogReleaseDocument[]) {
     } },
   });
   const bundle = { ...vendor.bundle, targetReleaseId: successorId, releases: [...vendor.bundle.releases, target] };
-  const compiled = compileCatalogRelease(bundle);
+  const compiled = compiler.compileCatalogRelease(bundle);
   if (!compiled.ok) throw new Error(JSON.stringify(compiled.error));
   return { bundle, compiled: compiled.value };
 }
@@ -108,57 +110,170 @@ describe("stored publication candidate retired owner boundary", () => {
     expect(() => refuseRetiredOwnerDefinitionChanges(successor([...base.documents, subject, definition]).compiled)).not.toThrow();
   });
 
-  function storedCandidate() {
-    const prepared = successor(base.documents.map((document) => document === retiredDefinition ? revise(document, true) : document));
+  function storedCandidate(changed = retiredDefinition) {
+    const prepared = successor(base.documents.map((document) => document === changed ? revise(document, true) : document));
     const command = { mode: "online-publication", jobId: "cjob_old", candidateId: "ccand_old", authorizationId: "cauth_old", fencingToken: 1,
       expectedCurrent: { id: vendor.compiled.release.id, digest: vendor.compiled.aggregateDigest },
     } as Extract<InstallPublishedReleaseCommand, { mode: "online-publication" }>;
     vi.spyOn(store, "getJob").mockResolvedValue({ ok: true, value: {
       candidateId: command.candidateId, authorizationId: command.authorizationId, fencingToken: command.fencingToken,
     } as PublicationJobRecord });
-    vi.spyOn(currentPointer, "readCurrentCatalogPointer").mockResolvedValue({ kind: "installed", current: vendor.compiled.release, predecessorReleaseId: null });
-    const client = { query: vi.fn().mockResolvedValue({ rows: [], rowCount: 0 }) } as unknown as pg.PoolClient;
+    vi.spyOn(currentPointer, "readCurrentCatalogPointer").mockResolvedValue({
+      kind: "installed", current: vendor.compiled.release, predecessorReleaseId: null, subjectOwnerEpoch: "0",
+    });
+    const query = vi.fn(async (sql: string, _values?: unknown[]) => ({
+      rows: sql.includes("from catalog_publication.release_artifacts") ? [{ present: true }] : [], rowCount: 0,
+    }));
+    const release = vi.fn();
+    const connect = vi.fn(async () => ({ query, release } as unknown as pg.PoolClient));
+    const pool = { connect } as unknown as pg.Pool;
     const materialize = vi.spyOn(materialization, "materializeCompiledRelease");
-    return { prepared, command, client, materialize };
-  }
-
-  it("refuses an already stored and authorized candidate before any domain write", async () => {
-    const { prepared, command, client, materialize } = storedCandidate();
-    vi.spyOn(store, "getReceiptByJobId").mockResolvedValue({ ok: false, error: { kind: "not-found", entity: "receipt" } });
-    vi.spyOn(freeze, "isPublicationFrozen").mockResolvedValue(false);
-    vi.spyOn(authorization, "verifyAuthorizationForActivation").mockResolvedValue({ ok: true, value: {} as VerifiedPublicationAuthorization });
-    vi.spyOn(store, "getCandidate").mockResolvedValue({ ok: true, value: {
+    const candidate = {
       id: command.candidateId, artifactId: CatalogArtifactId("cart_old"),
       artifactDigest: prepared.compiled.aggregateDigest,
       expectedBaseReleaseId: command.expectedCurrent.id, expectedBaseReleaseDigest: command.expectedCurrent.digest,
       proposalId: null, proposalRevisionId: null, identityAllocation: {},
       impactReportDigest: "sha256:fixture-impact", capabilityContract: {}, createdAt: "2026-10-16T00:00:00Z",
-    } });
-    vi.spyOn(store, "getArtifactByDigest").mockResolvedValue({ ok: true, value: {
-      id: CatalogArtifactId("cart_old"), bytesChecksum: "sha256:fixture-bytes", sourceKind: "typed-changeset",
-      artifactDigest: prepared.compiled.aggregateDigest, artifactBytes: encodeBundleBytes(prepared.bundle),
+    };
+    const candidateRead = vi.spyOn(store, "getCandidate").mockResolvedValue({ ok: true, value: candidate });
+    const artifactBytes = encodeBundleBytes(prepared.bundle);
+    const artifactRead = vi.spyOn(store, "getArtifactByDigest").mockResolvedValue({ ok: true, value: {
+      id: candidate.artifactId, bytesChecksum: store.sha256DigestOfBytes(artifactBytes), sourceKind: "typed-changeset",
+      artifactDigest: candidate.artifactDigest, artifactBytes,
       targetReleaseId: prepared.compiled.release.id, targetReleaseDigest: prepared.compiled.release.digest,
       predecessorReleaseId: command.expectedCurrent.id, predecessorReleaseDigest: command.expectedCurrent.digest,
       toolchain: {}, createdAt: "2026-10-16T00:00:00Z",
     } });
-    await expect(activateOnlinePublication(client, command)).rejects.toMatchObject({ activationError: {
+    vi.spyOn(freeze, "isPublicationFrozen").mockResolvedValue(false);
+    const policyRevision = PublicationPolicyRevision(1);
+    const authorized: VerifiedPublicationAuthorization = {
+      candidate, riskClass: "low",
+      policy: {
+        revision: policyRevision, publicationEnabled: true, lowRiskSingleActorPublish: true, capabilityContractRevision: "v1",
+        updatedAt: candidate.createdAt, updatedByPrincipalId: "user-catalog-publisher",
+      },
+      authorization: {
+        id: command.authorizationId, candidateId: candidate.id, eventKind: "approve", artifactDigest: candidate.artifactDigest,
+        expectedBaseReleaseId: candidate.expectedBaseReleaseId, expectedBaseReleaseDigest: candidate.expectedBaseReleaseDigest,
+        proposalRevisionId: null, impactReportDigest: candidate.impactReportDigest, capabilityContractDigest: "sha256:fixture-contract",
+        policyRevision, actorPrincipalId: "user-catalog-publisher", approvedAuthorizationId: null, createdAt: candidate.createdAt,
+      },
+    };
+    const authorize = vi.spyOn(authorization, "verifyAuthorizationForActivation").mockResolvedValue({
+      ok: true, value: authorized,
+    });
+    const receiptRead = vi.spyOn(store, "getReceiptByJobId").mockResolvedValue({ ok: false, error: { kind: "not-found", entity: "receipt" } });
+    return { prepared, command, pool, query, release, connect, materialize, candidateRead, artifactRead, authorize, receiptRead };
+  }
+
+  it("releases the artifact reader before compiling and authorizes under the write lock", async () => {
+    const { command, pool, query, release, materialize, artifactRead, authorize } = storedCandidate();
+    const compile = vi.spyOn(compiler, "compileCatalogRelease");
+    await expect(installPublishedRelease(pool, command)).resolves.toMatchObject({ ok: false, error: {
       kind: "publication-not-authorized", reason: "subject-retired",
     } });
+    const compileOrder = compile.mock.invocationCallOrder[0]!;
+    const lockIndex = query.mock.calls.findIndex(([sql]) => sql.includes("acquire_current_pointer_lock_exclusive"));
+    expect(lockIndex).toBeGreaterThan(0);
+    const lockOrder = query.mock.invocationCallOrder[lockIndex]!;
+    expect(release.mock.invocationCallOrder[0]).toBeLessThan(compileOrder);
+    expect(compileOrder).toBeLessThan(lockOrder);
+    expect(lockOrder).toBeLessThan(authorize.mock.invocationCallOrder[0]!);
+    expect(artifactRead).toHaveBeenCalledTimes(1);
     expect(materialize).not.toHaveBeenCalled();
-    expect(vi.mocked(client.query).mock.calls.every(([sql]) => typeof sql === "string" && sql.trim().startsWith("select"))).toBe(true);
+  });
+
+  it("requires the prepared artifact identity to still match before materialization", async () => {
+    const { command, pool, query, materialize, artifactRead } = storedCandidate();
+    query.mockImplementation(async () => ({ rows: [], rowCount: 0 }));
+    await expect(installPublishedRelease(pool, command)).resolves.toMatchObject({ ok: false, error: {
+      kind: "publication-not-authorized", reason: "candidate-stale",
+    } });
+    expect(query.mock.calls.find(([sql]) => sql.includes("from catalog_publication.release_artifacts"))?.[1]).toEqual([
+      "cart_old", expect.stringMatching(/^sha256:/), expect.stringMatching(/^sha256:/), successorId, expect.stringMatching(/^sha256:/),
+    ]);
+    expect(artifactRead).toHaveBeenCalledTimes(1);
+    expect(materialize).not.toHaveBeenCalled();
+  });
+
+  it("rechecks the approver after preparation and before authorizing under the lock", async () => {
+    const { command, pool, query, materialize, authorize, artifactRead } = storedCandidate();
+    const refreshTrustedActor = vi.fn(async () => null);
+    await expect(installPublishedRelease(pool, { ...command, refreshTrustedActor })).resolves.toMatchObject({ ok: false, error: {
+      kind: "publication-not-authorized", reason: "publication-capability-missing",
+    } });
+    const guardIndex = query.mock.calls.findIndex(([sql]) => sql.includes("acquire_publication_guard_lock"));
+    const guardOrder = query.mock.invocationCallOrder[guardIndex]!;
+    expect(artifactRead.mock.invocationCallOrder[0]).toBeLessThan(guardOrder);
+    expect(guardOrder).toBeLessThan(refreshTrustedActor.mock.invocationCallOrder[0]!);
+    expect(authorize).not.toHaveBeenCalled();
+    expect(materialize).not.toHaveBeenCalled();
+  });
+
+  it("stops before acquiring the write lock when compilation crossed the deadline", async () => {
+    const { prepared, command, pool, connect, query } = storedCandidate();
+    let now = 100;
+    vi.spyOn(Date, "now").mockImplementation(() => now);
+    vi.spyOn(compiler, "compileCatalogRelease").mockImplementation(() => {
+      now = 201;
+      return { ok: true, value: prepared.compiled };
+    });
+    await expect(installPublishedRelease(pool, { ...command, activationDeadlineMs: 200 })).resolves.toEqual({
+      ok: false, error: { kind: "activation-timeout" },
+    });
+    expect(connect).toHaveBeenCalledTimes(1);
+    expect(query.mock.calls.some(([sql]) => sql.includes("acquire_current_pointer_lock_exclusive"))).toBe(false);
+  });
+
+  it("rolls back when activation crosses the deadline before commit", async () => {
+    const { command, pool, query, materialize } = storedCandidate(activeDefinition);
+    let now = 100;
+    vi.spyOn(Date, "now").mockImplementation(() => now);
+    query.mockImplementation(async (sql) => {
+      if (sql.includes("mark_job_activated")) now = 201;
+      return { rows: sql.includes("from catalog_publication.release_artifacts") ? [{ present: true }] : [], rowCount: 0 };
+    });
+    materialize.mockResolvedValue({} as Awaited<ReturnType<typeof materialization.materializeCompiledRelease>>);
+    vi.spyOn(verification, "verifyStagedReleaseProjection").mockResolvedValue({ ok: true });
+    vi.spyOn(store, "insertReceipt").mockResolvedValue({ ok: true, value: { id: "crct_test" } as CatalogActivationReceiptRecord });
+    await expect(installPublishedRelease(pool, { ...command, activationDeadlineMs: 200 })).resolves.toEqual({
+      ok: false, error: { kind: "activation-timeout" },
+    });
+    expect(query.mock.calls.some(([sql]) => sql.includes("mark_job_activated"))).toBe(true);
+    expect(query.mock.calls.filter(([sql]) => sql === "commit")).toHaveLength(1); // Read-only preparation committed.
+    expect(query.mock.calls.at(-1)?.[0]).toBe("rollback");
+  });
+
+  it.each(["artifact-read", "receipt-write"] as const)("reports a canceled %s as an activation timeout", async (stage) => {
+    const { command, pool, query, materialize, artifactRead } = storedCandidate(activeDefinition);
+    if (stage === "artifact-read") artifactRead.mockRestore();
+    materialize.mockResolvedValue({} as Awaited<ReturnType<typeof materialization.materializeCompiledRelease>>);
+    vi.spyOn(verification, "verifyStagedReleaseProjection").mockResolvedValue({ ok: true });
+    const canceled = new pg.DatabaseError("statement canceled", 0, "error");
+    canceled.code = "57014";
+    const target = stage === "artifact-read" ? "from catalog_publication.release_artifacts" : "insert into parameter_catalog.catalog_activation_receipts";
+    query.mockImplementation(async (sql) => {
+      if (sql.includes(target)) throw canceled;
+      return { rows: sql.includes("from catalog_publication.release_artifacts") ? [{ present: true }] : [], rowCount: 0 };
+    });
+    await expect(installPublishedRelease(pool, { ...command, activationDeadlineMs: Date.now() + 60_000 })).resolves.toEqual({
+      ok: false, error: { kind: "activation-timeout" },
+    });
+    expect(query.mock.calls.some(([sql]) => sql.includes(target))).toBe(true);
+    expect(query.mock.calls.at(-1)?.[0]).toBe("rollback");
   });
 
   it("keeps an existing successful receipt replay ahead of candidate validation", async () => {
-    const { command, client, materialize } = storedCandidate();
-    vi.spyOn(store, "getReceiptByJobId").mockResolvedValue({ ok: true, value: {
+    const { command, pool, materialize, candidateRead, receiptRead, artifactRead } = storedCandidate();
+    receiptRead.mockResolvedValue({ ok: true, value: {
       id: "crct_existing", kind: "online-publication", publicationJobId: command.jobId,
       candidateId: command.candidateId, authorizationId: command.authorizationId,
       releaseId: vendor.compiled.release.id, releaseDigest: vendor.compiled.release.digest,
       predecessorReleaseId: null, predecessorReleaseDigest: null,
     } as CatalogActivationReceiptRecord });
-    const candidate = vi.spyOn(store, "getCandidate");
-    expect(await activateOnlinePublication(client, command)).toMatchObject({ status: "already-recorded", currentness: "active" });
-    expect(candidate).not.toHaveBeenCalled();
+    expect(await installPublishedRelease(pool, command)).toMatchObject({ ok: true, value: { status: "already-recorded", currentness: "active" } });
+    expect(candidateRead).not.toHaveBeenCalled();
+    expect(artifactRead).not.toHaveBeenCalled();
     expect(materialize).not.toHaveBeenCalled();
   });
 });

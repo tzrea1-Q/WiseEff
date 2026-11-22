@@ -1,8 +1,9 @@
 import type pg from "pg";
 import type { z } from "zod";
 import { ApiError } from "../../../shared/http/errors";
+import { currentPublishedSubjectOwner } from "../../catalog-kernel/ownerSchema";
 import { moduleStructureExportSchema, moduleStructureUpdateDocumentSchema } from "../../contracts/dtoSchemas/moduleStructure";
-import { updatePlacementModule } from "../registration/repositories";
+import { updatePlacementModule, updateRegistrationDisplayAlias } from "../registration/repositories";
 
 type Subject = z.infer<typeof moduleStructureExportSchema>["subjects"][number];
 type SubjectEdit = z.infer<typeof moduleStructureUpdateDocumentSchema>["subjects"][number];
@@ -14,7 +15,7 @@ export type SubjectConflict = { key: string; subjectId: string; field: Field; ba
 
 const equal = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 
-/** Plan only explicitly supplied root placement and alias edits. */
+/** Plan explicit organization aliases and independent root placement edits. */
 export function planSubjectPlacement(edits: SubjectEdit[], baseline: Subject[], current: Subject[], resolutions: Record<string, "current" | "file">) {
   const bases = new Map(baseline.map(subject => [subject.subjectId, subject]));
   const targets = new Map(current.map(subject => [subject.subjectId, subject]));
@@ -27,7 +28,7 @@ export function planSubjectPlacement(edits: SubjectEdit[], baseline: Subject[], 
     for (const field of ["placement", "displayAlias"] as const) {
       const file = edit[field];
       if (file === undefined || equal(file, base[field])) continue;
-      if (base.ownerSubjectId) throw new ApiError("VALIDATION_FAILED", "Owned children inherit their owner's placement and cannot edit a root alias.", { path: `subjects.${index}.${field}` });
+      if (base.ownerSubjectId && field === "placement") throw new ApiError("VALIDATION_FAILED", "Owned children inherit their owner's placement.", { path: `subjects.${index}.${field}` });
       if (!target || target.ownerSubjectId !== base.ownerSubjectId || target.state !== base.state)
         throw new ApiError("CONFLICT", "Subject registration or ownership changed after export.", { path: `subjects.${index}` });
       if (field === "placement" && (!file || (typeof file === "object" && file.kind === "reference")))
@@ -51,17 +52,17 @@ export function planSubjectPlacement(edits: SubjectEdit[], baseline: Subject[], 
 export async function applySubjectPlacement(client: pg.PoolClient, organizationId: string, changes: SubjectChange[], moduleIds: Map<string, string>) {
   for (const change of changes) {
     const result = await client.query<{ id: string; placement_id: string; owner_subject_id: string | null }>(
-      `select r.id,r.current_placement_id as placement_id,coalesce(r.owner_subject_id,s.owner_subject_id) as owner_subject_id
+      `select r.id,r.current_placement_id as placement_id,coalesce(r.owner_subject_id,${currentPublishedSubjectOwner("s")}) as owner_subject_id
        from parameter_catalog.organization_subject_registrations r
        join parameter_catalog.catalog_subjects s on s.id=r.subject_id
        where r.organization_id=$1 and r.subject_id=$2 for update of r`, [organizationId, change.subjectId]);
     const row = result.rows[0];
-    if (!row || row.owner_subject_id) throw new ApiError("CONFLICT", "Subject registration or ownership changed.");
+    if (!row) throw new ApiError("CONFLICT", "Subject registration changed.");
     if (change.field === "displayAlias") {
-      await client.query(`update parameter_catalog.organization_subject_registrations
-        set display_alias=$3,updated_at=greatest(clock_timestamp(),updated_at + interval '1 microsecond')
-        where organization_id=$1 and id=$2`, [organizationId, row.id, change.after]);
+      await updateRegistrationDisplayAlias(client, organizationId, row.id, change.after as string | null);
     } else {
+      if (row.owner_subject_id)
+        throw new ApiError("CONFLICT", "Subject ownership changed.");
       const placement = change.after as Placement;
       let moduleId: string | null = null;
       if (placement.kind === "module") moduleId = moduleIds.get(placement.moduleRef) ?? null;

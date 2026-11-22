@@ -20,6 +20,8 @@ import { createWorkerLogAnalysisToolBackends } from "./analyzer/tools/workerTool
 import { dropLabRuntimeLogins, provisionPublicationRuntimeLogins } from "../../testing/labRuntimeLogins";
 import type { SourceSnapshotDto } from "./sourceSnapshots";
 import type { getLogSkill } from "./skillsService";
+import type { LogRunDto } from "./repository";
+import type { LogRecordDto } from "./types";
 type Skill = Awaited<ReturnType<typeof getLogSkill>>;
 
 describe("archived source snapshot restoration over HTTP and PostgreSQL", () => {
@@ -59,6 +61,99 @@ describe("archived source snapshot restoration over HTTP and PostgreSQL", () => 
     return { skill, snapshot, base, metadata };
   }
   const read = async (skillId: string, id: string) => (await request<{ items: SourceSnapshotDto[] }>(`/api/v1/log-skills/${skillId}/source-snapshots`)).body.items.find(item => item.id === id)!;
+
+  it("previews old and new integration resolution in the selected organization and retains report and revision pins", async () => {
+    const h = await fixture("Correct a source label");
+    const fallback = await upload(h.skill.id, "default-build");
+    await processNextSourceIndexJob({ db, objectStore: store }); await processNextSourceIndexJob({ db, objectStore: store });
+    const platform = "source-label-platform";
+    await db.query("insert into users(id,organization_id,name,title) values($1,'source-restore-other','Platform actor','Platform Admin')", [platform]);
+    await db.query("insert into user_role_bindings(id,user_id,organization_id,role_id) values($1,$1,'source-restore-other','platform-admin')", [platform]);
+    const skillPath = `/api/v1/log-skills/${h.skill.id}`;
+    const originalDraft = await request<{ item: Skill }>(`${h.base}/default`, "POST");
+    expect(originalDraft.status).toBe(200);
+    const originalPublished = await request<{ item: Skill }>(`${skillPath}/publish`, "POST", { draftRevisionId: originalDraft.body.item.draft!.id });
+    expect(originalPublished.status).toBe(200);
+    const defaultDraft = await request<{ item: Skill }>(`${skillPath}/source-snapshots/${fallback.id}/default`, "POST");
+    const published = await request<{ item: Skill }>(`${skillPath}/publish`, "POST", { draftRevisionId: defaultDraft.body.item.draft!.id });
+    expect(published.status).toBe(200);
+    const credential = await request<{ token: string }>("/api/v1/log-integration-credentials", "POST", { name: "Version uploader", skillId: h.skill.id });
+    expect(credential.status).toBe(201);
+    const machineRequest = <T>(path: string, method = "GET", body?: unknown) => requestJson<T>(createWiseEffServer({ db, objectStore: store }), path, {
+      method, headers: { Authorization: `Bearer ${credential.body.token}` }, ...(body === undefined ? {} : { body: JSON.stringify(body) })
+    });
+    const processJob = async (jobId: string) => expect((await processLogAnalysisJobById({ db, objectStore: store, jobId,
+      analyzer: createRuleBasedLogAnalyzer(genericSignalRuleSet) })).status).toBe("processed");
+    const analyze = async (sourceVersion: string) => {
+      const result = await machineRequest<{ log: { id: string }; job: { id: string } }>("/api/v1/log-files", "POST", {
+        fileName: "source-version.log", contentType: "text/plain", sourceVersion, contentBase64: Buffer.from("WARN restore code=7\n").toString("base64")
+      });
+      expect(result.status).toBe(201);
+      await processJob(result.body.job.id);
+      const path = `/api/v1/logs/${result.body.log.id}`;
+      const report = await machineRequest<{ item: LogRecordDto }>(path);
+      expect(report.status).toBe(200);
+      return { path, item: report.body.item };
+    };
+    const original = await analyze("stable-build");
+    expect(original.item).toMatchObject({ sourceSnapshot: { id: h.snapshot.id }, sourceSnapshotSelection: "matched_version" });
+    const scope = "?organizationId=source-restore";
+    const previewPath = `${h.base}/version-label/preview`;
+    const input = { versionLabel: "corrected-build" };
+    const change = { ...input, expectedVersionLabel: "stable-build", expectedArchived: false };
+    const preview = await request(`${previewPath}${scope}`, "POST", input, platform);
+    const matches = { selection: "matched_version", snapshot: { id: h.snapshot.id, status: "ready" } };
+    const defaults = { selection: "default", snapshot: { id: fallback.id, status: "ready", versionLabel: "default-build" } };
+    expect(preview).toMatchObject({ status: 200, body: { versionLabel: "stable-build", nextVersionLabel: "corrected-build", archived: false,
+      conflictingSnapshot: null, oldResolution: { before: matches, after: defaults }, newResolution: { before: defaults, after: matches } } });
+    expect((await request(`${previewPath}${scope}`, "POST", { versionLabel: "default-build" }, platform)).body).toMatchObject({
+      conflictingSnapshot: { id: fallback.id, versionLabel: "default-build", status: "ready" }
+    });
+    expect((await request(previewPath, "POST", input, "source-restore-member")).status).toBe(403);
+    expect((await request(`${previewPath}${scope}`, "POST", input, "source-restore-other-admin")).status).toBe(403);
+    expect((await request(`${h.base}${scope}`, "PATCH", change, "source-restore-other-admin")).status).toBe(403);
+    expect((await request(h.base, "PATCH", change, "source-restore-member")).status).toBe(403);
+    expect((await request(previewPath, "POST", input, platform)).status).toBe(404);
+    expect((await request(`${h.base.replace(h.skill.id, "missing-skill")}${scope}`, "PATCH", change, platform)).status).toBe(404);
+    expect(await request(`${h.base}${scope}`, "PATCH", change, platform)).toMatchObject({
+      status: 200, body: { item: { id: h.snapshot.id, versionLabel: "corrected-build", status: "ready" } }
+    });
+    expect((await request(`${h.base}${scope}`, "PATCH", { ...change, versionLabel: "stale-edit" }, platform)).status).toBe(409);
+    expect((await analyze("stable-build")).item).toMatchObject({ sourceSnapshot: { id: fallback.id }, sourceSnapshotSelection: "default" });
+    expect((await analyze("corrected-build")).item).toMatchObject({ sourceSnapshot: { id: h.snapshot.id }, sourceSnapshotSelection: "matched_version" });
+    expect((await machineRequest<{ item: LogRecordDto }>(original.path)).body.item).toMatchObject({
+      reportId: original.item.reportId, requestedSourceVersion: "stable-build", sourceSnapshot: { id: h.snapshot.id }
+    });
+    expect((await request<{ item: Skill }>(skillPath)).body.item.currentRevision).toEqual(published.body.item.currentRevision);
+    const rerun = await request<{ job: { id: string } }>(`${original.path}/rerun`, "POST", { revisionPolicy: "pinned" });
+    expect(rerun.status).toBe(200);
+    await processJob(rerun.body.job.id);
+    const runs = await request<{ items: LogRunDto[] }>(`${original.path}/runs`);
+    expect(runs.body.items.map(run => run.sourceSnapshot?.id)).toEqual([h.snapshot.id, h.snapshot.id]);
+    const configReplay = await request<{ item: Skill }>(`${skillPath}/revisions/${originalPublished.body.item.currentRevision.id}/restore`, "POST");
+    expect(configReplay).toMatchObject({ status: 200, body: { item: { currentRevision: { status: "published", spec: { defaultSourceSnapshotId: h.snapshot.id } } } } });
+    expect((await analyze("stable-build")).item).toMatchObject({ sourceSnapshot: { id: h.snapshot.id }, sourceSnapshotSelection: "default" });
+  }, 120_000);
+
+  it("returns the active occupant to the loser of a concurrent restore and label correction", async () => {
+    const h = await fixture("Concurrent source label");
+    const contender = await upload(h.skill.id, "other-build");
+    const contenderPath = `/api/v1/log-skills/${h.skill.id}/source-snapshots/${contender.id}`;
+    expect((await request(`${h.base}/archive`, "POST")).status).toBe(200);
+    const input = { versionLabel: "stable-build", expectedVersionLabel: "other-build", expectedArchived: false };
+    expect(await request(`${contenderPath}/version-label/preview`, "POST", { versionLabel: input.versionLabel })).toMatchObject({ status: 200, body: { conflictingSnapshot: null } });
+    const [restore, rename] = await Promise.all([request(`${h.base}/restore`, "POST"), request(contenderPath, "PATCH", input)]);
+    const restored = restore.status === 202;
+    expect([restore.status, rename.status]).toEqual(restored ? [202, 409] : [409, 200]);
+    expect(restored ? rename.body : restore.body).toMatchObject({ error: { code: "CONFLICT", details: {
+      conflictingSnapshot: { id: restored ? h.snapshot.id : contender.id, versionLabel: "stable-build", status: "queued" }
+    } } });
+    const losingPath = restored ? contenderPath : h.base;
+    const losingSnapshot = restored ? contender : h.snapshot;
+    expect(await request(losingPath, "PATCH", { versionLabel: "free-build", expectedVersionLabel: losingSnapshot.versionLabel, expectedArchived: !restored }))
+      .toMatchObject({ status: 200, body: { item: { id: losingSnapshot.id, versionLabel: "free-build", status: restored ? "queued" : "archived" } } });
+    if (!restored) expect(await request(`${h.base}/restore`, "POST")).toMatchObject({ status: 202, body: { item: { id: h.snapshot.id, versionLabel: "free-build" } } });
+  });
 
   it("preserves an existing report citation through archive, restore, failed indexing and retry", async () => {
     const h = await fixture("Restore cited source"); await processNextSourceIndexJob({ db, objectStore: store });

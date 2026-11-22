@@ -427,14 +427,14 @@ describe("LogsPage · Header", () => {
     expect(new URLSearchParams(window.location.search).get("logId")).toBe(log.id);
   });
 
-  it("显示标题与上传按钮", () => {
+  it("显示标题与上传按钮", async () => {
     window.history.replaceState(null, "", "/logs");
 
     render(<App initialAppState={userState} />);
 
     const topbar = document.querySelector(".topbar") as HTMLElement;
     expect(document.querySelector(".workspace-header")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /上传新日志/ })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /上传新日志/ })).toBeInTheDocument();
     expect(within(topbar).queryByRole("heading", { name: "日志智能分析" })).not.toBeInTheDocument();
   });
 
@@ -442,7 +442,7 @@ describe("LogsPage · Header", () => {
     window.history.replaceState(null, "", "/logs");
 
     render(<App initialAppState={userState} />);
-    const history = screen.getByRole("complementary", { name: "历史日志记录" });
+    const history = await screen.findByRole("complementary", { name: "历史日志记录" });
     fireEvent.click(within(history).getByRole("button", { name: /usb_pd_negotiation/ }));
 
     expect(screen.getByText("置信度")).toBeInTheDocument();
@@ -456,11 +456,12 @@ describe("LogsPage · Header", () => {
     expect(screen.getByRole("region", { name: "日志分析证据链" })).toBeInTheDocument();
   });
 
-  it("Processing 日志主按钮禁用", () => {
+  it("Processing 日志主按钮禁用", async () => {
     window.history.replaceState(null, "", "/logs");
 
     render(<App initialAppState={userState} />);
 
+    await screen.findByRole("region", { name: "正在分析…" });
     expect(screen.queryByRole("button", { name: "更多" })).not.toBeInTheDocument();
     expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
     expect(screen.queryByRole("group", { name: "分析反馈" })).not.toBeInTheDocument();
@@ -470,18 +471,18 @@ describe("LogsPage · Header", () => {
     window.history.replaceState(null, "", "/logs");
 
     render(<App initialAppState={userState} />);
-    const history = screen.getByRole("complementary", { name: "历史日志记录" });
+    const history = await screen.findByRole("complementary", { name: "历史日志记录" });
     fireEvent.click(within(history).getByRole("button", { name: /thermal_snapshot/ }));
 
     expect(screen.getByRole("alert")).toHaveTextContent(/格式不支持|二进制/);
     expect(screen.getByRole("button", { name: /重新上传/ })).toBeInTheDocument();
   });
 
-  it("Failed 日志只显示失败摘要和文件信息，不渲染空分析面板", () => {
+  it("Failed 日志只显示失败摘要和文件信息，不渲染空分析面板", async () => {
     window.history.replaceState(null, "", "/logs");
 
     render(<App initialAppState={userState} />);
-    const history = screen.getByRole("complementary", { name: "历史日志记录" });
+    const history = await screen.findByRole("complementary", { name: "历史日志记录" });
     fireEvent.click(within(history).getByRole("button", { name: /thermal_snapshot/ }));
 
     const summary = screen.getByRole("alert");
@@ -501,11 +502,12 @@ describe("LogsPage · Header", () => {
     expect(within(history).getByRole("button", { name: /thermal_snapshot/ })).toHaveAttribute("aria-pressed", "true");
   });
 
-  it("Processing 日志时间线当前步有 current 标记", () => {
+  it("Processing 日志时间线当前步有 current 标记", async () => {
     window.history.replaceState(null, "", "/logs");
 
     render(<App initialAppState={userState} />);
 
+    await screen.findByRole("region", { name: "正在分析…" });
     expect(document.querySelector(".log-timeline__step--current")).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "分析结果" })).not.toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "原始日志" })).not.toBeInTheDocument();
@@ -551,7 +553,7 @@ describe("LogsPage · Header", () => {
   it("报告默认显示，切换文件后历史导航仍可选择日志", async () => {
     window.history.replaceState(null, "", "/logs");
     render(<App initialAppState={userState} />);
-    const history = screen.getByRole("complementary", { name: "历史日志记录" });
+    const history = await screen.findByRole("complementary", { name: "历史日志记录" });
     expect(screen.getByRole("tab", { name: "报告", selected: true })).toBeInTheDocument();
     await userEvent.click(screen.getByRole("tab", { name: "文件" }));
     await userEvent.click(within(history).getByRole("button", { name: /usb_pd_negotiation/ }));
@@ -566,7 +568,7 @@ describe("LogsPage · Header", () => {
     window.addEventListener(XIAOZE_OPEN_HANDOFF_EVENT, opened, { once: true });
     render(<App initialAppState={userState} />);
 
-    fireEvent.click(screen.getByRole("button", { name: /usb_pd_negotiation/ }));
+    fireEvent.click(await screen.findByRole("button", { name: /usb_pd_negotiation/ }));
     await userEvent.click(screen.getByRole("button", { name: "更多" }));
     await userEvent.click(screen.getByRole("menuitem", { name: "问小泽" }));
     expect(opened).toHaveBeenCalledOnce();
@@ -574,12 +576,12 @@ describe("LogsPage · Header", () => {
     expect(screen.queryByText("WiseAgent")).not.toBeInTheDocument();
   });
 
-  it("Processing 结论卡不再展示文件名、阶段、时间和设备胶囊标签", () => {
+  it("Processing 结论卡不再展示文件名、阶段、时间和设备胶囊标签", async () => {
     window.history.replaceState(null, "", "/logs");
 
     render(<App initialAppState={userState} />);
 
-    const conclusionCard = screen.getByRole("region", { name: "正在分析…" });
+    const conclusionCard = await screen.findByRole("region", { name: "正在分析…" });
     expect(conclusionCard).not.toHaveTextContent("charging_thermal_trace_20260504.log");
     expect(conclusionCard).not.toHaveTextContent("根因推断");
     expect(conclusionCard).toHaveTextContent("10:24:05");
@@ -589,7 +591,7 @@ describe("LogsPage · Header", () => {
   it("二元反馈可立即提交有帮助，再改为带可选说明的没帮助", async () => {
     window.history.replaceState(null, "", "/logs");
     render(<App initialAppState={userState} />);
-    fireEvent.click(screen.getByRole("button", { name: /usb_pd_negotiation/ }));
+    fireEvent.click(await screen.findByRole("button", { name: /usb_pd_negotiation/ }));
     fireEvent.click(screen.getByRole("button", { name: "有帮助" }));
     expect(await screen.findByText("已反馈：有帮助")).toBeInTheDocument();
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
@@ -601,11 +603,11 @@ describe("LogsPage · Header", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
-  it("切换日志时 Live Region 播报文件名和状态", () => {
+  it("切换日志时 Live Region 播报文件名和状态", async () => {
     window.history.replaceState(null, "", "/logs");
 
     render(<App initialAppState={userState} />);
-    const history = screen.getByRole("complementary", { name: "历史日志记录" });
+    const history = await screen.findByRole("complementary", { name: "历史日志记录" });
     fireEvent.click(within(history).getByRole("button", { name: /usb_pd_negotiation/ }));
 
     expect(screen.getByTestId("log-live-region")).toHaveTextContent(/usb_pd_negotiation_20260503\.log/);
@@ -654,7 +656,7 @@ describe("LogsPage · 分析来源与降级标注", () => {
   it.each([
     { source: "rules-fallback", reason: "provider-unavailable", label: "规则回退", explanation: "AI 分析服务不可用" },
     { source: "single-shot-fallback", reason: "invalid-model-output", label: "降级分析 · 单次模型回退", explanation: "模型输出无效" }
-  ] as const)("$source 结果显著标注降级来源与原因", ({ source, reason, label, explanation }) => {
+  ] as const)("$source 结果显著标注降级来源与原因", async ({ source, reason, label, explanation }) => {
     window.history.replaceState(null, "", "/logs");
     const degradedState = {
       ...userState,
@@ -680,11 +682,11 @@ describe("LogsPage · 分析来源与降级标注", () => {
     expect(provenance).toHaveTextContent(explanation);
     expect(provenance).not.toHaveTextContent("提前收敛");
     expect(provenance).toHaveTextContent("技能：charging-power v3");
-    expect(screen.getByText("置信度")).toBeInTheDocument();
+    expect(await screen.findByText("置信度")).toBeInTheDocument();
     expect(screen.queryByText("AI置信度")).not.toBeInTheDocument();
   });
 
-  it("Agent 结果显示来源徽标且不显示降级提示", () => {
+  it("Agent 结果显示来源徽标且不显示降级提示", async () => {
     window.history.replaceState(null, "", "/logs");
     const agentState = {
       ...userState,
@@ -708,11 +710,11 @@ describe("LogsPage · 分析来源与降级标注", () => {
     expect(provenance).not.toHaveTextContent("retrieved-entry");
     expect(provenance).not.toHaveTextContent("retrieved-revision");
     expect(provenance).not.toHaveTextContent("降级分析");
-    expect(screen.getByText("置信度")).toBeInTheDocument();
+    expect(await screen.findByText("置信度")).toBeInTheDocument();
     expect(screen.queryByText("AI置信度")).not.toBeInTheDocument();
   });
 
-  it("没有来源标注的历史结果不渲染来源徽标", () => {
+  it("没有来源标注的历史结果不渲染来源徽标", async () => {
     window.history.replaceState(null, "", "/logs");
     const legacyState = {
       ...userState,
@@ -726,7 +728,7 @@ describe("LogsPage · 分析来源与降级标注", () => {
     render(<App initialAppState={legacyState} />);
 
     expect(screen.getByTestId("analysis-provenance")).toHaveTextContent("通用分析");
-    expect(screen.getByText("置信度")).toBeInTheDocument();
+    expect(await screen.findByText("置信度")).toBeInTheDocument();
     expect(screen.queryByText("模型自估")).not.toBeInTheDocument();
     expect(screen.queryByText("规则评分")).not.toBeInTheDocument();
   });
@@ -734,7 +736,7 @@ describe("LogsPage · 分析来源与降级标注", () => {
   it.each([
     ["token-budget-exhausted", "分析步数或 token 预算耗尽"],
     ["step-budget-exhausted", "日志分析步数达到上限"]
-  ] as const)("提前收敛的报告显示 %s 对应的降级原因", (degradedReason, reasonText) => {
+  ] as const)("提前收敛的报告显示 %s 对应的降级原因", async (degradedReason, reasonText) => {
     window.history.replaceState(null, "", "/logs");
     const earlyConvergedState = {
       ...userState,
@@ -758,7 +760,7 @@ describe("LogsPage · 分析来源与降级标注", () => {
     expect(provenance).toHaveTextContent(reasonText);
     expect(provenance).toHaveTextContent(/提前收敛为低置信结论/);
     expect(provenance).not.toHaveTextContent("降级分析 · 规则回退");
-    expect(screen.getByText("置信度")).toBeInTheDocument();
+    expect(await screen.findByText("置信度")).toBeInTheDocument();
   });
 
   it.each([

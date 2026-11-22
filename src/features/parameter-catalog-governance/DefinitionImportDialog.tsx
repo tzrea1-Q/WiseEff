@@ -8,6 +8,7 @@ import type { ParameterCatalogGovernanceRepository } from "@/application/ports/P
 import type { ParameterModuleRegistryRepository } from "@/application/ports/ParameterModuleRegistryRepository";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { ModalDialog } from "@/components/common/ModalDialog";
+import { SelectControl } from "@/components/common/SelectControl";
 import { Textarea } from "@/components/ui/textarea";
 import { modulePathSegments } from "@/components/admin/moduleManagementTreeUtils";
 import { WiseEffApiError } from "@/infrastructure/http/apiClient";
@@ -32,6 +33,7 @@ import { createGovernanceIdempotencyKey, createGovernanceSubmitGate, fingerprint
 
 const formatDiffValue = (value: unknown) => value == null ? "—" : typeof value === "string" ? value : JSON.stringify(value);
 const outcomeLabels = { create: "新建", revise: "修订", error: "错误", skip: "跳过", conflict: "冲突" } as const;
+const matchLabels = { "catalog-primary": "规范标识", "catalog-alias": "正式目录别名", "organization-compatible": "组织 compatible 规则" } as const;
 
 export type DefinitionImportDialogProps = {
   open: boolean;
@@ -62,11 +64,14 @@ export function DefinitionImportDialog(props: DefinitionImportDialogProps) {
   const [uploadedFileName, setUploadedFileName] = useState<string | null>(null);
   const [additionalDocuments, setAdditionalDocuments] = useState<{ document: string; fileName: string }[]>([]);
   const [activeFile, setActiveFile] = useState(0);
+  const [organizationSubjectSelections, setOrganizationSubjectSelections] = useState<{ selector: string; subjectId: string }[]>([]);
   const documents = [{ document, fileName }, ...additionalDocuments];
-  const fingerprint = JSON.stringify([catalogReleaseId, documents]);
+  const fingerprint = JSON.stringify([catalogReleaseId, documents, organizationSubjectSelections]);
   const hasContent = documents.some(item => item.document.trim());
   const fileInput = useRef<HTMLInputElement>(null);
   const [entries, setEntries] = useState<CatalogMarkdownImportResponse["item"]["entries"] | null>(null);
+  const organizationCandidates = [...new Map(entries?.flatMap(entry => entry.matchCandidates?.length
+    ? [[entry.selector, entry.matchCandidates] as const] : [])).entries()];
   const resultsRef = useRef<HTMLDivElement>(null);
   const [parsedFingerprint, setParsedFingerprint] = useState<string | null>(null);
   const [noChange, setNoChange] = useState(false);
@@ -91,8 +96,10 @@ export function DefinitionImportDialog(props: DefinitionImportDialogProps) {
     ? "模拟模式不支持导入预览，请使用 API 模式。" : null;
   const canPreview = !unavailable && props.publicationSurface?.authoringAllowed === true
     && canExecutePublicationAction(actor, "preview-publication", domainState, sessionPermissions);
-  const canPublish = props.publicationSurface?.publishingAllowed === true
-    && canExecutePublicationAction(actor, "publish-publication", domainState, sessionPermissions);
+  const canPublish = (props.publicationSurface?.reviewHighRiskAllowed === true
+    && canExecutePublicationAction(actor, "review-high-risk-publication", domainState, sessionPermissions))
+    || (candidate?.riskClass === "low" && props.publicationSurface?.publishingAllowed === true
+      && canExecutePublicationAction(actor, "publish-publication", domainState, sessionPermissions));
   const previewStale = Boolean(candidate && (!flow.candidateVerified
     || candidate.expectedBaseReleaseId !== catalogReleaseId
     || (flow.previewFingerprint !== null && flow.previewFingerprint !== fingerprint)));
@@ -114,6 +121,7 @@ export function DefinitionImportDialog(props: DefinitionImportDialogProps) {
     setUploadedFileName(null);
     setAdditionalDocuments([]);
     setActiveFile(0);
+    setOrganizationSubjectSelections([]);
     setEntries(null);
     setParsedFingerprint(null);
     setNoChange(false);
@@ -172,6 +180,7 @@ export function DefinitionImportDialog(props: DefinitionImportDialogProps) {
   };
   const updateDocument = (nextDocument: string, nextFileName: string) => {
     flow.reset();
+    setOrganizationSubjectSelections([]);
     setEntries(null);
     setParsedFingerprint(null);
     setPlacementHints([]);
@@ -180,11 +189,16 @@ export function DefinitionImportDialog(props: DefinitionImportDialogProps) {
     setDocument(nextDocument);
     setFileName(nextFileName);
   };
+  const selectOrganizationSubject = (selector: string, subjectId: string) => {
+    flow.reset();
+    setOrganizationSubjectSelections(current => [...current.filter(item => item.selector !== selector), ...(subjectId ? [{ selector, subjectId }] : [])]);
+  };
   const runPreview = async () => {
     if (!canPreview || pending || !hasContent || (parsedFingerprint === fingerprint && !mustRePreview) || !catalog.previewMarkdownImport) return;
     await flow.preview(async () => {
       const result = await catalog.previewMarkdownImport!(
-        { markdownImport: { document, fileName, ...(additionalDocuments.length ? { additionalDocuments } : {}) } }, { catalogReleaseId },
+        { markdownImport: { document, fileName, ...(additionalDocuments.length ? { additionalDocuments } : {}),
+          ...(organizationSubjectSelections.length ? { organizationSubjectSelections } : {}) } }, { catalogReleaseId },
       );
       setEntries(result.item.entries);
       setParsedFingerprint(fingerprint);
@@ -298,6 +312,7 @@ export function DefinitionImportDialog(props: DefinitionImportDialogProps) {
         <h2 id={titleId}>批量导入定义</h2>
         <div className="confirm-dialog__scroll"><div id={descriptionId} className="governance-confirm-dialog__body">
           <p>粘贴或一次上传多个 .md 文件，格式见模板。每批最多 20 个文件、合计 1 MiB、1024 条定义；点击一次即可解析全部文件，集中显示错误与冲突，全部通过后一次发布。业务分类和展示别名为可选的登记提示，不影响发布。</p>
+          <p>主体标题可用规范标识或正式目录别名。仅由当前组织 compatible 规则识别的短名，需要在预览中确认主体。</p>
           {unavailable ? <p role="status">{unavailable}</p> : null}
           {advisory ? <p role="status" data-tone={advisory.tone}>{advisory.message}</p> : null}
           {status ? <p role="status" aria-label="发布任务状态" data-publication-status={job?.status}
@@ -406,13 +421,26 @@ export function DefinitionImportDialog(props: DefinitionImportDialogProps) {
               </div>
               {noChange
                 ? <p role="status">没有需要发布的变更。</p> : null}
+              {organizationCandidates.length || organizationSubjectSelections.length ? <section aria-label="本组织 compatible 匹配">
+                {organizationCandidates.map(([selector, candidates]) => <label key={selector} className="field">
+                  {selector} 的组织匹配主体
+                  <SelectControl ariaLabel={`${selector} 的组织匹配主体`}
+                    value={organizationSubjectSelections.find(item => item.selector === selector)?.subjectId ?? ""}
+                    disabled={inputDisabled} onValueChange={subjectId => selectOrganizationSubject(selector, subjectId)}
+                    options={candidates.map(match => ({ value: match.subjectId, label: `${match.canonicalName} · ${match.subjectId}` }))}
+                    placeholder="请选择主体" />
+                </label>)}
+                {organizationSubjectSelections.length > 0 && !succeeded ? <button type="button" className="button subtle sm"
+                  disabled={inputDisabled} onClick={() => { flow.reset(); setOrganizationSubjectSelections([]); }}>清除组织匹配选择</button> : null}
+              </section> : null}
               <table className="definition-editor__table parameter-catalog-import-dialog__table">
                 <caption>导入结果</caption><colgroup><col /><col /><col /><col /><col /></colgroup><thead><tr>
                   <th scope="col">主体</th><th scope="col">属性键</th><th scope="col">显示名</th>
                   <th scope="col">结果</th><th scope="col">诊断</th>
                 </tr></thead><tbody>{visibleEntries?.map((entry, index) =>
                   <tr key={`${entry.subjectHeading}-${entry.definitionHeading}-${index}`}>
-                    <td>{entry.selector || "—"}{entry.fileName ? <div className="break-all text-xs text-muted-foreground">{entry.fileName}</div> : null}</td><td><code>{entry.propertyKey || "—"}</code></td>
+                    <td>{entry.selector || "—"}{entry.match ? <div>{matchLabels[entry.match.source]} · {entry.match.canonicalName}</div> : null}
+                      {entry.fileName ? <div className="break-all text-xs text-muted-foreground">{entry.fileName}</div> : null}</td><td><code>{entry.propertyKey || "—"}</code></td>
                     <td>{entry.displayName || "—"}</td>
                     <td><span className="parameter-catalog__badge"
                       data-tone={entry.outcome === "error" || entry.outcome === "conflict" ? "warning" : undefined}>
@@ -433,7 +461,7 @@ export function DefinitionImportDialog(props: DefinitionImportDialogProps) {
             <div><dt>{publicationCopy.addedSubjects}</dt><dd>{candidate.impactSummary.addedSubjectCount}</dd></div>
             <div><dt>{publicationCopy.risk}</dt>
               <dd>{candidate.riskClass === "high" ? publicationCopy.riskHigh : publicationCopy.riskLow}</dd></div>
-            <div><dt>{publicationCopy.approval}</dt><dd>{publicationApprovalCopy(candidate.riskClass, actor)}</dd></div>
+            <div><dt>{publicationCopy.approval}</dt><dd>{publicationApprovalCopy(candidate.riskClass)}</dd></div>
             <div><dt>{publicationCopy.scope}</dt><dd>{publicationCopy.sharedScope}</dd></div>
           </dl> : null}
         </div></div>
@@ -467,7 +495,7 @@ export function DefinitionImportDialog(props: DefinitionImportDialogProps) {
         onClick={() => void prepareChildRegistration(childRegistration.owner.id)}>重新读取登记信息</button> : null}
       onConfirm={() => void registerChildren()} onCancel={() => { setChildRegistration(null); setRegistrationError(""); }} />
     <PublicationConfirmation confirm={confirm} allowed={confirm === "publish" ? canPublish : canPreview}
-      risk={candidate?.riskClass ?? "high"} actor={actor} pending={pending}
+      risk={candidate?.riskClass ?? "high"} pending={pending}
       onPreview={() => void runPreview()} onPublish={() => void runPublish()} onCancel={() => setConfirm(null)} />
     <ConfirmDialog open={leaveConfirm} title="离开未保存的编写"
       description={<p>当前正文尚未发布。离开将保留本机定位，但不把未保存内容当作已生效。</p>}

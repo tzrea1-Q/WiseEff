@@ -110,15 +110,16 @@ describe("auth policy", () => {
     expect(() => requireDebugRollback(auth)).toThrow(/Missing permission: debugging:rollback/);
   });
 
-  it("grants catalog publication capabilities on Org Admin only", () => {
+  it("grants catalog publication capabilities to organization and platform administrators", () => {
     const catalogPermissions = ["catalog:author", "catalog:publish", "catalog:review-high-risk"] as const;
     expect(BACKEND_PERMISSIONS).toEqual(expect.arrayContaining([...catalogPermissions]));
     expect(permissionsForRoles(["admin"])).toEqual(expect.arrayContaining([...catalogPermissions]));
+    expect(permissionsForRoles(["platform-admin"])).toEqual(expect.arrayContaining([...catalogPermissions]));
     for (const permission of catalogPermissions) {
       expect(canPerform("admin", permission)).toBe(true);
-      expect(canPerform("platform-admin", permission)).toBe(false);
+      expect(canPerform("platform-admin", permission)).toBe(true);
     }
-    for (const roleId of BACKEND_ROLE_IDS.filter((id) => id !== "admin")) {
+    for (const roleId of BACKEND_ROLE_IDS.filter((id) => id !== "admin" && id !== "platform-admin")) {
       const granted = permissionsForRoles([roleId]);
       expect(granted).not.toEqual(expect.arrayContaining([...catalogPermissions]));
       for (const permission of catalogPermissions) {

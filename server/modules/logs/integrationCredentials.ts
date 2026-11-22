@@ -87,6 +87,24 @@ export async function rotateIntegrationCredential(db: Database, auth: AuthContex
   });
 }
 
+export async function renameIntegrationCredential(db: Database, auth: AuthContext, id: string, name: string,
+  invocation: TrustedInvocationContext, context: AuditedWriteContext, organizationId = auth.organization.id) {
+  requireUserInitiatedInvocation(invocation);
+  assertTrustedInvocationMatchesScope(auth, invocation, organizationId, "Rename integration credential");
+  requireLogAdminDomains(auth);
+  return withAuditedWrite(db, invocation, context, async (tx) => {
+    const locked = (await tx.query<{ name: string }>(`select name from log_integration_credentials
+      where organization_id=$1 and id=$2 for update`, [organizationId, id])).rows[0];
+    if (!locked) throw new ApiError("NOT_FOUND", "未找到集成凭据。");
+    if (locked.name === name) return { result: { item: await readCredential(tx, organizationId, id) }, audit: null };
+    await tx.query("update log_integration_credentials set name=$3 where organization_id=$1 and id=$2", [organizationId, id, name]);
+    return { result: { item: await readCredential(tx, organizationId, id) }, audit: {
+      app: "log-analysis", kind: "log-integration-credential-rename", action: "更正集成凭据名称", severity: "Medium",
+      projectId: null, targetType: "log-integration-credential", targetId: id, metadata: { beforeName: locked.name, afterName: name }
+    } };
+  });
+}
+
 export async function revokeIntegrationCredential(db: Database, auth: AuthContext, id: string, invocation: TrustedInvocationContext, context: AuditedWriteContext, organizationId = auth.organization.id) {
   requireUserInitiatedInvocation(invocation);
   assertTrustedInvocationMatchesScope(auth, invocation, organizationId, "Revoke integration credential");

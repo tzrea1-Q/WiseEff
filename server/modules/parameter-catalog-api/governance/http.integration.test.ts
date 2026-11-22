@@ -27,7 +27,7 @@ import { createAgentInvocation, createUserInvocation, TrustedInvocationContextEr
 import { executeBatchRegistration } from "../../parameter-governance/registration/batch";
 import { makeTestAuthContext } from "../../../testing/authContext";
 import { createPostgresDatabase, getRootPostgresPool } from "../../../shared/database/client";
-import { bootstrapFirstAcme, persistPredecessorArtifact, connect, PUBLISHER, publisherPermissions, userActor } from "../../catalog-kernel/install/publicationTestHarness";
+import { bootstrapFirstAcme, persistPredecessorArtifact, connect, PUBLISHER, reviewerPermissions, userActor } from "../../catalog-kernel/install/publicationTestHarness";
 import { enablePublicationPolicy, authorPermissions } from "../../catalog-publication/authorization/testHarness";
 import { createCatalogInstaller } from "../../catalog-kernel/install/installer";
 import { readCurrentCatalogPointer } from "../../catalog-kernel/install/currentPointer";
@@ -650,10 +650,10 @@ it("attributes an introduced subject to the Candidate author's organization afte
   try {
     const predecessor = await bootstrapFirstAcme(pool);
     await persistPredecessorArtifact(client, predecessor);
-    await enablePublicationPolicy(client, { publicationEnabled: true, lowRiskSingleActorPublish: true });
+    await enablePublicationPolicy(client, { publicationEnabled: true, lowRiskSingleActorPublish: false });
     const organizationId = "org-batch-origin";
     await pool.query("insert into public.organizations (id, name) values ($1,'Origin'),('org-batch-other','Other')", [organizationId]);
-    const auth = makeTestAuthContext({ userId: PUBLISHER, organizationId, permissions: [...publisherPermissions, ...authorPermissions], roleId: "admin" });
+    const auth = makeTestAuthContext({ userId: PUBLISHER, organizationId, permissions: [...reviewerPermissions, ...authorPermissions], roleId: "admin" });
     const publication = await listenCatalogPublicationHttpServer({
       authenticate: async () => ({ ok: true, scope: { principalId: PUBLISHER, organizationId, actorKind: "org-admin", permissions: auth.permissions, trustedActor: createUserInvocation(auth) } }),
       currentRelease: async () => ({ id: predecessor.compiled.release.id, digest: predecessor.compiled.release.digest }),
@@ -670,7 +670,7 @@ it("attributes an introduced subject to the Candidate author's organization afte
     const candidateId = catalogMarkdownImportResponseSchema.parse(preview.body).item.candidate!.id;
     const published = await post(`/api/v2/catalog/publication-candidates/${candidateId}/publish`, { idempotencyKey: "batch-origin" });
     expect(published.status, JSON.stringify(published.body)).toBe(201);
-    expect(await runPublicationManagerOnce({ db, pool, installer: createCatalogInstaller(pool), resolvePublisherActor: async () => userActor(PUBLISHER, publisherPermissions), ownerId: "batch-origin" })).toBe("claimed");
+    expect(await runPublicationManagerOnce({ db, pool, installer: createCatalogInstaller(pool), resolvePublisherActor: async () => userActor(PUBLISHER, reviewerPermissions), ownerId: "batch-origin" })).toBe("claimed");
     const pointer = await readCurrentCatalogPointer(pool);
     if (pointer.kind !== "installed") throw new Error("publication did not install a release");
     const pin = { id: pointer.current.id, digest: pointer.current.digest };

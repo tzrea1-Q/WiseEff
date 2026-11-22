@@ -3,6 +3,7 @@ import { CircleX, FlaskConical } from "lucide-react";
 import { ModalDialog } from "@/components/common/ModalDialog";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { ParameterValueDiff } from "@/components/ParameterValueDiff";
+import { DefinitionDocumentation } from "@/components/parameters/DefinitionDocumentation";
 import { ViewSwitch } from "@/components/ui/view-switch";
 import { TabPanel } from "@/components/ui/tab-panel";
 import { Button } from "@/components/ui/button";
@@ -14,10 +15,12 @@ import { parseDtsValue } from "@/domain/parameter-topology/parseDtsValue";
 import type { BindingCompareEntry, BindingHistoryEntry, CanonicalDtsDefinitionDetail, ParameterSpecDetail } from "@/domain/parameter-topology/types";
 import type { DtsParameterWorkbenchRow } from "@/domain/parameter-topology/workbenchTypes";
 import { presentError } from "@/infrastructure/http/presentError";
+import { withOrganizationScope } from "@/infrastructure/http/organizationScope";
 import { complexEditorRows } from "@/parameterValueKind";
 import type { BindingEditValidation } from "./BindingDetailPanel";
 import { DtsBindingCompareDialog } from "./DtsBindingCompareDialog";
 import { DtsBindingHistoryDiffDialog } from "./DtsBindingHistoryDiffDialog";
+import { DefinitionExamples } from "./DefinitionExamples";
 import "./parameter-inspector.css";
 
 export type { BindingCompareEntry, BindingHistoryEntry } from "@/domain/parameter-topology/types";
@@ -25,6 +28,7 @@ export type BindingComparePeerEntry = BindingCompareEntry;
 export type DtsParameterEdit = { rawValue: string; reason: string; action?: "set" | "delete" };
 export type DtsBindingDetailDialogProps = {
   row: DtsParameterWorkbenchRow;
+  organizationId?: string;
   canEdit: boolean;
   onClose: () => void;
   draft?: DtsParameterEdit;
@@ -60,7 +64,7 @@ function Field({ label, value }: { label: string; value: string | null | undefin
 }
 
 export function DtsBindingDetailDialog({
-  row, canEdit, onClose, draft, hasLocalChanges = false, hasSavedDraft = false,
+  row, organizationId, canEdit, onClose, draft, hasLocalChanges = false, hasSavedDraft = false,
   onDraftChange, onResetDraft, onSaveDraft, onStartDtsReload, onOpenSource,
   onUseCompareAsDraft, historyEntries = [], compareEntries = [], baseProjectId = "current",
   baseProjectName = "当前项目", specDetail = null, latestDefinition = null, latestStatus = "idle", specDetailStatus = "idle", specDetailErrorMessage,
@@ -136,10 +140,13 @@ export function DtsBindingDetailDialog({
             <div className="parameter-inspector__configuration">
               <section className="parameter-inspector__definition"><h3>参数定义</h3>
                 {currentDefinition && differsFromPinned ? <p role="status">当前目录定义 v{currentDefinition.revisionNumber} · 项目合同仍固定于 {pinnedRevisionId}。下方说明来自最新目录；单位、约束与实际值仍遵循项目固定修订。</p> : null}
+                {currentDefinition?.recommendedDefinition ? <p>此定义已弃用。推荐使用 <a
+                  href={withOrganizationScope(`/parameters/definitions?${new URLSearchParams({ definitionId: currentDefinition.recommendedDefinition.id })}`, organizationId)}>
+                  {currentDefinition.recommendedDefinition.displayName}</a>。</p> : null}
                 {latestStatus === "loading" ? <p role="status">正在读取最新目录说明…</p> : null}
                 {latestStatus === "error" ? <p role="status">最新目录说明暂不可用，当前展示项目固定修订。</p> : null}
-                {description ? <p>{description}</p> : null}{documentation ? <p>{documentation}</p> : null}
-                {currentDefinition?.examples?.length ? <div><strong>最新目录示例（仅供参考）</strong><pre>{JSON.stringify(currentDefinition.examples, null, 2)}</pre></div> : null}
+                {description ? <p>{description}</p> : null}<DefinitionDocumentation documentation={documentation} />
+                <DefinitionExamples {...(currentDefinition ?? canonical)} jsonLabel={currentDefinition ? "最新目录示例（仅供参考）" : "示例（仅供参考）"} />
                 {specDetailStatus === "loading" ? <p role="status">正在加载规格详情…</p> : null}
                 {specDetailStatus === "error" ? <div role="alert" aria-label="规格详情加载失败"><p>{specDetailErrorMessage || "参数说明加载失败，当前配置仍可查看。"}</p><Button variant="outline" onClick={onRetrySpecDetail}>重试规格详情</Button></div> : null}
                 <dl>{currentDisplay ? <div><dt>当前值</dt><dd><pre className="parameter-value-content" role="region" aria-label="当前生效值" tabIndex={0 /* eslint-disable-line jsx-a11y/no-noninteractive-tabindex -- Full parameter values must support keyboard scrolling. */}>{currentDisplay}</pre></dd></div> : null}<Field label="单位" value={unit} /><Field label="约束" value={constraints} /><Field label="所属模块" value={formatModulePathLabel(row.modulePath, row.moduleName)} /><Field label="重要性" value={{ high: "高", medium: "中", low: "低" }[row.importance]} />

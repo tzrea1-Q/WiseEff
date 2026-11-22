@@ -40,11 +40,11 @@ describe("LogsPage · 原始日志搜索", () => {
     expect(toggle).toHaveAttribute("aria-pressed", "true");
     expect(within(rawLog).getByRole("grid")).toHaveClass("rawlog-table--wrap");
   });
-  it("输入关键词后显示匹配数并标记当前匹配行", () => {
+  it("输入关键词后显示匹配数并标记当前匹配行", async () => {
     window.history.replaceState(null, "", "/logs");
     render(<App initialAppState={userState} />);
 
-    const rawLog = screen.getByRole("region", { name: "原始日志" });
+    const rawLog = await screen.findByRole("region", { name: "原始日志" });
     fireEvent.change(within(rawLog).getByRole("searchbox", { name: "在日志中搜索" }), {
       target: { value: "thermal" }
     });
@@ -53,11 +53,11 @@ describe("LogsPage · 原始日志搜索", () => {
     expect(screen.getByTestId("rawlog-line-6")).toHaveClass("rawlog-line--match-current");
   });
 
-  it("下一个匹配按钮推进当前匹配行，Esc 清空搜索", () => {
+  it("下一个匹配按钮推进当前匹配行，Esc 清空搜索", async () => {
     window.history.replaceState(null, "", "/logs");
     render(<App initialAppState={userState} />);
 
-    const search = screen.getByRole("searchbox", { name: "在日志中搜索" });
+    const search = await screen.findByRole("searchbox", { name: "在日志中搜索" });
     fireEvent.change(search, { target: { value: "thermal" } });
     fireEvent.click(screen.getByRole("button", { name: "下一个匹配" }));
 
@@ -69,21 +69,21 @@ describe("LogsPage · 原始日志搜索", () => {
     expect(screen.getByRole("button", { name: "下一个匹配" })).toBeDisabled();
   });
 
-  it("Ctrl+F 将焦点移到日志搜索框", () => {
+  it("Ctrl+F 将焦点移到日志搜索框", async () => {
     window.history.replaceState(null, "", "/logs");
     render(<App initialAppState={userState} />);
 
-    const rawLog = screen.getByRole("region", { name: "原始日志" });
+    const rawLog = await screen.findByRole("region", { name: "原始日志" });
     fireEvent.keyDown(window, { key: "f", ctrlKey: true });
 
     expect(within(rawLog).getByRole("searchbox", { name: "在日志中搜索" })).toHaveFocus();
   });
 
-  it("原始日志表头支持按时间、模块和内容筛选，搜索框保持独立", () => {
+  it("原始日志表头支持按时间、模块和内容筛选，搜索框保持独立", async () => {
     window.history.replaceState(null, "", "/logs");
     render(<App initialAppState={userState} />);
 
-    const rawLog = screen.getByRole("region", { name: "原始日志" });
+    const rawLog = await screen.findByRole("region", { name: "原始日志" });
     const table = within(rawLog).getByRole("grid");
     const checks: Array<[string, string, string]> = [
       ["时间", "筛选时间", "10:24:05"],

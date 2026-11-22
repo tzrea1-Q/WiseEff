@@ -14,7 +14,7 @@ import {
   catalogSubjectDtoSchema,
   catalogTimelineFactDtoSchema,
 } from "../../contracts/dtoSchemas/parameterCatalog";
-import type { CatalogCursor, OptionalValue } from "../../parameter-catalog-contract/index";
+import { ParameterDefinitionId, type CatalogCursor, type OptionalValue } from "../../parameter-catalog-contract/index";
 import type {
   CatalogDocumentFacts,
   CatalogRegistrationProjection,
@@ -74,6 +74,7 @@ export function mapCatalogSubject(
   options: { readonly reviewCount?: number; readonly availableActions?: ReadonlyArray<"register">; readonly organizationOwnership?: boolean } = {},
 ): ReturnType<typeof catalogSubjectDtoSchema.parse> {
   const ownerSubjectId = (options.organizationOwnership && registration.status !== "unregistered" ? registration.placement?.ownerSubjectId : undefined) ?? subject.owner;
+  const aliases = "aliases" in subject ? subject.publishedAliases ?? subject.aliases : [];
   return catalogSubjectDtoSchema.parse({
     id: subject.id,
     ...(ownerSubjectId ? { ownerSubjectId } : {}),
@@ -81,6 +82,7 @@ export function mapCatalogSubject(
     ...(subject.canonicalKind && subject.canonicalKind !== subject.kind ? { canonicalType: subject.canonicalKind } : {}),
     canonicalName: subject.canonicalKey,
     aliases: subjectAliases(subject),
+    ...(aliases.length ? { formalAliases: aliases.map(alias => ({ selector: aliasValue(alias), status: alias.membership.lifecycle })) } : {}),
     membership: {
       status: subject.membership.lifecycle,
       catalogReleaseId: subject.membership.release.id,
@@ -102,18 +104,37 @@ export function mapDefinitionRevision(
     definitionId: revision.definitionId,
     revisionNumber: revision.revisionNumber,
     contentDigest: revision.contentDigest,
+    ...(revision.content.successorDefinitionId ? { successorDefinitionId: revision.content.successorDefinitionId } : {}),
     displayName: revision.content.displayName ?? "",
     valueShape: revision.content.valueShape,
     constraints: revision.content.constraints,
     documentation: optionalString(revision.content.documentation),
     unit: revision.content.unit.kind === "present" ? revision.content.unit.value : null,
     examples: revision.content.examples,
+    ...(revision.content.dtsExamples !== undefined ? { dtsExamples: revision.content.dtsExamples } : {}),
     publishedInCatalogReleaseId: revision.publishedIn.id,
   });
 }
 
 export function definitionLifecycle(definition: ParameterDefinitionSnapshot) {
   return definition.selectedRevision.content.lifecycle;
+}
+
+function recommendedDefinition(snapshot: CatalogSnapshot, definition: ParameterDefinitionSnapshot) {
+  if (definitionLifecycle(definition) !== "deprecated") return;
+  const visited = new Set<string>([definition.id]);
+  let successorId = definition.selectedRevision.content.successorDefinitionId;
+  while (successorId && !visited.has(successorId)) {
+    visited.add(successorId);
+    const successor = snapshot.getDefinitionById(ParameterDefinitionId(successorId));
+    if (successor.status !== "found") return;
+    const { id, propertyKey, selectedRevision, subjectId } = successor.definition;
+    if (selectedRevision.content.lifecycle === "active") {
+      if (snapshot.getSubject(subjectId).status !== "found") return;
+      return { id, propertyKey, displayName: selectedRevision.content.displayName || propertyKey };
+    }
+    successorId = selectedRevision.content.successorDefinitionId;
+  }
 }
 
 export function mapCatalogDefinition(
@@ -130,6 +151,7 @@ export function mapCatalogDefinition(
     return null;
   }
   const subject = owner.subject;
+  const recommendation = recommendedDefinition(snapshot, definition);
   return catalogDefinitionDtoSchema.parse({
     id: definition.id,
     subject: {
@@ -140,6 +162,7 @@ export function mapCatalogDefinition(
     propertyKey: definition.propertyKey,
     lifecycle: definition.selectedRevision.content.lifecycle,
     currentRevision: mapDefinitionRevision(definition.selectedRevision),
+    ...(recommendation ? { recommendedDefinition: recommendation } : {}),
     registration,
     usageSummary: { policyCount: usage.policyCount, projectCount: usage.projectCount, currentValueCount: usage.currentValueCount },
     links: {

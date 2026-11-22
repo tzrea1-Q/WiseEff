@@ -14,7 +14,7 @@ type CatalogPage<T> = {
 export async function listAllCanonicalPages<T>(
   fetchPage: (query: CatalogListQuery) => Promise<CatalogPage<T>>,
   query: CatalogListQuery = {},
-  progress?: { onPage: (items: T[]) => void; isCancelled: () => boolean }
+  progress?: { onPage?: (items: T[]) => void; isCancelled: () => boolean }
 ): Promise<T[]> {
   const result: T[] = [];
   const seenCursors = new Set<string>();
@@ -29,7 +29,7 @@ export async function listAllCanonicalPages<T>(
     });
     if (progress?.isCancelled()) return result;
     result.push(...page.items);
-    progress?.onPage([...result]);
+    progress?.onPage?.([...result]);
     if (!page.hasMore) return result;
     const nextCursor = page.nextCursor?.trim() ?? "";
     if (!nextCursor || nextCursor === cursor || seenCursors.has(nextCursor)) {

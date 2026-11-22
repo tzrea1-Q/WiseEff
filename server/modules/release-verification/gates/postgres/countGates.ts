@@ -11,6 +11,7 @@ import {
 } from "./relations";
 import type { GateQuery } from "./session";
 import { readDefinitionErasureCapabilities } from "./privilegeGates";
+import { publishedSubjectOwner } from "../../../catalog-kernel/ownerSchema";
 
 type CountRow = {
   violation_count: string | number;
@@ -207,31 +208,31 @@ export const runV04 = async (query: GateQuery): Promise<GateResult> => {
       select current_catalog_release_id as release_id
       from ${catalogRelation("catalog_state")}
     ),
-    active_membership as (
+    retained_membership as (
       select membership.subject_id
       from ${catalogRelation("catalog_release_subjects")} membership
       join current_pointer pointer on pointer.release_id = membership.release_id
-      where membership.lifecycle = 'active'
+      where membership.lifecycle = 'active' or to_jsonb(membership)->>'rules_snapshot' is not null
     ),
     missing as (
       select registration.id, 'registration'::text as family
       from ${catalogRelation("organization_subject_registrations")} registration
       where not exists (
-        select 1 from active_membership membership
+        select 1 from retained_membership membership
         where membership.subject_id = registration.subject_id
       )
       union all
       select binding.id, 'binding'
       from ${catalogRelation("project_parameter_bindings")} binding
       where not exists (
-        select 1 from active_membership membership
+        select 1 from retained_membership membership
         where membership.subject_id = binding.subject_id
       )
       union all
       select match.id, 'observation-match'
       from ${catalogRelation("parameter_observation_matches")} match
       where not exists (
-        select 1 from active_membership membership
+        select 1 from retained_membership membership
         where membership.subject_id = match.subject_id
       )
     )
@@ -240,7 +241,7 @@ export const runV04 = async (query: GateQuery): Promise<GateResult> => {
       coalesce((select json_agg(id order by id) from missing), '[]'::json) as offending_ids,
       json_build_object(
         'subjectCount', (select count(*)::int from ${catalogRelation("catalog_subjects")}),
-        'membershipCount', (select count(*)::int from active_membership),
+        'membershipCount', (select count(*)::int from retained_membership),
         'registrationCount', (select count(*)::int from ${catalogRelation("organization_subject_registrations")}),
         'bindingCount', (select count(*)::int from ${catalogRelation("project_parameter_bindings")}),
         'matchCount', (select count(*)::int from ${catalogRelation("parameter_observation_matches")})
@@ -251,6 +252,7 @@ export const runV04 = async (query: GateQuery): Promise<GateResult> => {
 };
 
 export const runV05 = async (query: GateQuery): Promise<GateResult> => {
+  const owner = `coalesce(registration.owner_subject_id, ${publishedSubjectOwner("membership", "subject")})`;
   const observation = await countSql(
     query,
     `
@@ -277,21 +279,24 @@ export const runV05 = async (query: GateQuery): Promise<GateResult> => {
        and module.organization_id = placement.organization_id
       left join ${catalogRelation("catalog_subjects")} subject
         on subject.id = registration.subject_id
+      left join ${catalogRelation("catalog_release_subjects")} membership on membership.subject_id=subject.id
+        and membership.release_id=(select current_catalog_release_id from ${catalogRelation("catalog_state")})
       left join ${catalogRelation("organization_subject_registrations")} owner_registration
         on owner_registration.organization_id = registration.organization_id
-       and owner_registration.subject_id = coalesce(registration.owner_subject_id, subject.owner_subject_id)
+       and owner_registration.subject_id = ${owner}
        and (owner_registration.status = 'active' or (registration.status = 'retired' and owner_registration.status = 'retired'))
       left join ${catalogRelation("catalog_subjects")} owner_subject
-        on owner_subject.id = coalesce(registration.owner_subject_id, subject.owner_subject_id)
+        on owner_subject.id = ${owner}
       where placement.id is null
          or coalesce(counts.retained, 0) <> 1
          or placement.organization_id is distinct from registration.organization_id
          or subject.id is null
-         or (coalesce(registration.owner_subject_id, subject.owner_subject_id) is not null and (subject.kind <> 'node-type'
+         or (${owner} is not null and (subject.kind <> 'node-type'
            or owner_subject.kind is distinct from 'driver' or owner_registration.id is null))
          or not coalesce(
-           (coalesce(registration.owner_subject_id, subject.owner_subject_id) is not null and placement.module_id is null)
-           or (coalesce(registration.owner_subject_id, subject.owner_subject_id) is null and module.archived_at is null
+           (${owner} is not null and (placement.module_id is null or to_jsonb(membership)->>'rules_snapshot' is not null))
+           or (${owner} is null and placement.module_id is null and to_jsonb(membership)->>'rules_snapshot' is not null)
+           or (${owner} is null and module.archived_at is null
              and (module.kind = 'business' or (module.kind = 'unclassified' and module.parent_id is null)))
            or (module.archived_at is null
              and ((subject.kind = 'driver' and module.kind = 'driver-group')

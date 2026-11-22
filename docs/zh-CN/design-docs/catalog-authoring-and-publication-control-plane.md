@@ -115,11 +115,11 @@ M1 只允许当前运行时已经解释的类型与约束。精确白名单由 C
 
 策略行 `catalog_publication.publication_policies`（单例或版本化）：
 
-- `low_risk_single_actor_publish`：布尔，默认 false。
+- `low_risk_single_actor_publish`：为兼容保留的历史布尔字段，默认 false。
 - `publication_enabled`：布尔，默认 false，直到 CP-12。
 - `capability_contract_revision`：文本。
 
-高风险始终需要与作者不同的真实主体持有 `catalog:review-high-risk`。worker/manager 身份不能充当该主体。
+持有 `catalog:publish` 或 `catalog:review-high-risk` 的真实用户可以批准低风险候选。高风险候选要求 `catalog:review-high-risk`。候选作者持有相应权限即可批准自己的候选。worker 或 manager 根据已记录的用户批准执行发布。
 
 ## 6. API 冻结
 
@@ -127,7 +127,7 @@ M1 只允许当前运行时已经解释的类型与约束。精确白名单由 C
 
 | 方法与路径 | 合同 |
 | --- | --- |
-| 既有 proposal 创建/提交/撤回/接受/拒绝 | 保留。Accept 仍不物化。接受结构化 publication reference 只记录 Authorization 意图，不写 Catalog 行。除非自托管低风险策略适用于 **low-risk** Candidate 且 actor 持有 `catalog:publish`，自审仍返回 `proposal-self-approval-forbidden`。 |
+| 既有 proposal 创建/提交/撤回/接受/拒绝 | 保留。Accept 仍不物化。接受结构化 publication reference 只记录 Authorization 意图，不写 Catalog 行。组织提案的接受及驳回为独立流程，提案作者执行这些操作时仍返回 `proposal-self-approval-forbidden`。 |
 | `POST /api/v2/catalog/publication-candidates` | 构建并冻结预览。输入：proposal revision 和/或 tagged ChangeSet，以及 `X-WiseEff-Catalog-Release`。输出：Candidate id、影响摘要、风险级别、能力合同；**不**要求用户填写 digest/version/Git URL。 |
 | `GET /api/v2/catalog/publication-candidates/{candidateId}` | 调用方范围内的不可变 Candidate 投影。 |
 | `POST /api/v2/catalog/publication-candidates/{candidateId}/publish` | 策略门禁的批准和/或入队。Body：`{ "idempotencyKey": "…" }`。返回 job，不返回 definition。 |
@@ -143,7 +143,7 @@ M1 只允许当前运行时已经解释的类型与约束。精确白名单由 C
 | --- | --- | --- |
 | `publication-not-authorized` | 403 | 缺少 Authorization 或能力 |
 | `publication-capability-missing` | 403 | 没有 `catalog:author` / `catalog:publish` / `catalog:review-high-risk` |
-| `publication-self-approval-forbidden` | 403 | 高风险自审，或策略关闭时的低风险自审 |
+| `publication-self-approval-forbidden` | 403 | 为历史记录保留的旧版发布失败原因 |
 | `publication-policy-disabled` | 403 | 功能开关/策略关闭 |
 | `publication-frozen` | 409 | 应用升级/维护冻结 |
 | `candidate-stale` | 409 | 草稿已动或基线漂移；需要重建 |

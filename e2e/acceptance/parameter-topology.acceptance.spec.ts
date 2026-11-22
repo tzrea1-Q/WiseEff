@@ -1916,6 +1916,8 @@ test.describe("Parameter topology / schema browser acceptance", () => {
       await dismissXiaozeHint(page);
       const governance = page.getByRole("region", { name: "节点对应确认" });
       await expect(governance).toBeVisible({ timeout: 30_000 });
+      // The region renders its own loading status until the mapping tasks arrive.
+      await expect(governance.getByRole("status", { name: "正在加载节点对应任务…" })).toHaveCount(0, { timeout: 30_000 });
       await expect(governance.getByRole("status")).toContainText("只读证据");
       const review = governance.getByRole("region", { name: "节点对应审核" });
       await expect(review).toBeVisible({ timeout: 30_000 });

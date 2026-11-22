@@ -300,13 +300,15 @@ describe("#1075 canonical v1 compatibility list", () => {
   });
 
   it("bounds canonical value materialization and does not visit later projects once limit is met", async () => {
-    const { result, reads } = await observeReads(() => requestJson<{ items: Array<{ id: string }> }>(
+    const { result, reads } = await observeReads(() => requestJson<{ items: Array<{ id: string; currentValueId: string }> }>(
       createWiseEffServer({ db, objectStore: storage }), "/api/v1/parameters?limit=1",
       { headers: { "X-WiseEff-User": adminId } }
     ));
     expect(result.status, result.bodyText).toBe(200);
     expect(result.body.items.map((item) => item.id)).toEqual([bindingId]);
-    expect(reads.filter(({ text }) => /order by created_at asc, id asc/.test(text))).toHaveLength(1);
+    expect(reads.filter(({ text }) => /from parameter_catalog\.project_parameter_values\s+where id = any/.test(text))
+      .map(({ values }) => values)).toEqual([[result.body.items.map((item) => item.currentValueId)]]);
+    expect(reads.filter(({ text }) => /order by created_at asc, id asc/.test(text))).toEqual([]);
     expect(reads.filter(({ text, values }) =>
       /from parameter_catalog\.current_project_parameter_bindings/.test(text) && values.includes(otherProjectId)
     )).toEqual([]);
@@ -383,14 +385,16 @@ describe("#1075 canonical v1 compatibility list", () => {
       }));
       ids.push(registered.bindings[0]!.id);
     }
-    const { result, reads, legacyReads } = await observeReads(() => requestJson<{ items: Array<{ id: string; sourceFileId: string }> }>(
+    const { result, reads, legacyReads } = await observeReads(() => requestJson<{ items: Array<{ id: string; currentValueId: string; sourceFileId: string }> }>(
       createWiseEffServer({ db, objectStore: storage }), `/api/v1/parameters?projectId=${limitedProjectId}&limit=2`,
       { headers: { "X-WiseEff-User": adminId } }
     ));
     expect(result.status, result.bodyText).toBe(200);
     expect(result.body.items.map((item) => item.id)).toEqual([...ids].sort().slice(0, 2));
     for (const item of result.body.items) expect(item.sourceFileId).toBe(fileIds[ids.indexOf(item.id)]);
-    expect.soft(reads.filter(({ text }) => /order by created_at asc, id asc/.test(text))).toHaveLength(2);
+    expect(reads.filter(({ text }) => /from parameter_catalog\.project_parameter_values\s+where id = any/.test(text))
+      .map(({ values }) => values)).toEqual([[result.body.items.map((item) => item.currentValueId)]]);
+    expect(reads.filter(({ text }) => /order by created_at asc, id asc/.test(text))).toEqual([]);
     expect.soft(reads.filter(({ text }) => /as node_locator/.test(text) && /source_pin/.test(text))).toHaveLength(1);
     expect(legacyReads).toEqual([]);
   });

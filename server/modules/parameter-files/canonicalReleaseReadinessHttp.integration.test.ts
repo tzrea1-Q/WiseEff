@@ -1,13 +1,11 @@
-import { randomUUID } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import pg from "pg";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { createWiseEffServer } from "../../app";
 import { createPostgresDatabase, getRootPostgresPool, type RootDatabase } from "../../shared/database/client";
-import { applyTestMigrations, migrationsDir } from "../../testing/tempDatabase";
+import { createEphemeralTestDatabase, type EphemeralTestDatabase } from "../../testing/testDatabase";
 import { makeTestAuthContext } from "../../testing/authContext";
 import { seedCoreGraph } from "../../testing/fixtures";
 import { installConfigurationSourceFixture } from "../../testing/parameterCatalog/configurationSource";
@@ -34,22 +32,16 @@ describe("#1061 assembled-server canonical release readiness", () => {
   let db: RootDatabase;
   let storage: ReturnType<typeof parameterObjectWriteCustody>;
   let directory: string;
-  let databaseName: string;
+  let database: EphemeralTestDatabase;
   let server: ReturnType<typeof createWiseEffServer>;
-  let adminPool: pg.Pool;
   let baseUrl: string;
 
   beforeAll(async () => {
-    const databaseUrl = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
-    if (!databaseUrl) throw new Error("Canonical readiness requires explicit real PostgreSQL.");
-    const connection = new URL(databaseUrl);
-    connection.pathname = "/postgres";
-    adminPool = new pg.Pool({ connectionString: connection.toString() });
-    databaseName = `${process.env.WISEEFF_TEST_DATABASE_PREFIX ?? "t1061"}_readiness_${randomUUID().replaceAll("-", "")}`;
-    await adminPool.query(`create database ${databaseName}`);
-    connection.pathname = `/${databaseName}`;
-    db = createPostgresDatabase(connection.toString());
-    await applyTestMigrations(db, migrationsDir);
+    if (!(process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL)) {
+      throw new Error("Canonical readiness requires explicit real PostgreSQL.");
+    }
+    database = await createEphemeralTestDatabase("t1061-readiness");
+    db = createPostgresDatabase(database.url);
     directory = await mkdtemp(join(tmpdir(), "wiseeff-t1061-readiness-"));
     storage = parameterObjectWriteCustody(db, createLocalObjectStore(directory));
     await seedCoreGraph(db, {
@@ -80,8 +72,7 @@ describe("#1061 assembled-server canonical release readiness", () => {
   afterAll(async () => {
     if (server?.listening) await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
     await db?.close();
-    if (databaseName) await adminPool.query(`drop database ${databaseName}`);
-    await adminPool?.end();
+    await database?.drop();
     if (directory) await rm(directory, { recursive: true, force: true });
   });
 

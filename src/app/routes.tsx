@@ -1,6 +1,7 @@
 import { knowledgeEntryHref, parseKnowledgeEntryQuery } from "@/domain/knowledge/citations";
 import { withOrganizationScope } from "@/infrastructure/http/organizationScope";
-import { useCallback, useMemo, type Dispatch, type ReactNode } from "react";
+import { lazy, Suspense, useCallback, useMemo, type Dispatch, type ReactNode } from "react";
+import { SectionSkeleton } from "@/components/common/SectionState";
 
 import type {
   ApplyParameterImportBatchInput,
@@ -34,26 +35,9 @@ import type { AppRuntime } from "@/app/appRuntime";
 import type { DashboardWindow, HotspotDimension, OverviewScope } from "@/domain/parameters/dashboardTypes";
 import { canAccessPage, canPerform, getAccessibleFallbackPath, getRequiredRoleForPage, getRequiredRoleLabel } from "@/app/permissions";
 import type { WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
-import { AuditCenterPage } from "@/AuditCenterPage";
 import { migrateLegacyRoleId } from "@/domain/users/types";
-import { LinearTemplateHome } from "@/linear-template/LinearTemplateHome";
-import { LogsPage } from "@/features/log-analysis/LogsPage";
-import { ParameterChangesPage } from "@/features/parameter-review/ParameterChangesPage";
-import { LogAdminPage } from "@/LogAdminPage";
-import { SkillWorkspace } from "@/features/log-skills/SkillWorkspace";
-import { NodeDebuggingPage } from "@/NodeDebuggingPage";
-import { ParameterAdminNextPage } from "@/ParameterAdminNextPage";
-import { ParameterHomePage } from "@/features/parameter-home/ParameterHomePage";
-import { FeedbackAdminPage } from "@/features/product-feedback/FeedbackAdminPage";
-import { FeedbackCenterPage } from "@/features/product-feedback/FeedbackCenterPage";
-import { KnowledgeAdminPage } from "@/features/knowledge/KnowledgeAdminPage";
-import { KnowledgePage } from "@/features/knowledge/KnowledgePage";
 import { parseDtsReloadHandoffQuery } from "@/domain/dtsReload/handoff";
-import { DtsReloadPage } from "@/features/dts-reload/DtsReloadPage";
-import { ParametersPage as UserParametersPage } from "@/ParametersPage";
 import type { AuthContextDto } from "@/infrastructure/http/authClient";
-import { OrganizationPage } from "@/OrganizationPage";
-import { OrganizationWorkspace } from "@/features/organization/OrganizationWorkspace";
 import { RetiredNotice } from "@/components/layout/RetiredNotice";
 import type { PageConfig } from "@/appConfig";
 import type { PrototypeState } from "@/domain/prototype/types";
@@ -61,15 +45,32 @@ import type { ParameterDraftItem } from "@/domain/parameters/types";
 import type { SpecRelatedKnowledgeSource } from "@/components/parameter-topology/ParameterSpecDetail";
 import type { KnowledgeDefinitionPickerPage } from "@/features/knowledge/KnowledgeEntryEditorDialog";
 import { buildCatalogHref, CATALOG_PAGE_PATH, CATALOG_READ_PAGE_PATH, EMPTY_CATALOG_URL_ANCHOR } from "@/application/parameter-catalog/urlAnchor";
-import { CatalogPage } from "@/features/parameter-catalog/CatalogPage";
 import { resolveParameterModuleRegistryRepository } from "@/application/parameters/parameterModuleRegistryResolve";
 import { createHttpParameterModuleRegistryRepository } from "@/infrastructure/http/parameterModuleRegistryClient";
-import { WorkflowPublicationPage } from "@/features/workflow-publication/WorkflowPublicationPage";
-import { PlatformOrganizationsPage } from "@/features/organization/PlatformOrganizationsPage";
 import { WorkflowPublicationNotice } from "@/components/layout/WorkflowPublicationNotice";
 import { workflowForGroup, VISIBLE_WORKFLOWS, type WorkflowId } from "@/domain/workflowDiscovery";
 import type { WorkflowPublicationView } from "@/application/workflow-publication/useWorkflowPublication";
 
+const AuditCenterPage = lazy(() => import("@/AuditCenterPage").then((module) => ({ default: module.AuditCenterPage })));
+const LinearTemplateHome = lazy(() => import("@/linear-template/LinearTemplateHome").then((module) => ({ default: module.LinearTemplateHome })));
+const LogsPage = lazy(() => import("@/features/log-analysis/LogsPage").then((module) => ({ default: module.LogsPage })));
+const ParameterChangesPage = lazy(() => import("@/features/parameter-review/ParameterChangesPage").then((module) => ({ default: module.ParameterChangesPage })));
+const LogAdminPage = lazy(() => import("@/LogAdminPage").then((module) => ({ default: module.LogAdminPage })));
+const SkillWorkspace = lazy(() => import("@/features/log-skills/SkillWorkspace").then((module) => ({ default: module.SkillWorkspace })));
+const NodeDebuggingPage = lazy(() => import("@/NodeDebuggingPage").then((module) => ({ default: module.NodeDebuggingPage })));
+const ParameterAdminNextPage = lazy(() => import("@/ParameterAdminNextPage").then((module) => ({ default: module.ParameterAdminNextPage })));
+const ParameterHomePage = lazy(() => import("@/features/parameter-home/ParameterHomePage").then((module) => ({ default: module.ParameterHomePage })));
+const FeedbackAdminPage = lazy(() => import("@/features/product-feedback/FeedbackAdminPage").then((module) => ({ default: module.FeedbackAdminPage })));
+const FeedbackCenterPage = lazy(() => import("@/features/product-feedback/FeedbackCenterPage").then((module) => ({ default: module.FeedbackCenterPage })));
+const KnowledgeAdminPage = lazy(() => import("@/features/knowledge/KnowledgeAdminPage").then((module) => ({ default: module.KnowledgeAdminPage })));
+const KnowledgePage = lazy(() => import("@/features/knowledge/KnowledgePage").then((module) => ({ default: module.KnowledgePage })));
+const DtsReloadPage = lazy(() => import("@/features/dts-reload/DtsReloadPage").then((module) => ({ default: module.DtsReloadPage })));
+const UserParametersPage = lazy(() => import("@/ParametersPage").then((module) => ({ default: module.ParametersPage })));
+const OrganizationPage = lazy(() => import("@/OrganizationPage").then((module) => ({ default: module.OrganizationPage })));
+const OrganizationWorkspace = lazy(() => import("@/features/organization/OrganizationWorkspace").then((module) => ({ default: module.OrganizationWorkspace })));
+const CatalogPage = lazy(() => import("@/features/parameter-catalog/CatalogPage").then((module) => ({ default: module.CatalogPage })));
+const WorkflowPublicationPage = lazy(() => import("@/features/workflow-publication/WorkflowPublicationPage").then((module) => ({ default: module.WorkflowPublicationPage })));
+const PlatformOrganizationsPage = lazy(() => import("@/features/organization/PlatformOrganizationsPage").then((module) => ({ default: module.PlatformOrganizationsPage })));
 
 export type ParameterPageActions = {
   submitChanges(input: SubmitParameterChangesInput): Promise<ParameterRuntimeVoidResult>;
@@ -82,6 +83,8 @@ export type ParameterPageActions = {
   applyImportBatch(input: ApplyParameterImportBatchInput): Promise<ParameterImportBatchDto | ParameterRuntimeVoidResult>;
   parseDtsImport(input: ParseDtsImportInput): Promise<DtsImportParseResult>;
   refresh(options?: ParameterRuntimeRefreshOptions): Promise<ParameterRuntimeRefreshResult>;
+  loadProjectParameters?: ParameterRuntimeActions["loadProjectParameters"];
+  ensureProjectParameters?: ParameterRuntimeActions["ensureProjectParameters"];
 };
 
 /** Loading lifecycle for a page-scoped API data section (FA-21 state coverage). */
@@ -148,7 +151,15 @@ export type PageRouterProps = PageProps & {
   DebuggingAdminPage: (props: PageProps & { area?: "parameter" | "nodes" }) => ReactNode;
 };
 
-export function PageRouter({
+export function RoutePageBoundary({ children }: { children: ReactNode }) {
+  return <Suspense fallback={<SectionSkeleton label="正在加载页面…" />}>{children}</Suspense>;
+}
+
+export function PageRouter(props: PageRouterProps) {
+  return <RoutePageBoundary><RoutedPage {...props} /></RoutePageBoundary>;
+}
+
+function RoutedPage({
   page,
   publication,
   visibleWorkflows = VISIBLE_WORKFLOWS,
@@ -199,7 +210,8 @@ export function PageRouter({
   const isPublicationAdministrator = publicationAdministrator ?? (currentRoleId === "admin" || currentRoleId === "platform-admin");
   const canOpenKnowledge = visibleWorkflows.includes("knowledge");
   const canOpenParameters = visibleWorkflows.includes("parameter-management");
-  const searchProjectId = new URLSearchParams(search).get("project") ?? "";
+  const params = new URLSearchParams(search);
+  const searchProjectId = params.get("project") || params.get("projectId") || "";
   const effectiveParametersProjectId = searchProjectId || state.activeProjectId;
   const activeProjectInitializationStatus =
     state.projectInitializationStatuses[effectiveParametersProjectId] ?? "initialized";
@@ -266,7 +278,8 @@ export function PageRouter({
           propertyKey: item.propertyKey,
           displayName: item.currentRevision.displayName,
           driverModule: item.subject.canonicalName,
-          lifecycle: item.lifecycle
+          lifecycle: item.lifecycle,
+          recommendedDefinition: item.recommendedDefinition
         })),
         nextCursor: page.nextCursor,
         catalogReleaseId: page.catalogReleaseId
@@ -302,9 +315,9 @@ export function PageRouter({
   if (workspaceSkillId) {
     try { workspaceSkillId = decodeURIComponent(workspaceSkillId); } catch { /* The API returns not-found for a malformed id. */ }
   }
-  const canManagePublication = currentRoleId === "platform-admin" && (!sessionRoles || sessionRoles.some((role) => role.roleId === "platform-admin" && role.projectId === null));
+  const isPlatformAdministrator = currentRoleId === "platform-admin" && (!sessionRoles || sessionRoles.some((role) => role.roleId === "platform-admin" && role.projectId === null));
   if ((!canAccessPage(currentRoleId, page.key, { path: page.path, runtimeMode: runtimeMode ?? "mock", permissions: sessionPermissions, roles: sessionRoles, projectMemberships }) && !(runtimeMode === "api" && page.key === "parameter-submissions" && projectMemberships?.length) && !(skillWorkspaceMatch && sessionPermissions?.includes("logs:view"))) ||
-    ((page.key === "workflow-publication" || page.key === "platform-organizations") && !canManagePublication)) {
+    ((page.key === "workflow-publication" || page.key === "platform-organizations") && !isPlatformAdministrator)) {
     const requiredRole = getRequiredRoleForPage(page.key);
     return (
       <section className="permission-denied-page" aria-label="无权访问">
@@ -351,9 +364,11 @@ export function PageRouter({
           dispatch={dispatch}
           onNavigate={navigateParameters}
           search={search}
+          organizationId={runtime?.operatingOrganizationId ?? organizationId}
           parameterActions={parameterActions}
           topologyRepository={parameterTopologyRepository}
           canonicalRepository={runtime?.parameterCatalogRepository}
+          parameterRepository={runtime?.parameterRepository}
           parameterFileRepository={runtime?.parameterFileRepository}
           listConfigSets={listParameterConfigSets}
           effectiveProjectId={effectiveParametersProjectId}
@@ -405,7 +420,7 @@ export function PageRouter({
           runtimeMode={runtimeMode}
           parameterTopologyRepository={parameterTopologyRepository}
           projects={state.configDraft.projects}
-          parameters={state.parameters}
+          parameters={runtimeMode === "api" ? undefined : state.parameters}
           activeProjectId={state.activeProjectId}
           dispatch={dispatch}
           parameterActions={parameterActions}
@@ -488,6 +503,7 @@ export function PageRouter({
     case "knowledge-admin":
       return knowledgeRepository && knowledgeCapability ? (
         <KnowledgeAdminPage repository={knowledgeRepository} organizationId={new URLSearchParams(search).get("organizationId") ?? undefined} capability={knowledgeCapability}
+          searchArchivedDefinitions={isPlatformAdministrator ? searchParameterDefinitions : undefined}
           onNavigate={(path) => onNavigate(withOrganizationScope(path, new URLSearchParams(search).get("organizationId") ?? undefined))} />
       ) : null;
     case "debugging":

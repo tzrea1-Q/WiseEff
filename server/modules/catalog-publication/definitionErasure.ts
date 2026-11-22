@@ -16,6 +16,7 @@ import {
   refreshSuccessorSource,
   sha256Digest,
 } from "./builder/bundleCodec";
+import { readArtifactsForErasure } from "./persistence/store";
 
 export type CatalogDefinitionErasurePlan = {
   readonly definitionId: string;
@@ -55,6 +56,12 @@ type StoredArtifact = {
 };
 
 type InstalledRelease = { readonly id: string; readonly release_digest: string };
+
+async function readStoredArtifacts(db: Queryable): Promise<StoredArtifact[]> {
+  return (await readArtifactsForErasure(db)).map(record => ({
+    id: record.id, artifact_digest: record.artifactDigest, artifact_bytes: record.artifactBytes,
+  }));
+}
 
 const compile = (bundle: CatalogReleaseBundle): CompiledCatalogRelease => {
   const compiled = compileCatalogRelease(bundle);
@@ -236,12 +243,11 @@ export const prepareCatalogDefinitionErasure = async (
   definitionId: string,
 ): Promise<CatalogDefinitionErasurePlan> => {
   const [artifacts, releases] = await Promise.all([
-    db.query<StoredArtifact>(`select id, artifact_digest, artifact_bytes
-      from catalog_publication.release_artifacts order by created_at, id`),
+    readStoredArtifacts(db),
     db.query<InstalledRelease>(`select id, release_digest
       from parameter_catalog.catalog_releases order by release_sequence, id`),
   ]);
-  const sourced = new Set(artifacts.rows.flatMap((artifact) => {
+  const sourced = new Set(artifacts.flatMap((artifact) => {
     const parsed = parseBundleBytes(artifact.artifact_bytes);
     if (!parsed.ok) throw new Error(`Catalog artifact ${artifact.id} is unreadable.`);
     return parsed.bundle.releases.map((node) => node.manifest.release.id);
@@ -262,13 +268,13 @@ export const prepareCatalogDefinitionErasure = async (
       if (!recovered || bundle.releases.length > recovered.releases.length) recovered = bundle;
     }
     const compiled = compile(recovered!);
-    artifacts.rows.push({
+    artifacts.push({
       id: `cart_erasure_bootstrap_${sha256Digest(recovered!.targetReleaseId).slice(7, 31)}`,
       artifact_digest: compiled.aggregateDigest,
       artifact_bytes: encodeBundleBytes(recovered!),
       create: true,
     });
   }
-  await verifyArtifactProjections(db, artifacts.rows, releases.rows);
-  return rebuildCatalogForDefinitionErasure(artifacts.rows, releases.rows, definitionId);
+  await verifyArtifactProjections(db, artifacts, releases.rows);
+  return rebuildCatalogForDefinitionErasure(artifacts, releases.rows, definitionId);
 };

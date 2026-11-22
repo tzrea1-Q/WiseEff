@@ -1,5 +1,5 @@
 import { selectControlOption } from "@/test/selectControlOption";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
@@ -282,6 +282,45 @@ describe("CanonicalSubjectPlacementPanel", () => {
       expect.objectContaining({ id: "subject-driver", name: "vendor,driver", displayAlias: "旧驱动名称" }),
     ]));
   });
+
+  it("retains an alias draft after a conflict without undoing the refreshed placement", async () => {
+    const ports = createPorts();
+    const registration = await ports.getRegistration(CATALOG_ORGANIZATION_ID, "registration-driver");
+    ports.getRegistration.mockResolvedValue({ ...registration, item: { ...registration.item, displayAlias: "旧名称" }, etag: "registration-v1" });
+    ports.updatePlacement.mockRejectedValueOnce(catalogApiFailure("placement-conflict"));
+    render(<CanonicalSubjectPlacementPanel {...ports} organizationId={CATALOG_ORGANIZATION_ID} actor="org-admin" canAdmin />);
+
+    await openPlacementEditor("vendor,driver");
+    const alias = await screen.findByRole("textbox", { name: "展示别名" });
+    expect(alias).toHaveValue("旧名称");
+    await userEvent.clear(alias);
+    await userEvent.type(alias, "新名称");
+    const confirmAlias = async (currentAlias: string) => {
+      await userEvent.click(screen.getByRole("button", { name: "继续确认" }));
+      const confirmation = screen.getByRole("dialog", { name: "确认修改展示别名" });
+      expect(confirmation).toHaveTextContent(`当前展示名称：${currentAlias}`);
+      expect(confirmation).toHaveTextContent("新名称");
+      await userEvent.click(within(confirmation).getByRole("checkbox"));
+      await userEvent.click(within(confirmation).getByRole("button", { name: "确认修改展示别名" }));
+    };
+    await confirmAlias("旧名称");
+    expect(ports.updatePlacement).toHaveBeenCalledWith(CATALOG_ORGANIZATION_ID, "registration-driver",
+      { displayAlias: { value: "新名称", registrationEtag: "registration-v1" } },
+      expect.objectContaining({ ifMatch: "etag-driver" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("输入已保留");
+
+    const placement = await ports.getPlacement(CATALOG_ORGANIZATION_ID, "registration-driver");
+    ports.getRegistration.mockResolvedValue({ ...registration, item: { ...registration.item, displayAlias: "另一位管理员保存的名称" }, etag: "registration-v2" });
+    ports.getPlacement.mockResolvedValue({ item: { ...placement.item, moduleId: "issue897-driver-b" }, etag: "etag-refreshed" });
+    await userEvent.click(screen.getByRole("button", { name: "刷新证据" }));
+    await waitFor(() => expect(screen.getByLabelText("目标模块")).toHaveAttribute("data-value", "issue897-driver-b"));
+    expect(alias).toHaveValue("新名称");
+    await confirmAlias("另一位管理员保存的名称");
+    expect(ports.updatePlacement).toHaveBeenLastCalledWith(CATALOG_ORGANIZATION_ID, "registration-driver",
+      { displayAlias: { value: "新名称", registrationEtag: "registration-v2" } },
+      expect.objectContaining({ ifMatch: "etag-refreshed" }));
+  });
+
   it("nests registered owned nodes under their driver with independent removal", async () => {
     const ports = createPorts();
     const driver = (await ports.catalog.listSubjects()).items[0]!;
@@ -445,7 +484,7 @@ describe("CanonicalSubjectPlacementPanel", () => {
     const register = vi.spyOn(publication.governance, "createRegistration");
     render(<CanonicalSubjectPlacementPanel {...ports} catalog={{ ...publication.catalog, ...ports.catalog }}
       governance={{ ...publication.governance, ...ports.governance }} organizationId={CATALOG_ORGANIZATION_ID}
-      currentPersonId="batch-user" actor="org-admin" canAdmin sessionPermissions={["catalog:author", "catalog:publish"]} onNavigate={navigate} />);
+      currentPersonId="batch-user" actor="org-admin" canAdmin sessionPermissions={["catalog:author", "catalog:review-high-risk"]} onNavigate={navigate} />);
     const user = userEvent.setup();
     const create = await screen.findByRole("button", { name: "新增主体" });
     await waitFor(() => expect(create).toBeEnabled());
@@ -581,6 +620,40 @@ describe("CanonicalSubjectPlacementPanel", () => {
     await userEvent.setup().click(screen.getByRole("button", { name: "重新读取完整目录" }));
     expect(await screen.findByText("vendor,configuration")).toBeVisible();
     expect(screen.getByRole("button", { name: "登记主体：vendor,node" })).toBeEnabled();
+  });
+
+  it("keeps the expanded snapshot during refresh and ignores an in-flight read invalidated by a change", async () => {
+    const ports = createPorts();
+    const getCatalog = vi.mocked(ports.catalog.getCatalog);
+    const view = (refreshKey: number) => <CanonicalSubjectPlacementPanel {...ports}
+      organizationId={CATALOG_ORGANIZATION_ID} actor="org-admin" canAdmin refreshKey={refreshKey}
+      search="?subjectQ=driver&expandedSubject=subject-driver" />;
+    const rendered = render(view(0));
+    expect(await screen.findByText("extra_119")).toBeVisible();
+    const refresh = screen.getByRole("button", { name: "刷新规范数据" });
+    await waitFor(() => expect(refresh).toBeEnabled());
+
+    let resolveOld!: (value: Awaited<ReturnType<typeof getCatalog>>) => void;
+    const oldRead = new Promise<Awaited<ReturnType<typeof getCatalog>>>(resolve => { resolveOld = resolve; });
+    getCatalog.mockReturnValueOnce(oldRead);
+    await userEvent.click(refresh);
+    expect(refresh).toBeDisabled();
+    expect(screen.getByLabelText("筛选规范主体")).toHaveValue("driver");
+    expect(screen.getByText("extra_119")).toBeVisible();
+
+    const current = ports.listSubjects.getMockImplementation()!;
+    ports.listSubjects.mockImplementation(async query => {
+      const result = await current(query);
+      return { ...result, items: result.items.map(item => item.id === "subject-driver"
+        ? { ...item, canonicalName: "vendor,driver-updated" } : item) };
+    });
+    rendered.rerender(view(1));
+    expect(await screen.findByRole("listitem", { name: /vendor,driver-updated/ })).toBeVisible();
+    await act(async () => { resolveOld(readyCatalogDocument); });
+    expect(screen.getByRole("listitem", { name: /vendor,driver-updated/ })).toBeVisible();
+    expect(getCatalog).toHaveBeenCalledTimes(3);
+    expect(ports.listSubjects).toHaveBeenCalledTimes(6);
+    expect(ports.catalog.listDefinitions).toHaveBeenCalledTimes(2);
   });
 
   it("keeps zero-definition subjects quiet while preserving a real empty response for nonzero counts", async () => {

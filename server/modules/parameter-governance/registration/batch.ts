@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import type pg from "pg";
 import type { z } from "zod";
+import { readOrganizationSubjectOwner } from "../../catalog-kernel/ownerSchema";
 import type { catalogBatchRegistrationRequestSchema } from "../../contracts/dtoSchemas/parameterCatalog";
 import { CatalogSubjectId, type CatalogReleasePin } from "../../parameter-catalog-contract";
 import { TrustedInvocationContextError, type UserInvocationContext } from "../../auth/trustedInvocation";
@@ -42,8 +43,8 @@ export async function executeBatchRegistration(pool: pg.Pool, input: BatchRegist
       let failure: Pick<BatchRowFailure, "code" | "field"> | undefined;
       let result: RegistrationResult | undefined;
       try {
-        const subject = await client.query<{ kind: "driver" | "node-type" | "configuration-schema"; owner_subject_id: string | null }>(
-          "select kind, owner_subject_id from parameter_catalog.catalog_subjects where id = $1", [row.subjectId]);
+        const subject = await client.query<{ kind: "driver" | "node-type" | "configuration-schema" }>(
+          "select kind from parameter_catalog.catalog_subjects where id = $1", [row.subjectId]);
         const kind = subject.rows[0]?.kind;
         const rowKey = `${input.idempotencyKey}:${index}`;
         const prior = await client.query<{ registered: boolean; replay: boolean }>(
@@ -51,7 +52,7 @@ export async function executeBatchRegistration(pool: pg.Pool, input: BatchRegist
            exists (select 1 from parameter_catalog.governance_command_idempotency where organization_id=$1 and command_family='subject-registration' and idempotency_key=$3 and state='committed') as replay`,
           [input.organizationId, row.subjectId, rowKey]);
         if (!kind) failure = { code: "subject-inactive", field: "subject" };
-        else if (subject.rows[0]?.owner_subject_id) failure = { code: "owned-child", field: "subject" };
+        else if (await readOrganizationSubjectOwner(client, input.organizationId, row.subjectId)) failure = { code: "owned-child", field: "subject" };
         else if (prior.rows[0]?.registered && !prior.rows[0]?.replay) failure = { code: "already-registered", field: "subject" };
         else {
           const target = row.target;

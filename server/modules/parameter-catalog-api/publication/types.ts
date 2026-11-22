@@ -1,10 +1,12 @@
 import type { CatalogReleasePin } from "../../parameter-catalog-contract/index";
+import type { SubjectIdentityImpact } from "../../contracts/dtoSchemas/catalogSubjectIdentity";
 import type { TrustedInvocationContext } from "../../auth/trustedInvocation";
 import type { BackendPermission } from "../../auth/types";
 import type { catalogPublicationCommandByRouteId } from "./mapping";
 import type { planMarkdownImport } from "../../catalog-publication/import/markdownImport";
 import type { OwnerDeclaration } from "../../catalog-publication/claimedOwners";
 import type { UsageProjectScope } from "../../parameter-bindings/usage";
+import type { PreviewPublicationValue } from "../../catalog-publication/preview";
 
 export type PlacementHintWithWarnings = ReturnType<typeof planMarkdownImport>["placementHints"][number];
 
@@ -58,6 +60,9 @@ export type PublicationCandidateView = {
     readonly addedSubjectIds?: readonly string[];
     readonly ownerDeclarations?: readonly OwnerDeclaration[];
     readonly ownerPublicationOnly?: boolean;
+    readonly subjectIdentity?: SubjectIdentityImpact;
+    readonly definitionSuccessorChange?: PreviewPublicationValue["impactSummary"]["definitionSuccessorChange"];
+    readonly definitionReplacement?: PreviewPublicationValue["impactSummary"]["definitionReplacement"];
   };
   readonly capabilityContract: {
     readonly revision: string;
@@ -104,7 +109,8 @@ export type PreviewPublicationCommand = {
   readonly changeSet?: unknown;
   readonly claimedOwners?: true;
   readonly markdownImport?: { readonly document: string; readonly fileName: string;
-    readonly additionalDocuments?: { document: string; fileName: string }[] };
+    readonly additionalDocuments?: { document: string; fileName: string }[];
+    readonly organizationSubjectSelections?: { selector: string; subjectId: string }[] };
   readonly proposalId?: string;
   readonly proposalRevisionId?: string;
 };
@@ -140,10 +146,8 @@ export type CatalogPublicationPorts = {
   readonly previewCandidate: (
     command: PreviewPublicationCommand,
   ) => Promise<{ ok: true; value: PublicationCandidateView | { candidate: PublicationCandidateView | null; noChange: boolean } | { candidate: PublicationCandidateView | null; noChange: boolean; entries: ReturnType<typeof planMarkdownImport>["entries"]; source: { fileName: string; sha256: string; parserVersion: string }; placementHints: PlacementHintWithWarnings[] } } | { ok: false; error: CatalogPublicationFailure }>;
-  readonly getCandidate: (input: {
+  readonly getCandidate: (input: Pick<TrustedPublicationScope, "organizationId" | "actorKind" | "permissions" | "projectScope" | "trustedActor"> & {
     readonly candidateId: string;
-    readonly organizationId: string;
-    readonly actorKind: TrustedPublicationActorKind;
   }) => Promise<{ ok: true; value: PublicationCandidateView } | { ok: false; error: CatalogPublicationFailure }>;
   readonly publishCandidate: (
     command: PublishPublicationCommand,

@@ -788,6 +788,7 @@ describe("legacy parameter plane archive", () => {
     expect(references.rows).toEqual([
       { child: "parameter_catalog.definition_replacement_projects", parent: "parameter_catalog.project_parameter_bindings", delete_action: "RESTRICT", constraint_count: "3" },
       { child: "parameter_catalog.definition_replacement_projects", parent: "parameter_catalog.project_parameter_values", delete_action: "RESTRICT", constraint_count: "2" },
+      { child: "parameter_catalog.json_instance_corrections", parent: "parameter_catalog.project_parameter_source_occurrences", delete_action: "CASCADE", constraint_count: "2" },
       { child: "parameter_catalog.parameter_observation_matches", parent: "parameter_catalog.project_parameter_bindings", delete_action: "RESTRICT", constraint_count: "2" },
       { child: "parameter_catalog.parameter_observations", parent: "parameter_catalog.project_parameter_source_occurrences", delete_action: "RESTRICT", constraint_count: "1" },
       { child: "parameter_catalog.project_source_member_tombstones", parent: "public.dts_config_revision_members", delete_action: "RESTRICT", constraint_count: "1" },

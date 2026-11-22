@@ -57,6 +57,7 @@ export type ProductFeedbackDto = {
   pagePath: string;
   pageTitle: string;
   feedbackType: ProductFeedbackType;
+  effectiveFeedbackType?: ProductFeedbackType;
   description: string;
   status: ProductFeedbackStatus;
   resolutionCode?: ProductFeedbackResolutionCode | null;
@@ -138,6 +139,7 @@ function productFeedbackFromDto(dto: ProductFeedbackDto): ProductFeedback {
     pagePath: dto.pagePath,
     pageTitle: dto.pageTitle,
     feedbackType: dto.feedbackType,
+    effectiveFeedbackType: dto.effectiveFeedbackType,
     description: dto.description,
     status: dto.status,
     resolutionCode: dto.resolutionCode ?? null,
