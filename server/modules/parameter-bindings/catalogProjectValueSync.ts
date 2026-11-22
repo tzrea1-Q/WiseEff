@@ -1145,7 +1145,7 @@ export async function listCatalogBindingRowsForProject(
   let destroy = false;
   try {
     await client.query("begin isolation level repeatable read read only");
-    const rows = await listCatalogBindingRowsInSnapshot(catalogReadTransaction(client), auth, input);
+    const rows = await listCatalogBindingRowsInSnapshot(catalogReadTransaction(client, pool), auth, input);
     await client.query("commit");
     return rows;
   } catch (error) {

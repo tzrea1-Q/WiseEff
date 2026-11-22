@@ -825,11 +825,11 @@ export const verifyCurrentMaterialization = async (
   }
 
   return withVerifierSession(pool, async (client) => {
-    const current = await loadCurrentCatalogSnapshot(pool, command.expected);
+    const current = await loadCurrentCatalogSnapshot(pool, command.expected, { fresh: true });
     if (!current.ok) {
       throw new CatalogKernelFailure(current.error);
     }
-    const pinned = await loadPinnedCatalogSnapshot(pool, command.expected);
+    const pinned = await loadPinnedCatalogSnapshot(pool, command.expected, { fresh: true });
     if (!pinned.ok) {
       throw new CatalogKernelFailure(pinned.error);
     }

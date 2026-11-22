@@ -1,11 +1,12 @@
 import pg from "pg";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import {
   CatalogPageLimit,
   CatalogReleaseDigest,
   CatalogReleaseId,
   CatalogSubjectId,
+  ParameterDefinitionId,
   PropertyKey,
   createCatalogKernel,
 } from "../interface";
@@ -14,6 +15,39 @@ import {
   type ParameterCatalogDatabase,
 } from "../../../testing/parameterCatalog";
 import { seedCompiledCatalogProjection } from "./currentSnapshot";
+import { catalogReadTransaction } from "./readTransaction";
+
+const page = { limit: CatalogPageLimit(100), after: { kind: "absent" } } as const;
+
+const queryLog = (
+  pool: pg.Pool,
+  beforeProjection?: () => Promise<void>,
+  afterHeader?: () => Promise<void>,
+): string[] => {
+  const queries: string[] = [];
+  pool.on("connect", (client) => {
+    const query = client.query.bind(client);
+    client.query = (async (sql: string, values?: unknown[]) => {
+      queries.push(sql);
+      if (sql.includes("with recursive lineage")) await beforeProjection?.();
+      const result = await query(sql, values);
+      if (sql.includes("as pointer_id")) await afterHeader?.();
+      return result;
+    }) as typeof client.query;
+  });
+  return queries;
+};
+
+const createCacheReader = (
+  pool: pg.Pool,
+  beforeProjection?: () => Promise<void>,
+  afterHeader?: () => Promise<void>,
+) => {
+  const queries = queryLog(pool, beforeProjection, afterHeader);
+  const projectionReads = () => queries.filter((sql) => sql.includes("from parameter_catalog.catalog_release_definition_heads"));
+  const headerReads = () => queries.filter((sql) => sql.includes("as pointer_id"));
+  return { queries, projectionReads, headerReads, kernel: createCatalogKernel(pool) };
+};
 
 describe("current catalog snapshot", () => {
   let database: ParameterCatalogDatabase;
@@ -118,6 +152,386 @@ describe("current catalog snapshot", () => {
     expect(missing.ok).toBe(false);
     if (!missing.ok) {
       expect(missing.error.kind).toBe("release-mismatch");
+    }
+  });
+
+  it("shares a single cold build and only checks the header and epoch grant on warm reads", async () => {
+    const reader = new pg.Pool({ connectionString: database.url, max: 4 });
+    const { kernel, queries, projectionReads, headerReads } = createCacheReader(reader);
+    try {
+      const [first, concurrent] = await Promise.all([
+        kernel.loadCurrentCatalog(pins.current),
+        kernel.loadCurrentCatalog(pins.current),
+      ]);
+      if (!first.ok || !concurrent.ok) throw new Error("expected concurrent current snapshots");
+      expect(concurrent.value).toBe(first.value);
+      expect(headerReads()).toHaveLength(3);
+      expect(projectionReads()).toHaveLength(1);
+
+      const pin = { ...pins.current };
+      const pinned = await kernel.loadPinnedCatalog(pin);
+      if (!pinned.ok) throw new Error("expected a pinned snapshot");
+      expect(pinned.value).not.toBe(first.value);
+      expect(pinned.value.pin).not.toBe(pin);
+      expect(Object.isFrozen(pinned.value.pin)).toBe(true);
+      expect(projectionReads()).toHaveLength(2);
+
+      queries.length = 0;
+      await expect(kernel.loadCurrentCatalog(pins.current)).resolves.toEqual(first);
+      const again = await kernel.loadPinnedCatalog(pin);
+      expect(again.ok && again.value).toBe(pinned.value);
+      expect(headerReads()).toHaveLength(2);
+      expect(queries.filter((sql) => sql.includes("has_column_privilege"))).toHaveLength(2);
+      expect(queries.filter((sql) => !/^(begin|commit)\b/i.test(sql))).toHaveLength(4);
+
+      const client = await reader.connect();
+      try {
+        await client.query("begin isolation level repeatable read read only");
+        const read = createCatalogKernel(catalogReadTransaction(client, reader));
+        const within = await read.loadCurrentCatalog(pins.current);
+        expect(within.ok && within.value).toBe(first.value);
+        await client.query("commit");
+      } finally {
+        client.release();
+      }
+      expect(projectionReads()).toHaveLength(0);
+
+      const definitionId = ParameterDefinitionId("pdef_acme_power_iin_max");
+      const subject = first.value.getSubject(CatalogSubjectId("csub_acme_power"));
+      const definition = first.value.getDefinitionById(definitionId);
+      const revisions = first.value.listDefinitionRevisions({ definitionId, page });
+      const timeline = first.value.listDefinitionTimelineFacts({ definitionId, page });
+      expect(subject).toMatchObject({
+        status: "found",
+        subject: { definitionCounts: { active: 2, deprecated: 0, retired: 0 }, aliases: [expect.any(Object)] },
+      });
+      expect(definition).toMatchObject({ status: "found", definition: { propertyKey: "iin_max" } });
+      expect(revisions).toMatchObject({
+        status: "found", page: { items: [{ id: "drev_acme_power_iin_max_1", publishedIn: pins.previous }] },
+      });
+      expect(timeline).toMatchObject({
+        status: "found",
+        page: {
+          items: [{
+            revisionId: "drev_acme_power_iin_max_1",
+            release: pins.previous,
+            previousRevisionId: { kind: "absent" },
+            changes: ["introduced"],
+          }],
+        },
+      });
+      if (subject.status !== "found" || definition.status !== "found" || timeline.status !== "found") {
+        throw new Error("expected immutable fixture entries");
+      }
+      expect(Object.isFrozen(first.value)).toBe(true);
+      expect(Object.isFrozen(subject.subject.aliases[0]?.membership)).toBe(true);
+      expect(Object.isFrozen(definition.definition.selectedRevision.content.valueShape)).toBe(true);
+      expect(Object.isFrozen(timeline.page.items[0]?.changes)).toBe(true);
+      expect(first.value.listSubjects({
+        selection: { kind: "only", ids: [], fingerprint: "empty-test-selection" }, kinds: [], lifecycles: [],
+        search: { kind: "absent" }, page,
+      })).toMatchObject({ status: "found", page: { items: [] } });
+      expect(first.value.getSubject(CatalogSubjectId("csub_acme_power"))).toEqual(subject);
+    } finally {
+      await reader.end();
+    }
+  });
+
+  it("lets queued DDL finish while another current reader waits for the cold build", async () => {
+    const reader = new pg.Pool({
+      connectionString: database.url, max: 2, options: "-c lock_timeout=2s -c statement_timeout=5s",
+    });
+    const ddl = new pg.Client({ connectionString: database.url, options: "-c statement_timeout=5s" });
+    await ddl.connect();
+    try {
+      const session = await ddl.query<{ pid: number }>("select pg_backend_pid() as pid");
+      const pid = session.rows[0]?.pid;
+      let building = false;
+      let resumeBuild = () => {};
+      const paused = new Promise<void>((resolve) => { resumeBuild = resolve; });
+      let headers = 0;
+      let alteration: Promise<PromiseSettledResult<pg.QueryResult>[]> | undefined;
+      const { kernel, projectionReads } = createCacheReader(reader, async () => {
+        building = true;
+        await paused;
+      }, async () => {
+        if (++headers !== 2) return;
+        // Queue ACCESS EXCLUSIVE after both transactions have read the header.
+        alteration = Promise.allSettled([ddl.query(
+          "alter table parameter_catalog.catalog_state alter column subject_owner_epoch set not null",
+        )]);
+        try {
+          await vi.waitFor(async () => {
+            const queued = await pool.query(
+              `select 1 from pg_locks
+                where pid = $1 and relation = 'parameter_catalog.catalog_state'::regclass
+                  and mode = 'AccessExclusiveLock' and not granted`,
+              [pid],
+            );
+            expect(queued.rowCount).toBe(1);
+          }, { timeout: 2_000 });
+        } finally {
+          resumeBuild();
+        }
+      });
+      const first = kernel.loadCurrentCatalog(pins.current);
+      try {
+        await vi.waitFor(() => expect(building).toBe(true), { timeout: 2_000 });
+        const [built, waiting] = await Promise.all([first, kernel.loadCurrentCatalog(pins.current)]);
+        expect(await alteration).toMatchObject([{ status: "fulfilled" }]);
+        expect([built, waiting]).toMatchObject([{ ok: true }, { ok: true }]);
+        if (built.ok && waiting.ok) expect(waiting.value).toBe(built.value);
+        expect(projectionReads()).toHaveLength(1);
+      } finally {
+        resumeBuild();
+        await first;
+        await alteration;
+      }
+    } finally {
+      await reader.end();
+      await ddl.end();
+    }
+  });
+
+  it("selects the new cache key after pointer, fingerprint, and owner-epoch changes", async () => {
+    const reader = new pg.Pool({ connectionString: database.url });
+    const { kernel, projectionReads } = createCacheReader(reader);
+    const editor = await pool.connect();
+    const switchTo = (id: CatalogReleaseId) => editor.query(
+      "update parameter_catalog.catalog_state set current_catalog_release_id = $1", [id],
+    );
+    const setFingerprints = (compiled: string, stored: string) => editor.query(
+      `update parameter_catalog.catalog_materializations
+          set compiled_fingerprint = $2, database_fingerprint = $3 where release_id = $1`,
+      [pins.current.id, compiled, stored],
+    );
+    try {
+      const original = await kernel.loadCurrentCatalog(pins.current);
+      const pinned = await kernel.loadPinnedCatalog(pins.current);
+      if (!original.ok || !pinned.ok) throw new Error("expected initial snapshots");
+      await switchTo(pins.previous.id);
+      await expect(kernel.loadCurrentCatalog(pins.current)).resolves.toMatchObject({
+        ok: false, error: { kind: "release-mismatch", actual: pins.previous },
+      });
+      await expect(kernel.loadCurrentCatalog(pins.previous)).resolves.toMatchObject({
+        ok: true, value: { release: pins.previous },
+      });
+      expect(projectionReads()).toHaveLength(3);
+
+      // The disposable fixture deliberately simulates a changed materialization.
+      await editor.query("set session_replication_role = replica");
+      const compiled = original.value.compiledFingerprint;
+      const stored = original.value.databaseFingerprint;
+      try {
+        const nextStored = `sha256:${"a".repeat(64)}`;
+        const nextCompiled = `sha256:${"b".repeat(64)}`;
+        await setFingerprints(compiled, nextStored);
+        await switchTo(pins.current.id);
+        await expect(kernel.loadCurrentCatalog(pins.current)).resolves.toMatchObject({
+          ok: true, value: { release: pins.current, databaseFingerprint: nextStored },
+        });
+        await setFingerprints(nextCompiled, nextStored);
+        await expect(kernel.loadCurrentCatalog(pins.current)).resolves.toMatchObject({
+          ok: true, value: { compiledFingerprint: nextCompiled, databaseFingerprint: nextStored },
+        });
+        await expect(kernel.loadPinnedCatalog(pins.current)).resolves.toMatchObject({
+          ok: true, value: { compiledFingerprint: nextCompiled, databaseFingerprint: nextStored },
+        });
+        expect(projectionReads()).toHaveLength(6);
+        await editor.query("update parameter_catalog.catalog_state set subject_owner_epoch = subject_owner_epoch + 1");
+        await expect(kernel.loadCurrentCatalog(pins.current)).resolves.toMatchObject({ ok: true });
+        await expect(kernel.loadPinnedCatalog(pins.current)).resolves.toMatchObject({ ok: true });
+        expect(projectionReads()).toHaveLength(8);
+      } finally {
+        await setFingerprints(compiled, stored);
+      }
+    } finally {
+      await switchTo(pins.current.id);
+      await editor.query("reset session_replication_role");
+      editor.release();
+      await reader.end();
+    }
+  });
+
+  it.each(["current", "pinned"] as const)("rejects a cold %s snapshot if its digest is rewritten during the build", async (scope) => {
+    const reader = new pg.Pool({ connectionString: database.url, max: 1 });
+    const editor = await pool.connect();
+    const pin = scope === "current" ? pins.current : pins.previous;
+    const property = scope === "current" ? "iin_min" : "iin_max";
+    const definitionId = ParameterDefinitionId(`pdef_acme_power_${property}`);
+    const rewritten = { ...pin, digest: CatalogReleaseDigest(`sha256:${"e".repeat(64)}`) };
+    const updateDigest = (digest: CatalogReleaseDigest) => editor.query(
+      "update parameter_catalog.catalog_releases set release_digest = $2 where id = $1", [pin.id, digest],
+    );
+    let rewrite = true;
+    const { kernel, projectionReads } = createCacheReader(reader, async () => {
+      if (!rewrite) return;
+      rewrite = false;
+      await editor.query("begin");
+      await editor.query("set local session_replication_role = replica");
+      await updateDigest(rewritten.digest);
+      await editor.query(
+        "delete from parameter_catalog.catalog_release_definition_heads where release_id = $1 and definition_id = $2",
+        [pin.id, definitionId],
+      );
+      await editor.query("commit");
+    });
+    try {
+      const load = scope === "current" ? kernel.loadCurrentCatalog : kernel.loadPinnedCatalog;
+      const error = scope === "current"
+        ? { kind: "release-mismatch", actual: rewritten }
+        : { kind: "digest-conflict", actual: rewritten.digest, expected: pin.digest, releaseId: pin.id };
+      await expect(load(pin)).resolves.toMatchObject({ ok: false, error });
+      const loaded = await load(rewritten);
+      if (!loaded.ok) throw new Error(`expected the rewritten snapshot: ${loaded.error.kind}`);
+      expect(loaded.value.getDefinitionById(definitionId).status).toBe("unknown");
+      await expect(load(pin)).resolves.toMatchObject({ ok: false, error });
+      const warm = await load(rewritten);
+      expect(warm.ok && warm.value).toBe(loaded.value);
+      expect(projectionReads()).toHaveLength(2);
+    } finally {
+      await reader.end();
+      await editor.query("rollback");
+      await editor.query("begin");
+      await editor.query("set local session_replication_role = replica");
+      await updateDigest(pin.digest);
+      await editor.query(
+        `insert into parameter_catalog.catalog_release_definition_heads (release_id, definition_id, revision_id)
+         values ($1, $2, $3) on conflict do nothing`,
+        [pin.id, definitionId, `drev_acme_power_${property}_1`],
+      );
+      await editor.query("commit");
+      editor.release();
+    }
+  });
+
+  it("reads current and pinned snapshots using column grants without epoch access", async () => {
+    await pool.query("revoke select (subject_owner_epoch) on parameter_catalog.catalog_state from wiseeff_mod_d02_source_reader");
+    const reader = new pg.Pool({
+      connectionString: database.url, options: "-c role=wiseeff_mod_d02_source_reader",
+    });
+    const { kernel, projectionReads } = createCacheReader(reader);
+    try {
+      for (let attempt = 0; attempt < 2; attempt++) {
+        await expect(kernel.loadCurrentCatalog(pins.current)).resolves.toMatchObject({ ok: true, value: { release: pins.current } });
+        await expect(kernel.loadPinnedCatalog(pins.current)).resolves.toMatchObject({ ok: true, value: { pin: pins.current } });
+      }
+      expect(projectionReads()).toHaveLength(4);
+    } finally {
+      await reader.end();
+      await pool.query("grant select (subject_owner_epoch) on parameter_catalog.catalog_state to wiseeff_mod_d02_source_reader");
+    }
+  });
+
+  it.each(["current", "pinned"] as const)("retries a cold %s read when the subject owner epoch advances during the build", async (scope) => {
+    const reader = new pg.Pool({ connectionString: database.url, max: 1 });
+    let advanceEpoch = true;
+    const { kernel, projectionReads } = createCacheReader(reader, async () => {
+      if (!advanceEpoch) return;
+      advanceEpoch = false;
+      await pool.query("update parameter_catalog.catalog_state set subject_owner_epoch = subject_owner_epoch + 1");
+    });
+    try {
+      const pin = scope === "current" ? pins.current : pins.previous;
+      const load = scope === "current" ? kernel.loadCurrentCatalog : kernel.loadPinnedCatalog;
+      const snapshot = await load(pin);
+      if (!snapshot.ok) throw new Error(`expected a refreshed snapshot: ${snapshot.error.kind}`);
+      expect(projectionReads()).toHaveLength(2);
+      const warm = await load(pin);
+      expect(warm.ok && warm.value).toBe(snapshot.value);
+      expect(projectionReads()).toHaveLength(2);
+    } finally {
+      await reader.end();
+    }
+  });
+
+  it.each(["table", "security-invoker view"] as const)("honors RLS behind a %s after warming a role's snapshot cache", async (relationKind) => {
+    const reader = new pg.Pool({
+      connectionString: database.url, options: "-c role=catalog_synchronizer_role",
+    });
+    const { kernel, projectionReads } = createCacheReader(reader);
+    const definitionId = ParameterDefinitionId("pdef_acme_power_iin_min");
+    const readPinnedAsSynchronizer = async () => {
+      const client = await reader.connect();
+      try {
+        await client.query("begin isolation level repeatable read read only");
+        const read = createCatalogKernel(catalogReadTransaction(client, reader));
+        const loaded = await read.loadPinnedCatalog(pins.current);
+        if (!loaded.ok) throw new Error(`expected restricted snapshot: ${loaded.error.kind}`);
+        return loaded.value;
+      } finally {
+        await client.query("rollback");
+        client.release();
+      }
+    };
+    const throughView = relationKind === "security-invoker view";
+    const heads = `parameter_catalog.catalog_release_definition_heads${throughView ? "_base" : ""}`;
+    try {
+      const coldTransaction = await readPinnedAsSynchronizer();
+      expect(coldTransaction.getDefinitionById(definitionId).status).toBe("found");
+      const loaded = await kernel.loadPinnedCatalog(pins.current);
+      if (!loaded.ok) throw new Error(`expected pooled snapshot: ${loaded.error.kind}`);
+      const warm = loaded.value;
+      expect(warm.getDefinitionById(definitionId).status).toBe("found");
+      expect(await readPinnedAsSynchronizer()).toBe(warm);
+      expect(warm).not.toBe(coldTransaction);
+      expect(projectionReads()).toHaveLength(2);
+
+      await pool.query(`
+        ${throughView ? `
+          alter table parameter_catalog.catalog_release_definition_heads rename to catalog_release_definition_heads_base;
+          create view parameter_catalog.catalog_release_definition_heads with (security_invoker = true)
+            as select * from ${heads};
+          grant select on parameter_catalog.catalog_release_definition_heads to catalog_synchronizer_role;
+        ` : ""}
+        alter table ${heads} enable row level security;
+        create policy perf1_limit_heads on ${heads}
+          for select to catalog_synchronizer_role using (definition_id <> 'pdef_acme_power_iin_min')
+      `);
+      try {
+        const restricted = await readPinnedAsSynchronizer();
+        expect(restricted.getDefinitionById(definitionId).status).toBe("unknown");
+        expect(projectionReads()).toHaveLength(3);
+      } finally {
+        await pool.query(`
+          drop policy if exists perf1_limit_heads on ${heads};
+          alter table ${heads} disable row level security;
+          ${throughView ? `
+            drop view parameter_catalog.catalog_release_definition_heads;
+            alter table ${heads} rename to catalog_release_definition_heads;
+          ` : ""}
+        `);
+      }
+    } finally {
+      await reader.end();
+    }
+  });
+
+  it("retries projection drift with the same header after the damaged rows are restored", async () => {
+    const reader = new pg.Pool({ connectionString: database.url });
+    const { kernel, projectionReads } = createCacheReader(reader);
+    const editor = await pool.connect();
+    const setHead = (id: string) => editor.query(
+      `update parameter_catalog.catalog_release_definition_heads set revision_id = $2
+        where release_id = $1 and definition_id = 'pdef_acme_power_iin_min'`,
+      [pins.current.id, id],
+    );
+    try {
+      await editor.query("set session_replication_role = replica");
+      await setHead("drev_acme_power_iin_max_1");
+      await expect(kernel.loadCurrentCatalog(pins.current)).resolves.toMatchObject({
+        ok: false, error: { kind: "drift", violations: [{ code: "definition-head-mismatch" }] },
+      });
+      await setHead("drev_acme_power_iin_min_1");
+      await expect(kernel.loadCurrentCatalog(pins.current)).resolves.toMatchObject({
+        ok: true, value: { release: pins.current },
+      });
+      expect(projectionReads()).toHaveLength(2);
+    } finally {
+      await setHead("drev_acme_power_iin_min_1");
+      await editor.query("reset session_replication_role");
+      editor.release();
+      await reader.end();
     }
   });
 });
