@@ -59,13 +59,15 @@ export function classifyEntry(input: {
     if (revise
       && revision.lifecycle === "active" && content && !diagnostics.length) {
       const next = revisedDefinitionContent(revision, content);
+      const replaceSchema = definition.fields.some((field) => field.name === F.typeConstraints);
       const fields = (value: CatalogReleaseDefinitionDocument["content"]["revision"]) => {
         const schema = value.valueSchema as Record<string, unknown>;
         const { item } = unwrapArraySchema(schema);
         return { "显示名": value.displayName, [F.documentation]: value.documentation, [F.description]: value.description ?? null,
           [F.unit]: value.unit ?? null, [F.type]: formatValueType(schema),
           [F.typeDescription]: item.description ?? null, [F.minimum]: item.minimum ?? null, [F.maximum]: item.maximum ?? null,
-          [F.minItems]: schema.minItems ?? null, [F.maxItems]: schema.maxItems ?? null, [F.example]: value.examples ?? null,
+          [F.minItems]: schema.minItems ?? null, [F.maxItems]: schema.maxItems ?? null,
+          ...(replaceSchema ? { [F.typeConstraints]: schema } : {}), [F.example]: value.examples ?? null,
           "DTS 示例": value.dtsExamples ?? null };
       };
       const oldFields = fields(revision);

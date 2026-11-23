@@ -371,7 +371,7 @@ function stripDtsExampleComments(source: string): string {
   return result.trim();
 }
 
-export function parsePublicationExamples(draft: PublicationDraft) {
+export function parsePublicationExamples(draft: PublicationDraft, schema?: PublicationValueSchema) {
   let input = draft.examples.trim();
   if (!input) return undefined;
   if (input.startsWith("[")) {
@@ -396,7 +396,10 @@ export function parsePublicationExamples(draft: PublicationDraft) {
     try {
       if (!emptyProperty && !raw) throw new SyntaxError("Missing DTS property value");
       const value = parseDtsValue(propertyKey, raw).value;
-      return [dtsExampleToJson({ value, raw }, draft.valueType)];
+      const targetType = schema ? ("type" in schema ? schema.type : "mixed") : draft.valueType;
+      const grouped = schema && "type" in schema && schema.type === "array" && schema.items &&
+        "type" in schema.items && schema.items.type === "array";
+      return [dtsExampleToJson({ value, raw }, targetType, grouped)];
     } catch {
       throw new Error(publicationCopy.invalidExamples);
     }
@@ -444,8 +447,9 @@ export function parsePublicationDtsExamples(draft: PublicationDraft, schema = va
   });
 }
 
-export function definitionContentOf(draft: PublicationDraft, valueSchema = valueSchemaOf(draft)) {
-  const examples = parsePublicationExamples(draft);
+export function definitionContentOf(draft: PublicationDraft, revisionSchema?: PublicationValueSchema) {
+  const valueSchema = revisionSchema ?? valueSchemaOf(draft);
+  const examples = parsePublicationExamples(draft, revisionSchema);
   const dtsExamples = parsePublicationDtsExamples(draft, valueSchema);
   const unit = draft.unit.trim();
   const description = draft.description.trim();

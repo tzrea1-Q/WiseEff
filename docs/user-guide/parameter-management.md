@@ -143,15 +143,28 @@ Markdown authors Catalog definitions. To edit module hierarchy, root subject pla
 
 ### Batch revision of definitions
 
-In API mode, select up to 128 definitions in the Catalog list under **Parameter definition management** (`/parameter-admin/specs`) and choose **Export as revision document** to download a Markdown starting point. The document groups current definitions by subject; retired or unavailable selections and definitions that cannot round-trip are listed as skipped with reasons. Edit the fields you intend to change, then upload the document through **Batch import definitions** on the same page and review the preview before authorization and publication. An unchanged export is skipped as having no changes. Counts on inner arrays are retained and cannot be edited through the document.
+In API mode, select up to 128 definitions in the Catalog list under **Parameter definition management** (`/parameter-admin/specs`) and choose **Export as revision document** to download a Markdown starting point. The document groups current definitions by subject; retired or unavailable selections and definitions that cannot round-trip are listed as skipped with reasons. Edit the fields you intend to change, then upload the document through **Batch import definitions** on the same page and review the preview before authorization and publication. An unchanged export is skipped as having no changes. Ordinary revisions retain the item counts on inner arrays.
 
 In the definition import dialog, mark each existing definition with the revision operation described in the downloadable template. Preserve the subject identity, an owned node's `parent`, and the property key; include only fields to change. Omitted fields retain their current values, `-` clears an optional field, and `\-` represents a literal dash. In field values, write a pipe as `\|` and a backslash as `\\`. A document can also create definitions, up to 1024 entries per import batch. Preview shows differences, risk and the Organization's usage for semantic revisions. Unchanged entries are skipped; conflicts and errors must be resolved before one Candidate is authorized and published. Semantic revisions leave existing project Bindings on their previous revisions until the governed cutover.
 
 Revision exports include the same instructions. Preserve the display name in each definition heading unless a rename was requested. Removing a field row preserves its old value; it does not clear it. Supplied examples replace the entire example set, while omitted documentation retains the old text. Start from a fresh export and export again if the Catalog changes, so unrequested stale content is not written back.
 
+Use the schema replacement option with the target type, its required description, and the desired bounds. The preview shows the complete before and after schemas. These rows revise a nested GPIO array into a flat array of exactly three items. Existing examples follow the usual keep, replace or clear rules and must pass the new schema.
+
+```markdown
+| 操作 | 修订 |
+| 类型约束 | 替换 |
+| 类型 | array<mixed> |
+| 类型说明 | GPIO controller reference, pin number and flags |
+| 最少项数 | 3 |
+| 最多项数 | 3 |
+```
+
 In a revision, omit the DTS example section to keep the published DTS examples. Put a single `-` under its heading to clear them, or supply the full replacement set of `dts` blocks. A revision that changes only DTS examples is a low-risk documentation change.
 
 In definition management, read the value type, unit and limits before editing. Returning from a correction preview to edit requires a new preview. Closing an unsaved editor asks whether to discard changes; publication progress remains visible and refreshable. The history view loads older revisions on request and compares their content with the current revision.
+
+For the same flat GPIO array in the single-definition editor, choose **Array** as the value shape and **Mixed** as the array element type. Fill in the element type description and set both outer item counts to `3`. Enter a reason, select **Save content revision**, and follow the publication review shown in the editor.
 
 ### Batch retire or restore definitions
 

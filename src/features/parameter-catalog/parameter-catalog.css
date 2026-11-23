@@ -221,8 +221,9 @@
   gap: var(--space-2);
 }
 
-.definition-editor__field-placeholder {
-  display: none;
+.definition-editor__array-items {
+  padding-inline-start: var(--space-3);
+  border-inline-start: 2px solid var(--border);
 }
 
 /* Governed dialog inputs: token-based, consistent with WiseEff standards */

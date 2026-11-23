@@ -10,13 +10,13 @@ export function DtsExamplesEditor({ examples = [], onChange, propertyKey, schema
   examples?: readonly string[];
   onChange: (examples: readonly string[]) => void;
   propertyKey: string;
-  schema: PublicationValueSchema;
+  schema?: PublicationValueSchema;
 }) {
   const id = useId();
   return <div className="definition-editor__field definition-editor__field--full" role="group" aria-labelledby={id}>
     <span id={id} className="definition-editor__field-label">{publicationCopy.dtsExamples}</span>
     {examples.map((text, index) => {
-      const error = text ? publicationDtsExampleError(text, propertyKey, schema) : undefined;
+      const error = text && schema ? publicationDtsExampleError(text, propertyKey, schema) : undefined;
       const errorId = `${id}-error-${index}`;
       return <div key={index} className="definition-editor__field">
         <Textarea aria-label={`${publicationCopy.dtsExamples} ${index + 1}`} rows={3} spellCheck={false}

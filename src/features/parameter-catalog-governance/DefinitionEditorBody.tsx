@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import type { CatalogActorKind } from "@/application/parameter-catalog/authority";
 import { catalogStateFromFailure, type CatalogDomainState } from "@/application/parameter-catalog/states";
 import type { ParameterCatalogRepository } from "@/application/ports/ParameterCatalogRepository";
+import { exampleMatchesSchema } from "@/domain/parameter-catalog/dtsExamples";
 import { SpecRelatedKnowledgeSection, type SpecRelatedKnowledgeSource } from "@/components/parameter-topology/ParameterSpecDetail";
 import { DefinitionExamples } from "@/components/parameter-topology/DefinitionExamples";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
@@ -43,13 +44,12 @@ import {
   publicationJobIsPending,
   publicationStatusCopy,
   publicationSuccessKind,
-  valueSchemaOf,
   type PublicationDraft,
-  type PublicationValueSchema,
-  type PublicationValueType
+  type PublicationValueSchema
 } from "./publicationState";
 import { createGovernanceIdempotencyKey } from "./governanceState";
 import { DtsExamplesEditor } from "./DtsExamplesEditor";
+import { DefinitionValueSchemaFields, definitionSchemaDraftOf, definitionSchemaOf } from "./DefinitionValueSchemaFields";
 
 export type DefinitionEditorBodyProps = {
   actor: CatalogActorKind;
@@ -88,19 +88,11 @@ export type DefinitionEditorBodyProps = {
 /** Editor state for the definition's content, derived from its current revision. */
 type ContentDraft = Pick<
   PublicationDraft,
-  "displayName" | "documentation" | "description" | "unit" | "valueType" | "minimum" | "maximum" | "examples" | "dtsExamples"
->;
+  "displayName" | "documentation" | "description" | "unit" | "examples" | "dtsExamples"
+> & { schema: ReturnType<typeof definitionSchemaDraftOf> };
 
 const contentDraftOf = (definition: CatalogDefinitionResponse["item"]): ContentDraft => {
   const revision = definition.currentRevision;
-  const schema = (revision.valueShape?.schema ?? {}) as {
-    type?: string;
-    minimum?: number;
-    maximum?: number;
-    items?: { type?: string };
-    description?: string;
-  };
-  const { valueType, minimum, maximum } = valueTypeOf(schema);
   return {
     displayName: revision.displayName,
     documentation: revision.documentation ?? "",
@@ -108,71 +100,12 @@ const contentDraftOf = (definition: CatalogDefinitionResponse["item"]): ContentD
     unit: revision.unit?.symbol ?? "",
     examples: revision.examples?.length ? JSON.stringify(revision.examples) : "",
     ...(revision.dtsExamples !== undefined ? { dtsExamples: revision.dtsExamples } : {}),
-    valueType,
-    minimum,
-    maximum
+    schema: definitionSchemaDraftOf(revision.valueShape.schema as PublicationValueSchema)
   };
-};
-
-/** Inverse of the publication value-schema mapping, so the revision round-trips. */
-const valueTypeOf = (schema: {
-  type?: string;
-  minimum?: number;
-  maximum?: number;
-  items?: { type?: string };
-  description?: string;
-}): { valueType: PublicationValueType; minimum: string; maximum: string } => {
-  const bounds = {
-    minimum: schema.minimum === undefined ? "" : String(schema.minimum),
-    maximum: schema.maximum === undefined ? "" : String(schema.maximum)
-  };
-  switch (schema.type) {
-    case "integer":
-      return { valueType: "integer", ...bounds };
-    case "number":
-      return { valueType: "number", ...bounds };
-    case "string":
-      return { valueType: "string", ...bounds };
-    case "boolean":
-      return { valueType: "boolean", ...bounds };
-    case "null":
-      return { valueType: "empty", ...bounds };
-    case "array":
-      return schema.items?.type === "string"
-        ? { valueType: "string-list", ...bounds }
-        : { valueType: "u32-array", ...bounds };
-    default:
-      return { valueType: "mixed", ...bounds };
-  }
-};
-
-/** The value shapes an author may pick here; the labels match the publication copy. */
-const schemaValueTypes: readonly PublicationValueType[] = [
-  "integer",
-  "number",
-  "string",
-  "boolean",
-  "empty",
-  "u32-array",
-  "string-list",
-  "mixed"
-];
-
-const schemaValueTypeLabels: Record<PublicationValueType, string> = {
-  integer: "整数",
-  number: "数值",
-  string: "字符串",
-  boolean: "布尔值",
-  empty: "空属性",
-  "u32-array": "整数数组",
-  "string-list": "字符串列表",
-  bytes: "字节数组",
-  "phandle-list": "句柄引用",
-  mixed: "混合类型"
 };
 
 const fingerprintContent = (draft: ContentDraft): string =>
-  [draft.displayName, draft.documentation, draft.unit, draft.valueType, draft.minimum, draft.maximum, draft.examples,
+  [draft.displayName, draft.documentation, draft.unit, JSON.stringify(draft.schema), draft.examples,
     JSON.stringify(draft.dtsExamples ?? [])].join(
     "\u0000"
   );
@@ -244,6 +177,7 @@ export function DefinitionEditorBody({
   const [subjectId, setSubjectId] = useState(definition.subject.id);
   const [propertyKey, setPropertyKey] = useState(definition.propertyKey);
   const [content, setContent] = useState(() => contentDraftOf(definition));
+  const [editingRevisionId, setEditingRevisionId] = useState(definition.currentRevision.id);
   const [reason, setReason] = useState("");
   const [selectedProjects, setSelectedProjects] = useState<string[]>([]);
   const [preview, setPreview] = useState<CatalogReplacementPreview | null>(null);
@@ -286,6 +220,7 @@ export function DefinitionEditorBody({
     setSubjectId(definition.subject.id);
     setPropertyKey(definition.propertyKey);
     setContent(contentDraftOf(definition));
+    setEditingRevisionId(definition.currentRevision.id);
     setReason("");
     setSelectedProjects([]);
     setPreview(null);
@@ -350,7 +285,8 @@ export function DefinitionEditorBody({
   const canReviewRevision = editable && targetSubjectAllowed && reviewHighRiskAllowed && canExecutePublicationAction(
     actor, "review-high-risk-publication", publicationState, sessionPermissions
   );
-  const canSaveContentRevision = deprecationChanged ? editable && targetSubjectAllowed : canPublish || canReviewRevision;
+  const staleContent = editingRevisionId !== definition.currentRevision.id;
+  const canSaveContentRevision = !staleContent && (deprecationChanged ? editable && targetSubjectAllowed : canPublish || canReviewRevision);
   const unresolvedMerge = preview?.projects.some(project => project.mergeConflict && !project.mergeConflict.choice) ||
     preview?.projects.some(project => project.mergeConflict &&
       (mergeChoices[project.projectId] ?? project.mergeConflict.choice) !== project.mergeConflict.choice);
@@ -359,11 +295,16 @@ export function DefinitionEditorBody({
     currentContent.examples.trim() && !content.examples.trim() ? "示例" : null,
     currentContent.dtsExamples?.length && !content.dtsExamples?.length ? "DTS 示例" : null
   ].filter(Boolean);
-  const schemaChanged =
-    content.valueType !== currentContent.valueType ||
-    content.minimum !== currentContent.minimum ||
-    content.maximum !== currentContent.maximum;
-  const valueSchema = schemaChanged ? valueSchemaOf(content) : definition.currentRevision.valueShape.schema as PublicationValueSchema;
+  const schemaChanged = JSON.stringify(content.schema) !== JSON.stringify(currentContent.schema);
+  let valueSchema = definition.currentRevision.valueShape.schema as PublicationValueSchema;
+  let schemaError = "";
+  if (schemaChanged) {
+    try {
+      valueSchema = definitionSchemaOf(content.schema);
+    } catch (caught) {
+      schemaError = caught instanceof Error ? caught.message : "取值约束无效。";
+    }
+  }
   const dirty = (phase === "compose" || phase === "preview") &&
     (identityChanged || contentChanged || deprecationChanged || Boolean(reason.trim()) || selectedProjects.length > 0);
 
@@ -420,7 +361,7 @@ export function DefinitionEditorBody({
   }, [catalog, publicationJobId, publicationPending, onRefreshEvidence]);
 
   const runPreview = async (mergeIntoDefinitionId?: string) => {
-    if (!editable || !targetSubjectAllowed || pending) return;
+    if (!editable || !targetSubjectAllowed || staleContent || pending) return;
     const draft = contentDraft(propertyKey);
     if (!validateExamples(draft)) return;
     if (selectedProjects.length === 0 && actor !== "platform-admin") {
@@ -467,21 +408,31 @@ export function DefinitionEditorBody({
     }
   };
 
-  const contentDraft = (key = definition.propertyKey): PublicationDraft => ({
-    ...emptyPublicationDraft(),
-    mode: "revise-definition",
-    definitionId: definition.id,
-    // A value-shape change is a semantic revision; wording/unit alone is documentation.
-    reviseClass: schemaChanged ? "semantic" : "documentation",
-    propertyKey: key.trim(),
-    subjectKind: targetSubjectKind ?? "driver",
-    ...content,
-    reason: reason.trim()
-  });
+  const contentDraft = (key = definition.propertyKey): PublicationDraft => {
+    const { schema, ...fields } = content;
+    const valueType = schema.shape === "array"
+      ? schema.items?.shape === "string" ? "string-list" : "u32-array"
+      : schema.shape;
+    return {
+      ...emptyPublicationDraft(),
+      mode: "revise-definition",
+      definitionId: definition.id,
+      reviseClass: schemaChanged ? "semantic" : "documentation",
+      propertyKey: key.trim(),
+      subjectKind: targetSubjectKind ?? "driver",
+      ...fields,
+      valueType,
+      reason: reason.trim()
+    };
+  };
 
   const validateExamples = (draft = contentDraft()) => {
+    if (schemaError) return false;
     try {
-      parsePublicationExamples(draft);
+      const examples = parsePublicationExamples(draft, valueSchema);
+      if (examples?.some(example => !exampleMatchesSchema(valueSchema, example))) {
+        throw new Error("示例不符合取值类型或约束，请更新或清空现有示例。");
+      }
       parsePublicationDtsExamples(draft, valueSchema);
       return true;
     } catch (error) {
@@ -758,42 +709,9 @@ export function DefinitionEditorBody({
                     onChange={(event) => setContent({ ...content, unit: event.target.value })}
                   />
                 </label>
-                <label className="definition-editor__field">
-                  <span className="definition-editor__field-label">取值形状</span>
-                  <SelectControl
-                    value={content.valueType}
-                    ariaLabel="取值形状"
-                    disabled={pending || phase !== "compose"}
-                    onValueChange={(value) =>
-                      setContent({ ...content, valueType: value as PublicationValueType })
-                    }
-                    options={schemaValueTypes.map((type) => ({ value: type, label: schemaValueTypeLabels[type] }))}
-                  />
-                </label>
-                {content.valueType === "integer" || content.valueType === "number" ? (
-                  <div className="definition-editor__range-group">
-                    <label className="definition-editor__field">
-                      <span className="definition-editor__field-label">最小值</span>
-                      <input
-                        value={content.minimum}
-                        aria-label="最小值"
-                        placeholder="下限"
-                        onChange={(event) => setContent({ ...content, minimum: event.target.value })}
-                      />
-                    </label>
-                    <label className="definition-editor__field">
-                      <span className="definition-editor__field-label">最大值</span>
-                      <input
-                        value={content.maximum}
-                        aria-label="最大值"
-                        placeholder="上限"
-                        onChange={(event) => setContent({ ...content, maximum: event.target.value })}
-                      />
-                    </label>
-                  </div>
-                ) : (
-                  <div className="definition-editor__field-placeholder" aria-hidden="true" />
-                )}
+                <DefinitionValueSchemaFields draft={content.schema} disabled={pending || phase !== "compose"}
+                  onChange={schema => { if (schema) setContent({ ...content, schema }); }} />
+                {schemaError ? <p className="definition-editor__field--full definition-editor__error" role="alert">{schemaError}</p> : null}
                 <label className="definition-editor__field definition-editor__field--full">
                   <span className="definition-editor__field-label">{publicationCopy.examples}</span>
                   <textarea
@@ -805,7 +723,7 @@ export function DefinitionEditorBody({
                   />
                 </label>
                 {targetSubjectKind === "driver" || targetSubjectKind === "node-type" ?
-                  <DtsExamplesEditor examples={content.dtsExamples} propertyKey={propertyKey} schema={valueSchema}
+                  <DtsExamplesEditor examples={content.dtsExamples} propertyKey={propertyKey} schema={schemaError ? undefined : valueSchema}
                     onChange={(dtsExamples) => setContent({ ...content, dtsExamples: dtsExamples.length || currentContent.dtsExamples?.length ? dtsExamples : undefined })} /> : null}
                 <label className="definition-editor__field definition-editor__field--full">
                   <span className="definition-editor__field-label">说明</span>
@@ -967,10 +885,10 @@ export function DefinitionEditorBody({
                 <div className="definition-editor__footer-status">
                   <span
                     className="definition-editor__status-dot"
-                    data-status={identityChanged ? "warning" : contentChanged ? "info" : "neutral"}
+                    data-status={identityChanged || staleContent ? "warning" : contentChanged ? "info" : "neutral"}
                   />
                   <p className="parameter-catalog__muted" data-definition-editor-hint="true">
-                    {identityChanged
+                    {staleContent ? "当前定义已有新修订，请关闭后重新打开编辑器。" : identityChanged
                       ? "保存会发布替代身份，并把选定项目的当前引用迁移过去；旧身份与历史保持不变。"
                       : contentChanged
                         ? `内容修订只发布新修订，不迁移项目引用。${removedOptionalContent.length ? `本次将移除：${removedOptionalContent.join("、")}。` : ""}`
@@ -996,7 +914,9 @@ export function DefinitionEditorBody({
                       disabled={
                         !allowed ||
                         !targetSubjectAllowed ||
+                         staleContent ||
                         pending ||
+                         Boolean(schemaError) ||
                         (selectedProjects.length === 0 && actor !== "platform-admin") ||
                         !reason.trim()
                       }
@@ -1010,9 +930,9 @@ export function DefinitionEditorBody({
                       type="button"
                       className="button primary"
                       data-editor-action="save-content"
-                      disabled={!canSaveContentRevision || pending || (!contentChanged && !deprecationChanged) ||
+                      disabled={!canSaveContentRevision || pending || Boolean(schemaError) || (!contentChanged && !deprecationChanged) ||
                         (deprecationChanged && (contentChanged || (deprecated && !successor))) || !reason.trim()}
-                      title={canSaveContentRevision ? undefined : publishDisabledReason}
+                      title={canSaveContentRevision || staleContent ? undefined : publishDisabledReason}
                       onClick={() => void saveContentRevision()}
                     >
                       {pending ? "正在处理…" : deprecationChanged ? "预览弃用修订" : "保存内容修订"}
