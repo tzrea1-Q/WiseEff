@@ -243,6 +243,7 @@ describe("DefinitionEditorBody", () => {
         catalogReleaseId={CATALOG_RELEASE_ID} definition={definition} subjects={[registeredSubject]} />
     );
     const { rerender } = render(editor(activeDefinition));
+    await user.clear(screen.getByLabelText("说明"));
     await user.type(screen.getByLabelText("说明"), "更新说明");
     await user.type(screen.getByLabelText("修改原因"), "纠正文案");
 
@@ -250,7 +251,7 @@ describe("DefinitionEditorBody", () => {
       ...activeDefinition.currentRevision, id: "drev_newer",
       valueShape: { kind: "json-schema", schema: { type: "array", minItems: 3, maxItems: 3, items: { description: "mixed" } } },
     } }));
-    expect(screen.getByLabelText("说明")).toHaveValue(expect.stringContaining("更新说明"));
+    expect(screen.getByLabelText("说明")).toHaveValue("更新说明");
     expect(screen.getByText(/当前定义已有新修订/)).toBeVisible();
     const save = screen.getByRole("button", { name: "保存内容修订" });
     expect(save).toBeDisabled();
