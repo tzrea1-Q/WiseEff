@@ -183,6 +183,81 @@ describe("DefinitionEditorBody", () => {
     })] }), expect.anything());
   });
 
+  it("revises a grouped GPIO to exactly three mixed array elements", async () => {
+    const user = userEvent.setup();
+    const { catalog } = createMockCatalogPorts({ scenario: "ready" });
+    const preview = vi.spyOn(catalog, "createPublicationCandidate");
+    const source = `${activeDefinition.propertyKey} = <&gpio28 5 0>;`;
+    const schema = { type: "array", items: { type: "array", minItems: 3, maxItems: 3, items: { description: "mixed" } } };
+    render(<DefinitionEditorBody authoringAllowed publishingAllowed history={null} actor="org-admin"
+      sessionPermissions={["catalog:author", "catalog:publish"]} domainState={ready} catalog={catalog}
+      catalogReleaseId={CATALOG_RELEASE_ID} definition={{ ...activeDefinition, currentRevision: {
+        ...activeDefinition.currentRevision, valueShape: { kind: "json-schema", schema },
+        examples: [[["&gpio28", 5, 0]]], dtsExamples: [source],
+      } }} subjects={[registeredSubject]} />);
+
+    expect(screen.getByLabelText("取值形状")).toHaveAttribute("data-value", "array");
+    expect(screen.getByLabelText("数组元素类型")).toHaveAttribute("data-value", "array");
+    expect(screen.getByLabelText("第 2 层最少项数")).toHaveValue("3");
+    expect(screen.getByLabelText("第 2 层最多项数")).toHaveValue("3");
+    await selectControlOption(screen.getByLabelText("数组元素类型"), "mixed");
+    expect(screen.queryByLabelText("第 2 层最少项数")).not.toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent("请填写元素类型说明");
+    await user.type(screen.getByLabelText("元素类型说明"), "GPIO 控制器引用、引脚编号或标志");
+    await user.type(screen.getByLabelText("最少项数"), "4");
+    await user.type(screen.getByLabelText("最多项数"), "3");
+    await user.type(screen.getByLabelText("修改原因"), "采用三项 GPIO 定义");
+    const save = screen.getByRole("button", { name: "保存内容修订" });
+    expect(save).toBeDisabled();
+    expect(screen.getByRole("alert")).toHaveTextContent("最少项数不能大于最多项数");
+    await user.clear(screen.getByLabelText("最少项数"));
+    await user.type(screen.getByLabelText("最少项数"), "3");
+    await user.click(save);
+    expect(screen.getByRole("alert")).toHaveTextContent("请更新或清空现有示例");
+    expect(preview).not.toHaveBeenCalled();
+
+    await user.clear(screen.getByLabelText(publicationCopy.examples));
+    fireEvent.change(screen.getByLabelText(publicationCopy.examples), { target: { value: source } });
+    await user.click(save);
+    expect(preview).toHaveBeenCalledWith({ changeSet: [expect.objectContaining({
+      op: "revise-definition",
+      definitionId: activeDefinition.id,
+      class: "semantic",
+      content: expect.objectContaining({
+        valueSchema: {
+          type: "array", minItems: 3, maxItems: 3, items: { description: "GPIO 控制器引用、引脚编号或标志" },
+        },
+        examples: [["&gpio28", 5, 0]],
+        dtsExamples: [source],
+      }),
+    })] }, expect.anything());
+  });
+
+  it("blocks writing a draft over a newer revision of the same definition", async () => {
+    const user = userEvent.setup();
+    const { catalog } = createMockCatalogPorts({ scenario: "ready" });
+    const preview = vi.spyOn(catalog, "createPublicationCandidate");
+    const editor = (definition: typeof activeDefinition) => (
+      <DefinitionEditorBody authoringAllowed publishingAllowed history={null} actor="org-admin"
+        sessionPermissions={["catalog:author", "catalog:publish"]} domainState={ready} catalog={catalog}
+        catalogReleaseId={CATALOG_RELEASE_ID} definition={definition} subjects={[registeredSubject]} />
+    );
+    const { rerender } = render(editor(activeDefinition));
+    await user.type(screen.getByLabelText("说明"), "更新说明");
+    await user.type(screen.getByLabelText("修改原因"), "纠正文案");
+
+    rerender(editor({ ...activeDefinition, currentRevision: {
+      ...activeDefinition.currentRevision, id: "drev_newer",
+      valueShape: { kind: "json-schema", schema: { type: "array", minItems: 3, maxItems: 3, items: { description: "mixed" } } },
+    } }));
+    expect(screen.getByLabelText("说明")).toHaveValue(expect.stringContaining("更新说明"));
+    expect(screen.getByText(/当前定义已有新修订/)).toBeVisible();
+    const save = screen.getByRole("button", { name: "保存内容修订" });
+    expect(save).toBeDisabled();
+    await user.click(save);
+    expect(preview).not.toHaveBeenCalled();
+  });
+
   it("retains invalid example text and round-trips string examples without coercion", async () => {
     const user = userEvent.setup();
     const ports = createMockCatalogPorts({ scenario: "ready" });
@@ -734,6 +809,10 @@ describe("DefinitionEditorBody", () => {
     expect(createCandidate).not.toHaveBeenCalled();
     expect(preview).not.toHaveBeenCalled();
     expect(execute).not.toHaveBeenCalled();
+
+    await selectControlOption(screen.getByLabelText("取值形状"), "number");
+    expect(screen.getByLabelText("最小值")).toHaveValue("2");
+    expect(screen.getByLabelText("最大值")).toHaveValue("8");
   });
 
   it("requires an identity change, a project manifest and a reason before previewing", async () => {

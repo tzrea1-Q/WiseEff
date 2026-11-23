@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { allocationFor, firstAcmePredecessor, frozenPageIdentity } from "../builder/predecessorHarness";
 import { buildCompleteSuccessor } from "../builder/completeSuccessor";
 import { parseBundleBytes, targetReleaseOf } from "../builder/bundleCodec";
+import { serializeContract, type ContractJsonValue } from "../../parameter-catalog-contract/index";
 import { planMarkdownImport, serializeMarkdownRevision } from "./markdownImport";
 import { DEFINITION_IMPORT_GUIDE, DEFINITION_IMPORT_TEMPLATE } from "../../../../src/domain/parameter-catalog/definitionImportTemplate";
 import { buildCreateDefinitionChangeSet, emptyPublicationDraft } from "../../../../src/features/parameter-catalog-governance/publicationState";
@@ -65,6 +66,98 @@ describe("Definition import planner", () => {
     expect(replaced.changeSet?.[0]).toMatchObject({ content: { dtsExamples: ["<0xF 0xA>"] } });
     const narrowed = planMarkdownImport(`${revision}\n| 最多项数 | 1 |`, "narrow.md", snapshot);
     expect(narrowed.entries[0]?.diagnostics).toContainEqual(expect.objectContaining({ field: "DTS 示例", message: expect.stringContaining("类型或约束") }));
+  });
+
+  const gpioSource = "gpio_int = <&gpio28 5 0>;";
+  const gpioDefinitionId = "pdef_drv_sc8562_gpio_int";
+  const gpioRevision = `# Driver \`sc8562\`
+## \`gpio_int\` 中断 GPIO
+| 字段 | 值 |
+| --- | --- |
+| 操作 | 修订 |
+| 类型 | array<mixed> |
+| 类型说明 | GPIO 控制器引用、引脚编号和标志。 |
+| 最少项数 | 3 |
+| 最多项数 | 3 |`;
+  const replaceSchema = "\n| 类型约束 | 替换 |";
+  const gpioValueSchema = { type: "array", minItems: 3, maxItems: 3, items: { description: "GPIO 控制器引用、引脚编号和标志。" } };
+
+  it("replaces the constrained sc8562 GPIO array only by explicit request and builds a semantic successor", async () => {
+    const predecessor = compileLocalizedVendorCatalogSuccessor();
+    const snapshot = targetReleaseOf(predecessor.bundle)!;
+    const current = snapshot.documents.find((item) => item.kind === "definition" && item.content.id === gpioDefinitionId);
+    if (current?.kind !== "definition") throw new Error("expected the seeded sc8562 GPIO definition");
+    const legacySchema = current.content.revision.valueSchema;
+    expect(legacySchema).toMatchObject({ type: "array", items: { type: "array", minItems: 3, maxItems: 3 } });
+
+    const dts = dtsSection(dtsFence(gpioSource));
+    const blocked = planMarkdownImport(gpioRevision + dts, "gpio.md", snapshot);
+    expect(blocked.changeSet).toBeNull();
+    expect(blocked.entries[0]?.diagnostics).toContainEqual(expect.objectContaining({ field: "类型", line: 6, message: expect.stringContaining("丢失现有约束") }));
+
+    const revised = planMarkdownImport(gpioRevision + replaceSchema + dts, "gpio.md", snapshot);
+    expect(revised.entries[0]).toMatchObject({ outcome: "revise", revisionClass: "semantic", diagnostics: [],
+      diffs: expect.arrayContaining([{ field: "类型约束", oldValue: legacySchema, newValue: gpioValueSchema }]),
+    });
+    const change = revised.changeSet?.[0];
+    if (change?.op !== "revise-definition") throw new Error(JSON.stringify(revised.entries));
+    expect(change).toMatchObject({ class: "semantic", definitionId: gpioDefinitionId,
+      content: { displayName: current.content.revision.displayName, documentation: current.content.revision.documentation,
+        dtsExamples: [gpioSource] },
+    });
+    expect(change.content?.valueSchema).toEqual(gpioValueSchema);
+
+    const built = await buildCompleteSuccessor({ productPath: "m2-core", changeSet: [change],
+      predecessorArtifact: { digest: predecessor.compiled.aggregateDigest,
+        bytes: new TextEncoder().encode(serializeContract(predecessor.bundle as unknown as ContractJsonValue)) },
+      frozenIdentity: frozenPageIdentity([{ subjectId: current.content.subjectId, propertyKey: "gpio_int",
+        definitionId: gpioDefinitionId, revisionId: "drev_drv_sc8562_gpio_int_4" }], "gpio_schema", "1.2.2"),
+    });
+    if (!built.ok || built.value.kind !== "successor") throw new Error(JSON.stringify(built));
+    const successor = targetReleaseOf(built.value.artifact.bundle)!;
+    expect(successor.documents.find((item) => item.content.id === gpioDefinitionId)).toMatchObject({
+      content: { revision: { number: current.content.revision.number + 1, valueSchema: gpioValueSchema, dtsExamples: [gpioSource] } },
+    });
+    expect(planMarkdownImport(serializeMarkdownRevision(successor, [gpioDefinitionId]).document, "export.md", successor).noChange).toBe(true);
+  });
+
+  it("validates both retained JSON examples and retained DTS examples against the replacement schema", () => {
+    const source = targetReleaseOf(compileLocalizedVendorCatalogSuccessor().bundle)!;
+    const snapshot = { ...source, documents: source.documents.map((item) => item.kind === "definition" && item.content.id === gpioDefinitionId
+      ? { ...item, content: { ...item.content, revision: { ...item.content.revision,
+        examples: [[["&gpio28", 5, 0]]], dtsExamples: [gpioSource],
+      } } } : item) };
+    const revision = gpioRevision + replaceSchema;
+    const inherited = planMarkdownImport(revision, "gpio.md", snapshot);
+    expect(inherited.changeSet).toBeNull();
+    expect(inherited.entries[0]).toMatchObject({ outcome: "error", diagnostics: [
+      expect.objectContaining({ field: "示例", message: expect.stringContaining("更新或清空") }),
+    ] });
+    const updated = planMarkdownImport(revision + '\n| 示例 | ["&gpio28", 5, 0] |', "gpio.md", snapshot);
+    expect(updated.changeSet?.[0]).toMatchObject({ content: { examples: [["&gpio28", 5, 0]], valueSchema: gpioValueSchema } });
+    expect(updated.changeSet?.[0]).not.toHaveProperty("content.dtsExamples");
+
+    for (const cells of ["<&gpio28 5>", "<&gpio28 5 0 1>"]) {
+      const wrongCount = planMarkdownImport(revision + "\n| 示例 | - |" + dtsSection(dtsFence(cells)), "gpio.md", snapshot);
+      expect(wrongCount.changeSet).toBeNull();
+      expect(wrongCount.entries[0]?.diagnostics).toContainEqual(expect.objectContaining({ field: "DTS 示例", message: expect.stringContaining("类型或约束") }));
+    }
+  });
+
+  it.each([
+    ["| 类型约束 | 替换 |\n| 类型 | integer |", "仅可用于修订"],
+    ["| 操作 | 新建 |\n| 类型约束 | 替换 |\n| 类型 | integer |", "仅可用于修订"],
+    ["| 操作 | 修订 |\n| 类型约束 | 合并 |\n| 类型 | integer |", "只能填写替换"],
+    ["| 操作 | 修订 |\n| 类型约束 | 替换 |", "必须填写类型"],
+    ["| 操作 | 修订 |\n| 类型约束 | 替换 |\n| 类型 |   |", "必须填写类型"],
+  ])("reports invalid schema replacement at the mode row even with no current definition %#", (fields, message) => {
+    const input = `# Driver \`acme,power\`\n## \`missing\` 名称\n| 字段 | 值 |\n| --- | --- |\n${fields}`;
+    const line = input.split("\n").findIndex((item) => item.includes("类型约束")) + 1;
+    const result = planMarkdownImport(input, "schema.md", firstAcmePredecessor().first);
+    expect(result.changeSet).toBeNull();
+    expect(result.entries[0]).toMatchObject({ outcome: "error", diagnostics: expect.arrayContaining([
+      expect.objectContaining({ field: "类型约束", line, message: expect.stringContaining(message) }),
+    ]) });
   });
 
   it.each([

@@ -7,7 +7,7 @@ import { diagnostic, type Definition, type Field, type ImportDiagnostic, type Su
 import { formatValueType, unwrapArraySchema } from "./schema";
 
 export const IMPORT_FIELDS = {
-  operation: "操作", type: "类型", typeDescription: "类型说明", unit: "单位", minimum: "最小值", maximum: "最大值",
+  operation: "操作", type: "类型", typeConstraints: "类型约束", typeDescription: "类型说明", unit: "单位", minimum: "最小值", maximum: "最大值",
   minItems: "最少项数", maxItems: "最多项数", example: "示例", description: "简述", documentation: "说明",
 } as const;
 const ALLOWED_FIELDS = new Set<string>(Object.values(IMPORT_FIELDS));
@@ -43,11 +43,19 @@ export function buildContent(section: Subject, definition: Definition, current?:
   if (first("说明") && definition.documentationLine !== undefined) {
     problem("说明", "说明字段与正文不能同时填写。", first("说明")!.line);
   }
-  const { arrays: currentArrays, item: currentItem } = unwrapArraySchema(current ? structuredClone(current.valueSchema) as Record<string, unknown> : {});
-  const currentDepth = currentArrays.length;
+  const typeField = first(IMPORT_FIELDS.type);
+  const typeConstraints = first(IMPORT_FIELDS.typeConstraints);
+  const replaceSchema = typeConstraints?.value === "替换";
+  if (typeConstraints) {
+    if (!replaceSchema) problem(IMPORT_FIELDS.typeConstraints, "类型约束只能填写替换。", typeConstraints.line);
+    else if (!revision) problem(IMPORT_FIELDS.typeConstraints, "替换类型约束仅可用于修订。", typeConstraints.line);
+    else if (!typeField?.value) problem(IMPORT_FIELDS.typeConstraints, "替换类型约束时必须填写类型。", typeConstraints.line);
+  }
+  const baseSchema = current && !replaceSchema ? structuredClone(current.valueSchema) as Record<string, unknown> : undefined;
+  const { arrays: currentArrays, item: currentItem } = unwrapArraySchema(baseSchema ?? {});
   const currentType = current ? formatValueType(current.valueSchema as Record<string, unknown>) : "";
-  const type = first("类型")?.value ?? currentType;
-  const unknownRevisionType = !current && revision && !first("类型");
+  const type = typeField?.value ?? currentType;
+  const unknownRevisionType = !current && revision && !typeField;
   let itemType = type;
   let depth = 0;
   const maxDepth = CATALOG_CAPABILITY_ALLOW_LIST.budgets.maxArraySchemaDepth ?? 0;
@@ -56,25 +64,24 @@ export function buildContent(section: Subject, definition: Definition, current?:
     itemType = itemType.slice(6, -1);
   }
   if (!unknownRevisionType && (!["integer", "number", "string", "boolean", "null", "mixed"].includes(itemType) || depth > maxDepth)) {
-    problem("类型", `类型须为 integer、number、string、boolean、null、mixed 或 array<…>；数组最多嵌套 ${maxDepth} 层。`, first("类型")?.line ?? definition.line);
+    problem("类型", `类型须为 integer、number、string、boolean、null、mixed 或 array<…>；数组最多嵌套 ${maxDepth} 层。`, typeField?.line ?? definition.line);
   }
   const description = first("类型说明");
-  if (itemType === "mixed" && (!(description?.value ?? (typeof currentItem.description === "string" ? currentItem.description : "")).trim() || (current && clears(description)))) {
-    problem("类型说明", "mixed 必须填写类型说明。", description?.line ?? first("类型")?.line ?? definition.line);
+  if (itemType === "mixed" && (!(description?.value ?? (typeof currentItem.description === "string" ? currentItem.description : "")).trim() || (revision && clears(description)))) {
+    problem("类型说明", "mixed 必须填写类型说明。", description?.line ?? typeField?.line ?? definition.line);
   } else if (!unknownRevisionType && itemType !== "mixed" && description) {
     problem("类型说明", "类型说明仅适用于 mixed。", description.line);
   }
-  if (current && depth < currentDepth && currentArrays.slice(depth).some((array) =>
-    Object.keys(array).some((key) => key !== "type" && key !== "items"))) {
-    problem("类型", "更改数组嵌套层数可能丢失现有约束，请使用定义管理入口。", first("类型")!.line);
+  if (typeField && currentArrays.slice(depth).some((array) => Object.keys(array).some((key) => key !== "type" && key !== "items"))) {
+    problem("类型", "更改数组嵌套层数可能丢失现有约束。确认替换时请将「类型约束」填为「替换」，并填写目标类型和约束。", typeField.line);
   }
-  let valueSchema: Record<string, unknown> = current ? currentItem
+  let valueSchema: Record<string, unknown> = baseSchema ? currentItem
     : itemType === "mixed" ? { description: description?.value ?? "" } : { type: itemType };
   for (let i = Math.min(depth, maxDepth + 1) - 1; i >= 0; i -= 1) {
     valueSchema = { ...(currentArrays[i] ?? { type: "array" }), items: valueSchema };
   }
   const { item: itemSchema } = unwrapArraySchema(valueSchema);
-  if (current && first("类型")) {
+  if (baseSchema && typeField) {
     if (itemType === "mixed") delete itemSchema.type;
     else itemSchema.type = itemType;
   }
@@ -169,10 +176,12 @@ export function buildContent(section: Subject, definition: Definition, current?:
       }
     }
     if (schemaValid) {
-      for (const [index, example] of examples.entries()) {
+      for (const [index, example] of (content.examples ?? []).entries()) {
         const result = validateSupportedDefinitionContent({ ...baseline, valueSchema, examples: [example] }, "content");
         if (!result.ok) {
-          problem("示例", "示例不符合类型、边界或数量限制。", exampleLines[index] ?? definition.line);
+          const line = exampleLines[index];
+          problem("示例", line === undefined ? "已发布的示例不符合新类型或约束，请更新或清空示例。" : "示例不符合类型、边界或数量限制。",
+            line ?? typeField?.line ?? definition.line);
         }
       }
     }
