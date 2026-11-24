@@ -178,7 +178,7 @@ API mode 始终包含小泽；mock mode 无 Agent UI。数据库可用时，后�
 | `LOG_ANALYSIS_MODEL` | 空 | live 日志分析 LLM | 全局模型名，写入报告与指标。所钉技能版本的 `modelOverride` 只替换模型名；端点、key 和单次请求超时仍用全局配置，版本预算受下方全局上限约束。 |
 | `LOG_ANALYSIS_API_KEY` | 空 | live 日志分析 LLM | secret。 |
 | `LOG_ANALYSIS_API_TIMEOUT_MS` | `30000` | live 日志分析 LLM | 单次 `ChatOpenAI` 调用超时（循环内核每步一次调用）。 |
-| `LOG_ANALYSIS_TOKEN_BUDGET` | `512000` | 单次分析成本上界 | 版本 `tokenBudget` 的默认值与平台上限。单发内核：限定提示词摘录（约 4 字符/token 折算）与响应 `maxTokens`。循环内核：跨步累计输入+输出 token；耗尽触发显式标注的提前收敛。 |
+| `LOG_ANALYSIS_TOKEN_BUDGET` | `512000` | 单次分析成本上界 | 版本 `tokenBudget` 的默认值与平台上限。单发内核：限定提示词摘录（约 4 字符/token 折算）与响应 `maxTokens`。循环内核：跨步累计输入+输出 token；耗尽触发显式标注的提前收敛。分析模型每次响应的输出上限为 8,192 个 token，预算的四分之一更小时采用该值，上限最低为 256 个 token。 |
 | `LOG_ANALYSIS_DETERMINISTIC` | `.env.example` 为 `true`，代码默认 `false` | 离线开发/测试/评测 | 使用确定性桩模型（`model` 记 `deterministic`），无需 provider 且就绪检查通过。生产必须配置真实 provider 并保持 `false`。 |
 | `LOG_ANALYSIS_KERNEL` | `loop` | 分析内核选择 | `loop` = 有界多步 agent，按运行组合只读工具（默认）；`single-shot` = P1 单发内核，保留为配置回退。 |
 | `LOG_ANALYSIS_PROTOCOL` | `json` | 循环内核的模型协议 | `json`（默认）使用文本 JSON，每轮不重发工具定义。`auto` 优先尝试原生工具，通过 `final_report` 提交终答，并在 worker 进程内按端点和模型缓存明确的兼容性拒绝。`tools` 要求使用原生工具，`json` 强制使用文本 JSON。技能可选择 JSON，平台已强制协议时不能改回自动探测。 |
