@@ -247,11 +247,12 @@ const classifyInstallError = (
   if (error.kind === "activation-receipt-mismatch") {
     return { status: "blocked", errorClass: "receipt", reason: "activation-receipt-mismatch" };
   }
-  if (error.kind === "artifact-missing") {
-    return { status: "failed-terminal", errorClass: "artifact", reason: "artifact-missing" };
+  if (error.kind === "artifact-read-failed") {
+    return { status: error.retryable ? "failed-retryable" : "failed-terminal", errorClass: "storage", reason: error.kind };
   }
-  if (error.kind === "predecessor-incomplete") {
-    return { status: "failed-terminal", errorClass: "artifact", reason: "predecessor-incomplete" };
+  if (error.kind === "artifact-missing" || error.kind === "artifact-unreadable" ||
+      error.kind === "artifact-scalar-too-large" || error.kind === "predecessor-incomplete") {
+    return { status: "failed-terminal", errorClass: "artifact", reason: error.kind };
   }
   if (error.kind === "adoption-evidence-invalid") {
     return { status: "failed-terminal", errorClass: "adoption", reason: "adoption-evidence-invalid" };

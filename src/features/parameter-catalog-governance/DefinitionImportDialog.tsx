@@ -73,6 +73,8 @@ export function DefinitionImportDialog(props: DefinitionImportDialogProps) {
   const organizationCandidates = [...new Map(entries?.flatMap(entry => entry.matchCandidates?.length
     ? [[entry.selector, entry.matchCandidates] as const] : [])).entries()];
   const resultsRef = useRef<HTMLDivElement>(null);
+  const jobStatusRef = useRef<HTMLParagraphElement>(null);
+  const focusedFailureId = useRef<string | null>(null);
   const [parsedFingerprint, setParsedFingerprint] = useState<string | null>(null);
   const [noChange, setNoChange] = useState(false);
   const [errorsOnly, setErrorsOnly] = useState(false);
@@ -108,6 +110,7 @@ export function DefinitionImportDialog(props: DefinitionImportDialogProps) {
   });
   const succeeded = job ? publicationSuccessKind(job) : null;
   const status = job ? publicationStatusCopy(job) : null;
+  const failedJobId = job?.status === "failed-terminal" ? job.id : null;
   const advisory = props.publicationSurface ? publicationSurfaceAdvisory(props.publicationSurface) : null;
   const dirty = (hasContent || Boolean(uploadedFileName)) && !succeeded;
   const canRefresh = Boolean(props.onRefreshEvidence
@@ -141,6 +144,13 @@ export function DefinitionImportDialog(props: DefinitionImportDialogProps) {
   useEffect(() => {
     if (entries) resultsRef.current?.focus();
   }, [entries]);
+
+  useEffect(() => {
+    if (open && !confirm && failedJobId && failedJobId !== focusedFailureId.current) {
+      jobStatusRef.current?.focus();
+      focusedFailureId.current = failedJobId;
+    }
+  }, [open, confirm, failedJobId]);
 
   useEffect(() => {
     if (!open || !dirty) return undefined;
@@ -315,7 +325,7 @@ export function DefinitionImportDialog(props: DefinitionImportDialogProps) {
           <p>主体标题可用规范标识或正式目录别名。仅由当前组织 compatible 规则识别的短名，需要在预览中确认主体。</p>
           {unavailable ? <p role="status">{unavailable}</p> : null}
           {advisory ? <p role="status" data-tone={advisory.tone}>{advisory.message}</p> : null}
-          {status ? <p role="status" aria-label="发布任务状态" data-publication-status={job?.status}
+          {status ? <p ref={jobStatusRef} tabIndex={-1} role="status" aria-label="发布任务状态" data-publication-status={job?.status}
             data-tone={status.tone}>{succeeded === "active" && entries && status.tone === "success"
               ? `已发布 ${counts.create + counts.revise} 条定义，目录已生效。` : status.message}</p> : null}
           {failure ? <p role="alert" className="governance-confirm-dialog__error">{failure}</p> : null}

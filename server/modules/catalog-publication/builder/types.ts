@@ -292,6 +292,8 @@ export type BuildCompleteSuccessorInput = {
   readonly predecessorArtifact: PredecessorArtifactInput;
   readonly changeSet: readonly CatalogChange[];
   readonly frozenIdentity: FrozenPublicationIdentity;
+  /** Store just the validated target when its predecessor is pinned in the artifact store. */
+  readonly storageFormat?: "successor-v1";
   readonly proposal?: BuilderProposalRef | null;
   readonly productPath?: BuilderProductPath;
   readonly persist?: BuilderPersistRequest;

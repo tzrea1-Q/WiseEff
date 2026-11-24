@@ -5,6 +5,7 @@ import {
   serializeContract,
   type ContractJsonValue,
 } from "../../parameter-catalog-contract/index";
+import { encodeContractJsonBytes, hashContractJson } from "../../parameter-catalog-contract/chunkedSerialization";
 import type {
   CatalogReleaseBundle,
   CatalogReleaseDefinitionDocument,
@@ -14,12 +15,12 @@ import type {
 
 import { TYPED_CHANGESET_SOURCE_PATH } from "../../catalog-kernel/compiler/subjectIdentity";
 export { TYPED_CHANGESET_SOURCE_PATH } from "../../catalog-kernel/compiler/subjectIdentity";
+export { parseBundleBytes } from "../../catalog-kernel/compiler/bundleBytes";
 
 export const sha256Digest = (value: string | Uint8Array): string =>
   `sha256:${createHash("sha256").update(value).digest("hex")}`;
 
-export const canonicalDigest = (value: ContractJsonValue): string =>
-  sha256Digest(serializeContract(value));
+export const canonicalDigest = hashContractJson;
 
 const compare = (left: string, right: string): number =>
   left < right ? -1 : left > right ? 1 : 0;
@@ -133,7 +134,7 @@ export const refreshSuccessorSource = (
     ...document,
     source,
   }));
-  return {
+  const target: CatalogReleaseNode = {
     ...release,
     documents: withSource,
     sources: [
@@ -153,30 +154,15 @@ export const refreshSuccessorSource = (
         documentId: document.content.id,
         normalizedDigest: document.normalizedDigest,
       })),
+    },
+  };
+  return {
+    ...target,
+    manifest: {
+      ...target.manifest,
       release: {
         ...release.manifest.release,
-        digest: canonicalDigest(aggregateModel({
-          ...release,
-          documents: withSource,
-          sources: [
-            {
-              path: sourcePath,
-              mediaType: "application/yaml",
-              encoding: "base64",
-              bytes: bytes.toString("base64"),
-            },
-          ],
-          manifest: {
-            ...release.manifest,
-            files: [{ path: sourcePath, mediaType: "application/yaml", digest }],
-            documents: withSource.map((document) => ({
-              sourcePath: source.path,
-              kind: document.kind,
-              documentId: document.content.id,
-              normalizedDigest: document.normalizedDigest,
-            })),
-          },
-        })),
+        digest: canonicalDigest(aggregateModel(target)),
       },
     },
   };
@@ -192,37 +178,7 @@ export const encodeBundleBytes = (bundle: CatalogReleaseBundle): Uint8Array => {
       ),
     ),
   };
-  return new TextEncoder().encode(
-    serializeContract(canonical as unknown as ContractJsonValue),
-  );
-};
-
-export const parseBundleBytes = (
-  bytes: Uint8Array,
-): { readonly ok: true; readonly bundle: CatalogReleaseBundle } | {
-  readonly ok: false;
-  readonly detail: string;
-} => {
-  try {
-    const text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
-    const parsed: unknown = JSON.parse(text);
-    if (
-      parsed === null ||
-      typeof parsed !== "object" ||
-      Array.isArray(parsed) ||
-      !("schemaVersion" in parsed) ||
-      !("targetReleaseId" in parsed) ||
-      !("releases" in parsed)
-    ) {
-      return { ok: false, detail: "catalog-release-bundle-unreadable" };
-    }
-    return { ok: true, bundle: parsed as CatalogReleaseBundle };
-  } catch (error) {
-    return {
-      ok: false,
-      detail: error instanceof Error ? error.message : "catalog-release-bundle-unreadable",
-    };
-  }
+  return encodeContractJsonBytes(canonical as unknown as ContractJsonValue);
 };
 
 export const targetReleaseOf = (

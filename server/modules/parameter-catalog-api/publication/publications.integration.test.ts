@@ -20,7 +20,7 @@ import { getReceiptByJobId } from "../../catalog-publication/persistence/store";
 import { getArtifactByDigest, getValidatedPreviewSnapshot } from "../../catalog-publication/persistence/store";
 import { preparePredecessorArtifact } from "../../catalog-publication/builder/preparedPredecessor";
 import { previewPublicationCandidate } from "../../catalog-publication/preview";
-import { parseBundleBytes, targetReleaseOf } from "../../catalog-publication/builder/bundleCodec";
+import { encodeBundleBytes, parseBundleBytes, targetReleaseOf } from "../../catalog-publication/builder/bundleCodec";
 import { createCatalogReadHttpServer } from "../read/http";
 import { kernelOnlyTimelineComposer, unregisteredProjection, zeroUsageProjection } from "../read/ports";
 import { requestJson } from "../../../test/testClient";
@@ -795,6 +795,27 @@ it("publishes a mixed Markdown create and revision in one Candidate", async () =
     const clearedPointer = await readCurrentCatalogPointer(pool);
     if (clearedPointer.kind !== "installed") throw new Error("clear did not install a release");
     pin = clearedPointer.current;
+    const lineage = [predecessor.first];
+    for (const release of [pointer.current, clearedPointer.current]) {
+      const base = lineage.at(-1)!.manifest.release;
+      const { rows: [stored] } = await client.query<{
+        storage_format: string; compact_base_digest: string; bytes_checksum: string; artifact_bytes: Buffer;
+      }>(`select storage_format, compact_base_digest, bytes_checksum, artifact_bytes
+         from catalog_publication.release_artifacts where artifact_digest = $1`, [release.digest]);
+      expect(stored).toMatchObject({ storage_format: "successor-v1", compact_base_digest: base.digest });
+      const physical = parseBundleBytes(stored!.artifact_bytes);
+      if (!physical.ok) throw new Error(physical.detail);
+      expect(physical.bundle.releases).toHaveLength(1);
+      const node = physical.bundle.releases[0]!;
+      expect(node.manifest.release).toMatchObject({ ...release, predecessor: { id: base.id, digest: base.digest } });
+      lineage.push(node);
+      const hydrated = await getArtifactByDigest(db, release.digest);
+      if (!hydrated.ok) throw new Error(JSON.stringify(hydrated.error));
+      expect(hydrated.value.storageBytesChecksum).toBe(stored!.bytes_checksum);
+      const expected = encodeBundleBytes({ schemaVersion: "1.0.0", targetReleaseId: release.id, releases: lineage });
+      expect(Buffer.compare(hydrated.value.artifactBytes, expected)).toBe(0);
+      expect(stored!.artifact_bytes.byteLength).toBeLessThan(expected.byteLength);
+    }
     const clearedHead = await client.query<{ content: Record<string, unknown> }>(`select r.content from parameter_catalog.catalog_release_definition_heads h
       join parameter_catalog.definition_revisions r on r.id = h.revision_id
       where h.release_id = $1 and h.definition_id = 'pdef_acme_power_iin_max'`, [pin.id]);

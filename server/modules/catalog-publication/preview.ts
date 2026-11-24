@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 
+import { artifactDecodeFailure, artifactReadFailure, type ArtifactReadFailure } from "./persistence/artifactReadFailure";
 import {
   CatalogArtifactId,
   CatalogCandidateId,
@@ -21,7 +22,7 @@ import {
   impactSummaryFromReport,
   persistSuccessorBuild,
 } from "./builder/completeSuccessor";
-import { encodeBundleBytes, targetReleaseOf } from "./builder/bundleCodec";
+import { targetReleaseOf } from "./builder/bundleCodec";
 import { canAppendIdentitySnapshot, identitySnapshotOf, withPreviewBaseline } from "./builder/identitySnapshot";
 import {
   preparePredecessorArtifact,
@@ -30,6 +31,7 @@ import {
 } from "./builder/preparedPredecessor";
 import type { CatalogReleaseNode } from "../catalog-kernel/compiler/types";
 import type {
+  BuildCompleteSuccessorInput,
   CatalogChange,
   CatalogImpactReport,
   CreateDefinitionChange,
@@ -65,7 +67,7 @@ const bumpReleaseVersion = (version: string): string => {
 };
 
 export type PreviewPublicationError =
-  | { readonly kind: "artifact-missing" }
+  | ArtifactReadFailure
   | { readonly kind: "predecessor-incomplete"; readonly detail?: string }
   | { readonly kind: "unsupported-catalog-capability"; readonly detail: string }
   | { readonly kind: "unsupported-change-op"; readonly op: string }
@@ -430,9 +432,11 @@ async function preview(input: PreviewInput, useSnapshot: boolean):
       and attname='has_dts_examples' and not attisdropped) as available`,
   )).rows[0]?.available;
   const spelling = input.changeSet.length === 1 && (first?.op === "rename-subject" || first?.op === "set-subject-alias") ? first : undefined;
+  // Only compact writers need the storage format before building. Other edits
+  // can reject invalid changes before checking whether to save a preview snapshot.
+  let snapshotsAvailable = spelling || input.markdownSource ? await checkSnapshotSchema() : undefined;
   let snapshot: PreviewSnapshot | undefined;
-  let snapshotsAvailable: boolean | undefined;
-  if (useSnapshot && spelling && !input.predecessorArtifact && (snapshotsAvailable = await checkSnapshotSchema())) {
+  if (snapshotsAvailable && useSnapshot && spelling && !input.predecessorArtifact) {
     const found = await withPreviewBaseline(input.db, tx => getValidatedPreviewSnapshot(tx, input.predecessorDigest));
     if (found.ok) snapshot = found.value;
     else if (found.error.kind !== "not-found") return { ok: false, error: { kind: "predecessor-incomplete", detail: found.error.kind } };
@@ -440,11 +444,11 @@ async function preview(input: PreviewInput, useSnapshot: boolean):
   let predecessorArtifact = input.predecessorArtifact;
   if (!snapshot && !predecessorArtifact) {
     const artifact = await getArtifactByDigest(input.db, input.predecessorDigest);
-    if (!artifact.ok) return { ok: false, error: { kind: "artifact-missing" } };
+    if (!artifact.ok) return { ok: false, error: artifactReadFailure(artifact.error) };
     const prepared = preparePredecessorArtifact({
       digest: input.predecessorDigest, bytes: artifact.value.artifactBytes,
     });
-    if (!prepared.ok) return { ok: false, error: { kind: "predecessor-incomplete", detail: prepared.detail } };
+    if (!prepared.ok) return { ok: false, error: { kind: artifactDecodeFailure(prepared.detail) } };
     predecessorArtifact = prepared.artifact;
   }
   const bundle = predecessorArtifact && preparedPredecessorBundle(predecessorArtifact);
@@ -477,10 +481,11 @@ async function preview(input: PreviewInput, useSnapshot: boolean):
     ? "m2-core"
     : "m1";
 
-  const buildInput = {
+  const buildInput: BuildCompleteSuccessorInput = {
     predecessorArtifact: predecessorArtifact ?? { digest: input.predecessorDigest },
     changeSet: input.changeSet,
     frozenIdentity: frozen,
+    storageFormat: snapshotsAvailable ? "successor-v1" : undefined,
     proposal,
     productPath,
   };
@@ -597,7 +602,6 @@ async function preview(input: PreviewInput, useSnapshot: boolean):
   const verifiedIdentityBase = snapshot ?? baseSnapshot;
   const successorSnapshot = snapshotsAvailable && target && (verifiedIdentityBase ?
     { ...verifiedIdentityBase, target } : identitySnapshotOf(artifact.bundle, target));
-  const compact = Boolean(spelling && successorSnapshot);
   const persisted = await persistSuccessorBuild(
     {
       db: input.db,
@@ -607,13 +611,9 @@ async function preview(input: PreviewInput, useSnapshot: boolean):
             const saved = await putValidatedPreviewSnapshot(db, input.predecessorDigest, baseSnapshot);
             if (!saved.ok) return saved;
           }
-          const stored = await storePersistArtifact(db, compact && successorSnapshot ? { ...artifactInput, storageFormat: "successor-v1",
-            artifactBytes: artifact.storageFormat ? artifact.artifactBytes : encodeBundleBytes({
-              schemaVersion: "1.0.0", targetReleaseId: successorSnapshot.target.manifest.release.id,
-              releases: [successorSnapshot.target],
-            }) } : artifactInput);
+          const stored = await storePersistArtifact(db, artifactInput);
           if (stored.ok && successorSnapshot) {
-            const saved = await putValidatedPreviewSnapshot(db, artifact.artifactDigest, successorSnapshot, compact ? "successor-v1" : undefined);
+            const saved = await putValidatedPreviewSnapshot(db, artifact.artifactDigest, successorSnapshot, stored.value.storageFormat);
             if (!saved.ok) return saved;
           }
           return stored;

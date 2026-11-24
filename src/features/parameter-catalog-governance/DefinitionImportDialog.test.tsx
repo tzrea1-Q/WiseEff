@@ -23,6 +23,7 @@ function renderImport(options: {
   runtimeMode?: "api" | "mock";
   modules?: ParameterModule[];
   initialDocument?: string;
+  createIdempotencyKey?: () => string;
   prepare?: (ports: ReturnType<typeof createMockCatalogPorts>) => void;
 } = {}) {
   const ports = createMockCatalogPorts({ publicationOutcome: options.outcome ?? "active" });
@@ -39,7 +40,7 @@ function renderImport(options: {
       lowRiskSingleActorPublish: false, policyRevision: 1, frozen: false, adopted: true,
       currentReleaseId: CATALOG_RELEASE_ID, authoringAllowed: true, publishingAllowed: true,
       reviewHighRiskAllowed: true, blockers: [] }}
-    createIdempotencyKey={() => "pub-key"} onOpenChange={vi.fn()} onCompleted={completed} />;
+    createIdempotencyKey={options.createIdempotencyKey ?? (() => "pub-key")} onOpenChange={vi.fn()} onCompleted={completed} />;
   const view = render(ui());
   return { ports, completed, rerenderRelease: (releaseId: string) => view.rerender(ui(releaseId)) };
 }
@@ -519,6 +520,49 @@ it("keeps the document on rebase and invalidates a preview after editing", async
   await user.type(screen.getByLabelText("Markdown 文档"), "修改");
   expect(screen.queryByRole("button", { name: "发布到目录" })).not.toBeInTheDocument();
   expect(screen.getByRole("button", { name: "解析并预览" })).toBeEnabled();
+});
+
+it("explains an unreadable artifact and previews a fresh candidate from the unchanged Markdown", async () => {
+  const document = "# Driver `sc8562`";
+  const response = (id: string) => ({ item: {
+    candidate: { ...catalogPublicationCandidate, id }, noChange: false, entries: [], placementHints: [],
+    source: { fileName: "粘贴.md", sha256: "sha256:test", parserVersion: "v1" },
+  } });
+  const preview = vi.fn<NonNullable<ParameterCatalogRepository["previewMarkdownImport"]>>()
+    .mockResolvedValueOnce(response("ccand_first")).mockResolvedValueOnce(response("ccand_new"));
+  const publish = vi.fn<ParameterCatalogRepository["publishPublicationCandidate"]>().mockResolvedValueOnce({ item: {
+    ...catalogPublicationJob, candidateId: "ccand_first", status: "failed-terminal" as const, attemptCount: 1,
+    failure: { class: "artifact", reason: "artifact-unreadable" as const },
+  } }).mockResolvedValueOnce({ item: { ...catalogPublicationJob, id: "cjob_new", candidateId: "ccand_new",
+    status: "active", effective: true, isCurrent: true, currentness: "active" } });
+  const createIdempotencyKey = vi.fn<() => string>().mockReturnValueOnce("first-key").mockReturnValueOnce("new-key");
+  const { completed } = renderImport({ initialDocument: document, createIdempotencyKey, prepare: (ports) => {
+    ports.catalog.previewMarkdownImport = preview;
+    ports.catalog.publishPublicationCandidate = publish;
+  } });
+  const user = userEvent.setup();
+  await user.click(screen.getByRole("button", { name: "解析并预览" }));
+  await user.click(await screen.findByRole("button", { name: "发布到目录" }));
+  await confirm("确认发布");
+
+  const status = await screen.findByRole("status", { name: "发布任务状态" });
+  expect(status).toHaveTextContent("目录发布包无法解析或校验");
+  expect(status).toHaveFocus();
+  expect(screen.getByRole("button", { name: "发布到目录" })).toBeDisabled();
+  expect(screen.getByLabelText("Markdown 文档")).toHaveValue(document);
+  expect(completed).not.toHaveBeenCalled();
+  await user.click(screen.getByRole("button", { name: "重新预览" }));
+  await waitFor(() => expect(screen.getByRole("button", { name: "发布到目录" })).toBeEnabled());
+  expect(preview).toHaveBeenCalledTimes(2);
+  expect(preview.mock.calls[1]).toEqual(preview.mock.calls[0]);
+  expect(screen.queryByRole("status", { name: "发布任务状态" })).not.toBeInTheDocument();
+  expect(publish).toHaveBeenCalledTimes(1);
+  await user.click(screen.getByRole("button", { name: "发布到目录" }));
+  await confirm("确认发布");
+  await waitFor(() => expect(completed).toHaveBeenCalledTimes(1));
+  expect(publish.mock.calls.map(([id, body]) => [id, body.idempotencyKey])).toEqual([
+    ["ccand_first", "first-key"], ["ccand_new", "new-key"],
+  ]);
 });
 
 it("shows non-blocking placement warnings alongside a no-change result", async () => {

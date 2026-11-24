@@ -35,6 +35,7 @@ import {
   listJobs,
 } from "../../catalog-publication/persistence/store";
 import { collectPublicationPolicyControlFacts } from "../../catalog-publication/authorization/instanceSnapshot";
+import { artifactDecodeFailure, artifactReadFailure } from "../../catalog-publication/persistence/artifactReadFailure";
 import type { PublicationCandidateRecord, PublicationJobRecord } from "../../catalog-publication/persistence/types";
 import { readCurrentCatalogPointer } from "../../catalog-kernel/install/currentPointer";
 import type { Database } from "../../../shared/database/client";
@@ -245,8 +246,8 @@ const jobView = async (input: {
 };
 
 const mapPreviewError = (kind: string, detail?: string): CatalogPublicationFailure => {
-  if (kind === "artifact-missing") {
-    return { kind: "reason", reason: "artifact-missing" };
+  if (kind === "artifact-missing" || kind === "artifact-unreadable" || kind === "artifact-scalar-too-large" || kind === "artifact-read-failed") {
+    return { kind: "reason", reason: kind };
   }
   if (kind === "predecessor-incomplete") {
     return { kind: "reason", reason: "predecessor-incomplete" };
@@ -310,9 +311,9 @@ export function bindCatalogPublicationCommands(input: {
       let predecessorArtifact: PreparedPredecessorArtifact | undefined;
       if (command.markdownImport || command.claimedOwners) {
         const artifact = await getArtifactByDigest(db, pointer.current.digest);
-        if (!artifact.ok) return { ok: false, error: { kind: "reason", reason: "artifact-missing" } };
+        if (!artifact.ok) return { ok: false, error: { kind: "reason", reason: artifactReadFailure(artifact.error).kind } };
         const prepared = preparePredecessorArtifact({ digest: pointer.current.digest, bytes: artifact.value.artifactBytes });
-        if (!prepared.ok) return { ok: false, error: { kind: "reason", reason: "predecessor-incomplete" } };
+        if (!prepared.ok) return { ok: false, error: { kind: "reason", reason: artifactDecodeFailure(prepared.detail) } };
         predecessorArtifact = prepared.artifact;
       }
       if (command.markdownImport) {

@@ -1,6 +1,7 @@
 import { Buffer } from "node:buffer";
 import { createHash } from "node:crypto";
 
+import { hashContractJson } from "../../parameter-catalog-contract/chunkedSerialization";
 import {
   CatalogSubjectId,
   catalogReleaseViolationCodes,
@@ -449,11 +450,6 @@ const validateDuplicateIdentities = (
   return violations;
 };
 
-const digestContract = (value: ContractJsonValue): string =>
-  `sha256:${createHash("sha256")
-    .update(serializeContract(value))
-    .digest("hex")}`;
-
 const canonicalKey = (value: ContractJsonValue): string =>
   serializeContract(value).trimEnd();
 
@@ -581,7 +577,7 @@ const validateContentDigests = (
     const location = `release:${releaseId}/${document.kind}:${document.content.id}`;
     if (
       document.normalizedDigest !==
-      digestContract(document.content as unknown as ContractJsonValue)
+      hashContractJson(document.content as unknown as ContractJsonValue)
     ) {
       violations.push(
         violation({
@@ -595,7 +591,7 @@ const validateContentDigests = (
     if (
       document.kind === "definition" &&
       document.content.revision.contentDigest !==
-        digestContract(
+        hashContractJson(
           revisionContentModel(document, rules.definitionRevisionRules),
         )
     ) {
@@ -611,7 +607,7 @@ const validateContentDigests = (
   }
   if (
     node.manifest.release.digest !==
-    digestContract(aggregateModel(node, rules.manifestRules))
+    hashContractJson(aggregateModel(node, rules.manifestRules))
   ) {
     violations.push(
       violation({

@@ -2,6 +2,8 @@ import pg from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { compileCatalogRelease } from "../../catalog-kernel/compiler/index";
+import { validCatalogReleaseBundle } from "../../catalog-kernel/compiler/__fixtures__/catalogReleaseBundle";
+import { CATALOG_PUBLICATION_COORDINATOR_ROLE } from "../../catalog-kernel/security/catalogRoleManifest";
 import {
   CatalogArtifactId,
   CatalogReleaseDigest,
@@ -15,6 +17,7 @@ import {
   openEphemeralClient,
   requirePgvectorTestDatabase,
   uniqueToken,
+  withLocalRole,
 } from "../persistence/integrationHarness";
 import {
   getArtifactByDigest,
@@ -22,6 +25,7 @@ import {
   persistArtifact,
 } from "../persistence/store";
 import { buildCompleteSuccessor } from "./completeSuccessor";
+import { encodeBundleBytes } from "./bundleCodec";
 import {
   allocationFor,
   firstAcmePredecessor,
@@ -33,11 +37,13 @@ await requirePgvectorTestDatabase();
 
 describe("catalog publication builder persistence", () => {
   let client: pg.Client;
+  let url: string;
   let drop: () => Promise<void>;
 
   beforeAll(async () => {
     const opened = await openEphemeralClient("cp03bld");
     client = opened.client;
+    url = opened.url;
     drop = opened.drop;
   }, 120_000);
 
@@ -104,6 +110,78 @@ describe("catalog publication builder persistence", () => {
       });
     }
   });
+
+  it.each(["full", "successor-v1"] as const)("reuses a concurrent %s insert when retried in the other format", async (first) => {
+    const { predecessor } = await persistPredecessor();
+    const input = {
+      predecessorArtifact: predecessor,
+      changeSet: [pageIntegerChange("iin_min", "Minimum")],
+      frozenIdentity: frozenPageIdentity([allocationFor("iin_min")], uniqueToken("retry")),
+    };
+    const full = await buildCompleteSuccessor(input);
+    const compact = await buildCompleteSuccessor({ ...input, storageFormat: "successor-v1" });
+    if (!full.ok || full.value.kind !== "successor" || !compact.ok || compact.value.kind !== "successor") {
+      throw new Error("successor fixture failed");
+    }
+    expect(compact.value.candidate).toEqual(full.value.candidate);
+    expect(compact.value.impact).toEqual(full.value.impact);
+    const [original, retry] = first === "full"
+      ? [full.value.artifact, compact.value.artifact] as const : [compact.value.artifact, full.value.artifact] as const;
+    const winner = new pg.Client({ connectionString: url });
+    await winner.connect();
+    try {
+      // Put the competing commit after the loser's lookup and before its insert.
+      const raced = await sessionDb().transaction(tx => persistArtifact({
+        async query<Row>(sql: string, values?: unknown[]) {
+          if (sql.startsWith("insert into catalog_publication.release_artifacts")) {
+            expect((await persistArtifact(asQueryable(winner), original)).ok).toBe(true);
+          }
+          return tx.query<Row>(sql, values);
+        },
+      }, retry));
+      expect(raced).toMatchObject({ ok: true, value: { id: original.id } });
+    } finally {
+      await winner.end();
+    }
+    expect(await persistArtifact(db(), retry)).toMatchObject({ ok: true, value: { id: original.id } });
+    const read = await getArtifactByDigest(db(), original.artifactDigest);
+    if (!read.ok) throw new Error("could not read persisted successor");
+    expect(Buffer.compare(read.value.artifactBytes, full.value.artifact.artifactBytes)).toBe(0);
+    const bundle = retry.bundle;
+    const node = bundle.releases.at(-1)!;
+    const changed = { ...node, manifest: { ...node.manifest, toolchain: { ...node.manifest.toolchain, compiler: "different" } } };
+    const changedBytes = encodeBundleBytes({ ...bundle, releases: retry.storageFormat ? [changed] : [predecessor.first, changed] });
+    expect(await persistArtifact(db(), { ...retry, artifactBytes: changedBytes })).toMatchObject({
+      ok: false, error: { kind: "conflict", reason: "artifact-digest-bytes-mismatch" },
+    });
+  });
+
+  it.each(["null node", "noncanonical number"] as const)("reports invalid compact lineage for a checksummed full base containing a %s", fault =>
+    withLocalRole(client, CATALOG_PUBLICATION_COORDINATOR_ROLE, async () => {
+      const bundle = validCatalogReleaseBundle();
+      const target = bundle.releases.at(-1)!;
+      const base = target.manifest.release;
+      const text = fault === "null node" ? JSON.stringify({ ...bundle, releases: [null, target] })
+        : JSON.stringify(bundle).replace('"sequence":1', '"sequence":-0');
+      const storedBase = await persistArtifact(db(), {
+        id: CatalogArtifactId("cart_malformed_full_base"), artifactDigest: base.digest,
+        artifactBytes: Buffer.from(text),
+        sourceKind: "repository-bundle", targetReleaseId: CatalogReleaseId(base.id),
+        targetReleaseDigest: CatalogReleaseDigest(base.digest), predecessorReleaseId: CatalogReleaseId(base.predecessor!.id),
+        predecessorReleaseDigest: CatalogReleaseDigest(base.predecessor!.digest), toolchain: target.manifest.toolchain,
+      });
+      expect(storedBase.ok).toBe(true);
+      const child = await buildCompleteSuccessor({
+        predecessorArtifact: { digest: base.digest, bytes: encodeBundleBytes(bundle) },
+        changeSet: [pageIntegerChange("iin_min", "Minimum")], storageFormat: "successor-v1",
+        frozenIdentity: frozenPageIdentity([allocationFor("iin_min")], "corrupt_lineage", "1.2.0"),
+      });
+      if (!child.ok || child.value.kind !== "successor") throw new Error("valid successor fixture failed");
+      expect((await persistArtifact(db(), child.value.artifact)).ok).toBe(true);
+      expect(await getArtifactByDigest(db(), child.value.artifact.artifactDigest)).toEqual({
+        ok: false, error: { kind: "invalid-input", reason: "invalid-artifact-bundle" },
+      });
+    }));
 
   it("rolls back the successor artifact when persistCandidate hits a real FK failure", async () => {
     const { predecessor } = await persistPredecessor();

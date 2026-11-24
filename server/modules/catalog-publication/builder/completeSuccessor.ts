@@ -1272,7 +1272,10 @@ async function buildSuccessor(
   const contract = capabilityContract(input.changeSet, successor.documents, history.hasSubjectRules, history.hasDtsExamples);
   const impact = { ...buildImpact(predecessorTarget, successor, requestedClasses), capabilityContractRevision: contract.revision };
   const impactReportDigest = canonicalDigest(impact as unknown as ContractJsonValue);
-  const artifactBytes = encodeBundleBytes(bundle);
+  // Choose the physical representation after validating the change and its impact.
+  // A compact artifact references the same verified parent as the complete bundle.
+  const storageFormat = snapshot ? "successor-v1" : input.storageFormat;
+  const artifactBytes = encodeBundleBytes(storageFormat ? { ...bundle, releases: [successor] } : bundle);
   const toolchain = asJsonObject({
     compiler: frozen.toolchain.compiler,
     jsonSchemaDialect: frozen.toolchain.jsonSchemaDialect,
@@ -1300,7 +1303,7 @@ async function buildSuccessor(
   });
   const proposal = input.proposal ?? null;
   const artifact = {
-    ...(snapshot ? { storageFormat: "successor-v1" as const } : {}),
+    ...(storageFormat ? { storageFormat } : {}),
     id: frozen.artifactId,
     artifactDigest: validated.value.aggregateDigest,
     artifactBytes,
