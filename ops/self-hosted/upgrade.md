@@ -56,6 +56,8 @@ Admission checks the complete migration inventory and the known schema of source
 
 For this local MinIO profile, backup stops MinIO and captures its actual volume, including S3 metadata. New `minio-volume-v1` recovery points record the exact server release; restore allows same-release WiseEff rebuilds with a different digest and refuses any different release. Legacy digest-only points require the original local image to establish its release when restoring to a different image ID. Redis is also stopped before copying its AOF manifest/files; restore validates RDB/AOF before replacing stopped-service data and loading it. PostgreSQL restore recreates the recorded database including owners, removing candidate schemas. These are explicit recovery operations; normal upgrades do not delete old business data. Retain enough storage for the complete MinIO volume and Redis validation staging. Older bucket-mirror recovery points remain readable by their original format, but do not acquire metadata-preservation evidence retroactively.
 
+The PostgreSQL dump session uses `bytea_output=escape` to avoid doubling printable JSON bytes in large Catalog artifacts. PostgreSQL also escapes non-ASCII bytes. If this representation hits a reported row-size limit, the controller retries once with hex. When both encodings exceed the limit the run stops before migration. The controller reads the archive through `pg_restore --file=/dev/null` before promoting `wiseeff.dump.part` to `wiseeff.dump`. If export or verification fails, inspect `failure_code` and `failure_summary` for that run. Start a fresh upgrade after correcting the cause of a terminal `old-stack-restored` run.
+
 The isolated terminal upgrade, original-data preservation (126 tables, 183 original records, 661 original constraints), normal restart, wrong-target refusal, actual migration interruption and both whole-state restores last passed the page loop at `2cf966a9790df97e7502a0609fd0452c36685be3` in [run 34424170420](https://github.com/tzrea1-Q/WiseEff/actions/runs/34424170420) (PR L1 [34424167069](https://github.com/tzrea1-Q/WiseEff/actions/runs/34424167069)). Current code candidate `f51569d2c32f6a27e8f64271c358fefcd62b8d61` joins ingest sync and catalog import-preview rewrite to their audit transactions; dedicated Hosted for that SHA is pending and prior Hosted evidence is not reusable. This is not a merge-ready or production-ready candidate: human visual/console review remains pending. A restored per-run image alias can re-enter the bounded source route only when its actual running image ID equals the retained original SHA image; missing or different images still refuse. Initialization mode is accepted only by plan/apply; status exposes the run's persisted `parameterDataMode`, and recovery consumes the existing run without another initialization flag.
 
 The tested isolated entry is the dedicated GitHub-hosted Linux/amd64 job. From a checkout with authenticated `gh` and repository Actions permission:
@@ -218,14 +220,14 @@ umask 077
 migration_backup_dir=/var/backups/wiseeff/module-structure
 mkdir -p "$migration_backup_dir"
 migration_backup_file="$migration_backup_dir/before-apply-$(date -u +%Y%m%dT%H%M%SZ)-$$.dump"
-./scripts/compose --env-file .env exec -T postgres sh -c \
+./scripts/compose --env-file .env exec -T -e PGOPTIONS='-c bytea_output=escape' postgres sh -c \
   'exec pg_dump -U "${POSTGRES_USER:-wiseeff}" -d "${POSTGRES_DB:-wiseeff}" -Fc' \
   > "$migration_backup_file" && \
-./scripts/compose --env-file .env exec -T postgres pg_restore --list \
+./scripts/compose --env-file .env exec -T postgres pg_restore --file=/dev/null \
   < "$migration_backup_file" > /dev/null
 ```
 
-Stop if either backup command fails; listing an archive is not a restore rehearsal. If the application uses an external database, back up that actual database through its approved procedure. A database-only dump supplements the upgrade recovery point; it is not an application rollback or a replacement for consistent PostgreSQL/object-store/Redis restoration.
+Stop if either backup command fails. The read-through checks the archive contents. An isolated restore rehearsal also exercises the database. If the application uses an external database, back up that actual database through its approved procedure. A database-only dump supplements the upgrade recovery point; it is not an application rollback or a replacement for consistent PostgreSQL/object-store/Redis restoration.
 
 ### 1. Claim Catalog child owners across the instance
 

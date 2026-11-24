@@ -52,6 +52,8 @@ API 镜像必须包含 `scripts/compile-vendor-catalog-release.ts`，以及 `scr
 
 此本地 MinIO 形态在备份时停止 MinIO 并采集实际卷，包括 S3 metadata；新的 `minio-volume-v1` 恢复点记录准确 server release，允许同版本 WiseEff 重建镜像具有不同 digest，不同 release 一律拒绝。仅记录 digest 的旧恢复点在恢复到不同镜像 ID 时，需要原镜像仍在本地以确认 release。Redis 复制 AOF manifest/文件前也会停进程；恢复先校验 RDB/AOF，再替换停止服务的数据并重新加载。PostgreSQL 恢复重建备份中的数据库并保留 owner，移除候选新增 schema。这些仅是显式恢复操作，正常升级不删除原业务数据。应预留完整 MinIO 卷和 Redis 校验暂存所需空间。旧 bucket mirror 备份仍按原格式读取，但不能追认为已保全 metadata。
 
+PostgreSQL 导出会话使用 `bytea_output=escape`，避免大目录包中可打印的 JSON 字节在导出时扩大一倍。非 ASCII 字节会被转义。如果 PostgreSQL 报告编码后的行超限，脚本会改用十六进制重试一次。两种编码均超限时，升级在迁移前停止。升级脚本先用 `pg_restore --file=/dev/null` 通读归档，成功后才将 `wiseeff.dump.part` 改名为 `wiseeff.dump`。导出或验证失败时，可在该次升级的 `failure_code` 和 `failure_summary` 中查看原因。终态为 `old-stack-restored` 时，处理故障后发起一次新升级。
+
 隔离终端升级、原数据保全（126 张表、183 条原记录、661 条原有约束）、正常重启、错误目标拒绝、实际迁移中断及两次整套恢复的上一轮页面闭环绿在 `2cf966a9790df97e7502a0609fd0452c36685be3` 的 [34424170420](https://github.com/tzrea1-Q/WiseEff/actions/runs/34424170420)（PR L1 [34424167069](https://github.com/tzrea1-Q/WiseEff/actions/runs/34424167069)）。当前代码候选 `f51569d2c32f6a27e8f64271c358fefcd62b8d61` 将 ingest sync 与 catalog 导入预览改写接入其审计事务；该 SHA 的专用 Hosted 待跑，此前 Hosted 证据不可复用。尚不可合并或投入生产：人工 visual/console 审查仍待完成。恢复后的独立镜像别名仅在实际运行镜像 ID 与保留的原 SHA 镜像完全一致时才能重入限定的源路径；镜像缺失或不同仍拒绝。初始化模式仅由 plan/apply 接受，status 展示 run 的持久 `parameterDataMode`；恢复消费既有 run，无需再次传初始化选项。
 
 已测试的隔离入口是专用 GitHub-hosted Linux/amd64 job。在已登录 `gh` 且有仓库 Actions 权限的 checkout 中执行：
@@ -218,14 +220,14 @@ umask 077
 migration_backup_dir=/var/backups/wiseeff/module-structure
 mkdir -p "$migration_backup_dir"
 migration_backup_file="$migration_backup_dir/before-apply-$(date -u +%Y%m%dT%H%M%SZ)-$$.dump"
-./scripts/compose --env-file .env exec -T postgres sh -c \
+./scripts/compose --env-file .env exec -T -e PGOPTIONS='-c bytea_output=escape' postgres sh -c \
   'exec pg_dump -U "${POSTGRES_USER:-wiseeff}" -d "${POSTGRES_DB:-wiseeff}" -Fc' \
   > "$migration_backup_file" && \
-./scripts/compose --env-file .env exec -T postgres pg_restore --list \
+./scripts/compose --env-file .env exec -T postgres pg_restore --file=/dev/null \
   < "$migration_backup_file" > /dev/null
 ```
 
-任一备份命令失败都应停止；能够列出归档不等于已做恢复演练。若应用使用外部数据库，应按批准的流程备份实际目标数据库。单库 dump 只是升级恢复点的补充，不是应用回滚，也不能替代 PostgreSQL、对象存储和 Redis 的一致性恢复。
+任一备份命令失败都应停止。通读归档用于检验文件内容，在隔离数据库实际恢复可进一步验证数据能够写回。若应用使用外部数据库，应按批准的流程备份实际目标数据库。单库 dump 只是升级恢复点的补充，不是应用回滚，也不能替代 PostgreSQL、对象存储和 Redis 的一致性恢复。
 
 ### 1. 全实例认领 Catalog 子节点归属
 
