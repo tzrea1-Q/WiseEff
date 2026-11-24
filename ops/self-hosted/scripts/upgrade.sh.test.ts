@@ -874,6 +874,75 @@ describe("upgrade.sh public interface", () => {
     } finally { rmSync(directory, { recursive: true, force: true }); }
   });
 
+  it.each(["complete", "hex-retry", "encoding-limit", "dump-failed", "truncated"] as const)("publishes only a readable PostgreSQL archive: %s", (scenario) => {
+    const directory = mkdtempSync(join(tmpdir(), "wiseeff-postgres-snapshot-"));
+    const dump = join(directory, "postgres/wiseeff.dump");
+    try {
+      const result = runLibrary(`
+        upgrade_run_dir="$1"
+        upgrade_backup_dir="$1"
+        scenario="$2"
+        wiseeff_upgrade_compose() {
+          case "$*" in
+            'exec -T -e PGOPTIONS=-c bytea_output=escape postgres pg_dump -U wiseeff -d wiseeff --format=custom')
+              [ "$4" = 'PGOPTIONS=-c bytea_output=escape' ] || return 90
+              printf 'archive-header'
+              if [ "$scenario" = dump-failed ]; then
+                printf 'permission denied; password=canary' >&2
+                return 41
+              fi
+              if [ "$scenario" = hex-retry ] || [ "$scenario" = encoding-limit ]; then
+                printf 'result of bytea output conversion is too large' >&2
+                return 1
+              fi
+              if [ "$scenario" = complete ]; then
+                printf '%s' '-and-data'
+                printf 'dump warning: password=canary' >&2
+              fi ;;
+            'exec -T -e PGOPTIONS=-c bytea_output=hex postgres pg_dump -U wiseeff -d wiseeff --format=custom')
+              if [ "$scenario" = encoding-limit ]; then
+                printf 'invalid memory alloc request size' >&2
+                return 41
+              fi
+              [ "$scenario" = hex-retry ] || return 91
+              printf 'archive-header-and-data' ;;
+            'exec -T postgres pg_restore --file=/dev/null')
+              if [ "$(cat)" != 'archive-header-and-data' ]; then
+                printf 'end of file' >&2
+                return 42
+              fi
+              printf 'restore warning: token=canary' >&2 ;;
+            *) return 99 ;;
+          esac
+        }
+        wiseeff_upgrade_snapshot_postgres
+      `, [directory, scenario]);
+      if (scenario === "complete" || scenario === "hex-retry") {
+        expect(result.status).toBe(0);
+        expect(readFileSync(dump, "utf8")).toBe("archive-header-and-data");
+        expect(readFileSync(join(directory, "postgres_backup"), "utf8").trim()).toBe(dump);
+        expect(existsSync(dump + ".part")).toBe(false);
+        expect(result.stderr).toContain("restore warning");
+        expect(result.stderr).toContain(scenario === "complete" ? "dump warning" : "Retrying with hex");
+        expect(result.stderr).not.toContain("canary");
+      } else {
+        expect(result.status).toBe(scenario === "truncated" ? 42 : 41);
+        expect(existsSync(dump + ".part")).toBe(true);
+        expect(existsSync(dump)).toBe(false);
+        expect(existsSync(join(directory, "postgres_backup"))).toBe(false);
+        expect(readFileSync(join(directory, "failed_phase"), "utf8").trim()).toBe("backing-up");
+        expect(readFileSync(join(directory, "failure_service"), "utf8").trim()).toBe("postgres");
+        expect(readFileSync(join(directory, "failure_code"), "utf8").trim()).toBe(
+          scenario === "truncated" ? "postgres-archive-unreadable" : "postgres-dump-failed",
+        );
+        const summary = readFileSync(join(directory, "failure_summary"), "utf8");
+        const errors = { "dump-failed": "permission denied", "encoding-limit": "invalid memory alloc", truncated: "end of file" };
+        expect(summary).toContain(errors[scenario]);
+        expect(summary).not.toContain("canary");
+      }
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
   it("restores the run-bound database including owners instead of leaving new schemas behind", () => {
     const directory = mkdtempSync(join(tmpdir(), "wiseeff-upgrade-restore-command-"));
     const dump = join(directory, "postgres.dump");

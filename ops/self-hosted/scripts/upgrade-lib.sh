@@ -2046,8 +2046,31 @@ wiseeff_upgrade_snapshot_postgres() {
   mkdir -p "$output_dir" || return $?
   local partial="${output_dir}/wiseeff.dump.part"
   local dump="${output_dir}/wiseeff.dump"
-  wiseeff_upgrade_compose exec -T postgres pg_dump -U wiseeff -d wiseeff --format=custom > "$partial" || return $?
-  wiseeff_upgrade_compose exec -T postgres pg_restore --list < "$partial" >/dev/null || return $?
+  local format diagnostic status
+  local size_error='result of bytea output conversion is too large|invalid memory alloc request size|Cannot enlarge string buffer'
+  # Prefer escape for printable JSON. Hex can be smaller for binary or UTF-8-heavy rows.
+  for format in escape hex; do
+    if diagnostic="$(wiseeff_upgrade_compose exec -T -e "PGOPTIONS=-c bytea_output=$format" postgres \
+      pg_dump -U wiseeff -d wiseeff --format=custom 2>&1 > "$partial")"; then
+      [ -z "$diagnostic" ] || printf '%s\n' "$diagnostic" | wiseeff_upgrade_sanitize_diagnostic_stream >&2
+      break
+    else
+      status=$?
+    fi
+    if [[ "$format" == escape && "$diagnostic" =~ $size_error ]]; then
+      printf 'PostgreSQL dump exceeded a row encoding limit. Retrying with hex bytea output.\n' >&2
+      continue
+    fi
+    wiseeff_upgrade_record_failure backing-up postgres postgres-dump-failed "pg_dump exited ${status}. ${diagnostic}"
+    return "$status"
+  done
+  # Listing the TOC also succeeds for archives truncated in a table data block.
+  diagnostic="$(wiseeff_upgrade_compose exec -T postgres pg_restore --file=/dev/null < "$partial" 2>&1)" || {
+    status=$?
+    wiseeff_upgrade_record_failure backing-up postgres postgres-archive-unreadable "pg_restore exited ${status}. ${diagnostic}"
+    return "$status"
+  }
+  [ -z "$diagnostic" ] || printf '%s\n' "$diagnostic" | wiseeff_upgrade_sanitize_diagnostic_stream >&2
   mv -f "$partial" "$dump" || return $?
   wiseeff_upgrade_state_write postgres_backup "$dump" || return $?
 }
