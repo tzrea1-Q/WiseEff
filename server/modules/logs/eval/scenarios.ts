@@ -1,5 +1,6 @@
 import { LOG_ANALYSIS_LOOP_PROMPT_VERSION } from "../analyzer/agentLoop";
 import { LOG_ANALYSIS_PROMPT_VERSION, LogAnalysisProviderError, type LogAnalysisChatModel } from "../analyzer/llmAnalyzer";
+import { MAX_LOG_ANALYSIS_OUTPUT_TOKENS } from "../analyzer/modelBudget";
 import type { ScriptedModelResponse } from "../analyzer/scriptedModel";
 import type { LogEvalExpectation } from "./expectations";
 import type { AnalyzeLogInput } from "../analyzer";
@@ -317,8 +318,9 @@ function sourceFinal(line: number, path = sourceSearchHit.path) {
 
 const invalidLoopOutput = { content: "Invalid report" };
 
-// Folding scenarios set the context window so exactly the oldest read folds before the final call
-// (prompt estimate + 4,096-token output reserve). Recompute with a contextTokens sweep if prompts change.
+// Cap-based folding scenarios set the context window to the prompt estimate plus
+// MAX_LOG_ANALYSIS_OUTPUT_TOKENS so exactly the oldest read folds before the final call.
+// Recompute with a contextTokens sweep if prompts change.
 export const LOG_LOOP_EVAL_SCENARIOS: LogLoopEvalScenario[] = [
   {
     name: "loop-invalid-output-recovers-with-grounded-single-shot",
@@ -837,7 +839,7 @@ export const LOG_LOOP_EVAL_SCENARIOS: LogLoopEvalScenario[] = [
     category: "loop-context",
     fileName: "charging.log",
     logContent: chargingLog,
-    contextTokens: 5_700,
+    contextTokens: MAX_LOG_ANALYSIS_OUTPUT_TOKENS + 1_604,
     script: [...toolFoldingScript, { content: loopFinalPayload }],
     expectations: [...foldedLogEvidence, { type: "expectsNoDegradation" }]
   },
@@ -875,7 +877,9 @@ export const LOG_LOOP_EVAL_SCENARIOS: LogLoopEvalScenario[] = [
     category: "loop-context",
     fileName: "charging.log",
     logContent: chargingLog,
-    contextTokens: protocol === "json" ? hypothesisLedger ? 5_900 : 5_700 : hypothesisLedger ? 10_750 : 7_350,
+    contextTokens: MAX_LOG_ANALYSIS_OUTPUT_TOKENS + (protocol === "json"
+      ? (hypothesisLedger ? 1_804 : 1_604)
+      : (hypothesisLedger ? 6_654 : 3_254)),
     protocol,
     hypothesisLedger,
     script: [
