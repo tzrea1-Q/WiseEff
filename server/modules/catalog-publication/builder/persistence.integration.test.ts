@@ -3,6 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { compileCatalogRelease } from "../../catalog-kernel/compiler/index";
 import { validCatalogReleaseBundle } from "../../catalog-kernel/compiler/__fixtures__/catalogReleaseBundle";
+import { CATALOG_PUBLICATION_COORDINATOR_ROLE } from "../../catalog-kernel/security/catalogRoleManifest";
 import {
   CatalogArtifactId,
   CatalogReleaseDigest,
@@ -16,6 +17,7 @@ import {
   openEphemeralClient,
   requirePgvectorTestDatabase,
   uniqueToken,
+  withLocalRole,
 } from "../persistence/integrationHarness";
 import {
   getArtifactByDigest,
@@ -154,29 +156,32 @@ describe("catalog publication builder persistence", () => {
     });
   });
 
-  it("reports unreadable lineage when a compact successor has a checksummed full base with a malformed history node", async () => {
-    const bundle = validCatalogReleaseBundle();
-    const target = bundle.releases.at(-1)!;
-    const base = target.manifest.release;
-    const storedBase = await persistArtifact(db(), {
-      id: CatalogArtifactId("cart_malformed_full_base"), artifactDigest: base.digest,
-      artifactBytes: Buffer.from(JSON.stringify({ ...bundle, releases: [null, target] })),
-      sourceKind: "repository-bundle", targetReleaseId: CatalogReleaseId(base.id),
-      targetReleaseDigest: CatalogReleaseDigest(base.digest), predecessorReleaseId: CatalogReleaseId(base.predecessor!.id),
-      predecessorReleaseDigest: CatalogReleaseDigest(base.predecessor!.digest), toolchain: target.manifest.toolchain,
-    });
-    expect(storedBase.ok).toBe(true);
-    const child = await buildCompleteSuccessor({
-      predecessorArtifact: { digest: base.digest, bytes: encodeBundleBytes(bundle) },
-      changeSet: [pageIntegerChange("iin_min", "Minimum")], storageFormat: "successor-v1",
-      frozenIdentity: frozenPageIdentity([allocationFor("iin_min")], "corrupt_lineage", "1.2.0"),
-    });
-    if (!child.ok || child.value.kind !== "successor") throw new Error("valid successor fixture failed");
-    expect((await persistArtifact(db(), child.value.artifact)).ok).toBe(true);
-    expect(await getArtifactByDigest(db(), child.value.artifact.artifactDigest)).toEqual({
-      ok: false, error: { kind: "invalid-input", reason: "invalid-artifact-bundle" },
-    });
-  });
+  it.each(["null node", "noncanonical number"] as const)("reports invalid compact lineage for a checksummed full base containing a %s", fault =>
+    withLocalRole(client, CATALOG_PUBLICATION_COORDINATOR_ROLE, async () => {
+      const bundle = validCatalogReleaseBundle();
+      const target = bundle.releases.at(-1)!;
+      const base = target.manifest.release;
+      const text = fault === "null node" ? JSON.stringify({ ...bundle, releases: [null, target] })
+        : JSON.stringify(bundle).replace('"sequence":1', '"sequence":-0');
+      const storedBase = await persistArtifact(db(), {
+        id: CatalogArtifactId("cart_malformed_full_base"), artifactDigest: base.digest,
+        artifactBytes: Buffer.from(text),
+        sourceKind: "repository-bundle", targetReleaseId: CatalogReleaseId(base.id),
+        targetReleaseDigest: CatalogReleaseDigest(base.digest), predecessorReleaseId: CatalogReleaseId(base.predecessor!.id),
+        predecessorReleaseDigest: CatalogReleaseDigest(base.predecessor!.digest), toolchain: target.manifest.toolchain,
+      });
+      expect(storedBase.ok).toBe(true);
+      const child = await buildCompleteSuccessor({
+        predecessorArtifact: { digest: base.digest, bytes: encodeBundleBytes(bundle) },
+        changeSet: [pageIntegerChange("iin_min", "Minimum")], storageFormat: "successor-v1",
+        frozenIdentity: frozenPageIdentity([allocationFor("iin_min")], "corrupt_lineage", "1.2.0"),
+      });
+      if (!child.ok || child.value.kind !== "successor") throw new Error("valid successor fixture failed");
+      expect((await persistArtifact(db(), child.value.artifact)).ok).toBe(true);
+      expect(await getArtifactByDigest(db(), child.value.artifact.artifactDigest)).toEqual({
+        ok: false, error: { kind: "invalid-input", reason: "invalid-artifact-bundle" },
+      });
+    }));
 
   it("rolls back the successor artifact when persistCandidate hits a real FK failure", async () => {
     const { predecessor } = await persistPredecessor();
