@@ -427,11 +427,14 @@ export const previewPublicationCandidate = (input: PreviewInput) => preview(inpu
 async function preview(input: PreviewInput, useSnapshot: boolean):
   Promise<{ ok: true; value: PreviewPublicationValue } | { ok: false; error: PreviewPublicationError }> {
   const [first] = input.changeSet;
-  const snapshotsAvailable = (await input.db.query<{ available: boolean }>(
+  const checkSnapshotSchema = async () => (await input.db.query<{ available: boolean }>(
     `select exists (select from pg_catalog.pg_attribute where attrelid=to_regclass('catalog_publication.preview_snapshots')
       and attname='has_dts_examples' and not attisdropped) as available`,
   )).rows[0]?.available;
   const spelling = input.changeSet.length === 1 && (first?.op === "rename-subject" || first?.op === "set-subject-alias") ? first : undefined;
+  // Only compact writers need the storage format before building. Other edits
+  // can reject invalid changes before checking whether to save a preview snapshot.
+  let snapshotsAvailable = spelling || input.markdownSource ? await checkSnapshotSchema() : undefined;
   let snapshot: PreviewSnapshot | undefined;
   if (snapshotsAvailable && useSnapshot && spelling && !input.predecessorArtifact) {
     const found = await withPreviewBaseline(input.db, tx => getValidatedPreviewSnapshot(tx, input.predecessorDigest));
@@ -482,7 +485,7 @@ async function preview(input: PreviewInput, useSnapshot: boolean):
     predecessorArtifact: predecessorArtifact ?? { digest: input.predecessorDigest },
     changeSet: input.changeSet,
     frozenIdentity: frozen,
-    storageFormat: snapshotsAvailable && (spelling || input.markdownSource) ? "successor-v1" : undefined,
+    storageFormat: snapshotsAvailable ? "successor-v1" : undefined,
     proposal,
     productPath,
   };
@@ -593,6 +596,7 @@ async function preview(input: PreviewInput, useSnapshot: boolean):
       reason: successorChange.reason ?? null,
     } } : {}),
     ...(replacementChange ? { definitionReplacement: replacementChange } : {}) };
+  snapshotsAvailable ??= await checkSnapshotSchema();
   const baseSnapshot = snapshotsAvailable && spelling && bundle ? identitySnapshotOf(bundle, predecessorTarget) : undefined;
   const artifact = built.value.artifact;
   const verifiedIdentityBase = snapshot ?? baseSnapshot;
