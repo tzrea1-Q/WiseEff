@@ -430,18 +430,31 @@ function hydrateArtifact(
     }
     visited.add(record.artifactDigest);
     const parsed = parseBundleBytes(record.artifactBytes);
-    if (!parsed.ok || !Array.isArray(parsed.bundle.releases) ||
-        parsed.bundle.targetReleaseId !== record.targetReleaseId) {
-      return fail({ kind: "invalid-input", reason: "invalid-artifact-bundle" });
+    if (!parsed.ok) {
+      return fail({ kind: "invalid-input", reason: parsed.detail === "catalog-release-bundle-scalar-too-large"
+        ? parsed.detail : "invalid-artifact-bundle" });
     }
     const { bundle } = parsed;
+    if (bundle.targetReleaseId !== record.targetReleaseId || bundle.releases.some(node =>
+      typeof node?.manifest?.release?.id !== "string" || !Number.isSafeInteger(node.manifest.release.sequence))) {
+      return fail({ kind: "invalid-input", reason: "invalid-artifact-bundle" });
+    }
     if (!record.storageFormat) {
       if (!matchingTarget(record, bundle.releases.find(node => node.manifest.release.id === bundle.targetReleaseId))) {
         return fail({ kind: "invalid-input", reason: "invalid-artifact-base" });
       }
-      const artifactBytes = encodeBundleBytes({
-        ...bundle, targetReleaseId: first.targetReleaseId, releases: [...bundle.releases, ...suffix.reverse()],
-      });
+      let artifactBytes: Uint8Array;
+      try {
+        artifactBytes = encodeBundleBytes({
+          ...bundle, targetReleaseId: first.targetReleaseId, releases: [...bundle.releases, ...suffix.reverse()],
+        });
+      } catch (error) {
+        // Parsed JSON may still contain values the canonical contract rejects, such as -0.
+        if (error instanceof TypeError || (error instanceof RangeError && error.message === "Maximum call stack size exceeded")) {
+          return fail({ kind: "invalid-input", reason: "invalid-artifact-bundle" });
+        }
+        throw error;
+      }
       return ok({ ...first, storageFormat: undefined, artifactBytes, bytesChecksum: sha256DigestOfBytes(artifactBytes),
         storageBytesChecksum: first.bytesChecksum });
     }
@@ -494,17 +507,24 @@ export async function persistArtifact(
   // returned record must refer to the same snapshot.
   const bytes = Buffer.from(input.artifactBytes);
   const bytesChecksum = sha256DigestOfBytes(bytes);
-  // Existing callers compare full canonical bytes, including when the stored
-  // artifact has since been represented by a compact successor.
+  // Compare in the writer's format when possible. A compact retry against an
+  // older full row must reconstruct its logical bytes from the pinned parent.
+  const matchExisting = async (stored: ReleaseArtifactRecord): Promise<CatalogPublicationStoreResult<ReleaseArtifactRecord>> => {
+    let comparable: ReleaseArtifactRecord = { ...stored, ...input, bytesChecksum, artifactBytes: bytes };
+    if (input.storageFormat && !stored.storageFormat && input.predecessorReleaseDigest) {
+      const base = await getArtifactByDigest(db, input.predecessorReleaseDigest);
+      if (!base.ok) return base;
+      const hydrated = hydrateArtifact(comparable, new Map([[base.value.artifactDigest, base.value]]));
+      if (!hydrated.ok) return hydrated;
+      comparable = hydrated.value;
+    }
+    return comparable.storageFormat === stored.storageFormat && comparable.bytesChecksum === stored.bytesChecksum &&
+      bytesEqual(comparable.artifactBytes, stored.artifactBytes)
+      ? ok(stored) : fail({ kind: "conflict", reason: "artifact-digest-bytes-mismatch" });
+  };
   const existing = await readArtifact(db, input.artifactDigest, !input.storageFormat);
   if (existing.ok) {
-    if (
-      existing.value.storageFormat === input.storageFormat && existing.value.bytesChecksum === bytesChecksum &&
-      bytesEqual(existing.value.artifactBytes, bytes)
-    ) {
-      return existing;
-    }
-    return fail({ kind: "conflict", reason: "artifact-digest-bytes-mismatch" });
+    return matchExisting(existing.value);
   }
   if (existing.error.kind !== "not-found") {
     return existing;
@@ -517,6 +537,7 @@ export async function persistArtifact(
          target_release_id, target_release_digest, predecessor_release_id,
          predecessor_release_digest, toolchain${input.storageFormat ? ", storage_format, compact_base_digest" : ""}
        ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb${input.storageFormat ? ", $11, $9" : ""})
+       on conflict (artifact_digest) do nothing
        returning
          id, artifact_digest, bytes_checksum, source_kind,
          target_release_id, target_release_digest, predecessor_release_id,
@@ -537,18 +558,12 @@ export async function persistArtifact(
     );
     const row = inserted.rows[0];
     if (!row) {
-      return fail({ kind: "not-found", entity: "artifact" });
+      const raced = await readArtifact(db, input.artifactDigest, !input.storageFormat);
+      return raced.ok ? matchExisting(raced.value) : raced;
     }
     return ok(toArtifact(row, new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength)));
   } catch (error) {
-    const mapped = mapWriteError(error);
-    if (mapped.kind === "conflict" && mapped.reason === "artifact-digest-bytes-mismatch") {
-      const raced = await readArtifact(db, input.artifactDigest, !input.storageFormat);
-      if (raced.ok && raced.value.storageFormat === input.storageFormat && bytesEqual(raced.value.artifactBytes, bytes)) {
-        return raced;
-      }
-    }
-    return fail(mapped);
+    return fail(mapWriteError(error));
   }
 }
 

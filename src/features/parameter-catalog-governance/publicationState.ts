@@ -546,7 +546,8 @@ export function publicationMustRePreview(input: {
   jobStatus?: string | null;
   failureReason?: string | null;
 }): boolean {
-  return input.previewStale || input.jobStatus === "needs-rebase" || input.failureReason === "needs-rebase";
+  return input.previewStale || input.jobStatus === "failed-terminal" ||
+    input.jobStatus === "needs-rebase" || input.failureReason === "needs-rebase";
 }
 
 export function publicationSuccessKind(

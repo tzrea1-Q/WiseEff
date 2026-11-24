@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import * as yaml from "yaml";
 
+import * as contract from "../../parameter-catalog-contract/index";
 import { compileCatalogRelease, createCatalogReleaseDigestValidator, validateCatalogReleaseDigest } from "./compileCatalogRelease";
 import { prepareForCompilation } from "./validation";
 import { freezeCatalogJson } from "./contractArtifacts";
@@ -58,6 +59,21 @@ describe("request-local compiler preparation", () => {
     if (!compiled.ok) throw new Error("valid bundle did not compile");
     expect(compiled.value.compiledReleaseDigest).toBe(compiledReleaseGolden.compiledReleaseDigest);
     expect(parse).toHaveBeenCalledTimes(sourceCount);
+  });
+
+  it("produces the compiled digest without materializing the complete model string", () => {
+    const serialize = vi.spyOn(contract, "serializeContract");
+    const compiled = compileCatalogRelease(validCatalogReleaseBundle());
+    if (!compiled.ok) throw new Error("valid bundle did not compile");
+    const { model, compiledReleaseDigest } = compiled.value;
+    const wholeModelWrites = () => serialize.mock.calls.filter(([value]) => Object.is(value, model)).length;
+    expect(compiledReleaseDigest).toBe(compiledReleaseGolden.compiledReleaseDigest);
+    expect(wholeModelWrites()).toBe(0);
+
+    const bytes = compiled.value.bytes;
+    expect(Buffer.byteLength(bytes)).toBe(compiledReleaseGolden.byteLength);
+    expect(compiled.value.bytes).toBe(bytes);
+    expect(wholeModelWrites()).toBe(1);
   });
 
   it("revalidates changed bytes on a later call with the same bundle object", () => {

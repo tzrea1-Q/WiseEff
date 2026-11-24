@@ -21,6 +21,9 @@ const REASON_HTTP_STATUS: Partial<Record<CatalogApiFailureReason, number>> = {
   "publication-authorization-revoked": 409,
   "idempotency-key-conflict": 409,
   "artifact-missing": 409,
+  "artifact-unreadable": 409,
+  "artifact-scalar-too-large": 409,
+  "artifact-read-failed": 500,
   "predecessor-incomplete": 409,
   "activation-receipt-mismatch": 409,
   "adoption-evidence-invalid": 409,
@@ -137,7 +140,8 @@ export function publicationReason(
   reason: CatalogApiFailureReason,
 ): CatalogPublicationResponse {
   const status = REASON_HTTP_STATUS[reason] ?? 409;
-  const code = status === 403 ? "FORBIDDEN" : status === 422 ? "VALIDATION_FAILED" : "CONFLICT";
+  const code = status === 500 ? "INTERNAL_ERROR"
+    : status === 403 ? "FORBIDDEN" : status === 422 ? "VALIDATION_FAILED" : "CONFLICT";
   return catalogPublicationError({
     status,
     code,

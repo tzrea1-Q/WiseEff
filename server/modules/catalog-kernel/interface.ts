@@ -4,6 +4,7 @@ export { listOrganizationSubjectOwnerOverrides } from "./ownerSchema";
 
 import type { TrustedInvocationContext } from "../auth/trustedInvocation";
 import type { ImpactFacts } from "../catalog-publication/authorization/types";
+import { decodeJsonBytes } from "./compiler/bundleBytes";
 import { compileCatalogRelease } from "./compiler/index";
 import type { CatalogReleaseBundle } from "./compiler/types";
 import {
@@ -548,8 +549,7 @@ const permissionDenied = (
 });
 
 const parseBundle = async (source: CatalogReleaseSource): Promise<CatalogReleaseBundle> => {
-  const manifest = new TextDecoder().decode(await source.readManifest());
-  return JSON.parse(manifest) as CatalogReleaseBundle;
+  return decodeJsonBytes(await source.readManifest()) as CatalogReleaseBundle;
 };
 
 export const jsonCatalogReleaseSource = (

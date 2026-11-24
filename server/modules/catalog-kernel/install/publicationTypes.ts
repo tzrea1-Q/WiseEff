@@ -1,4 +1,5 @@
 import type { PublicationAuthorizationReason } from "../../catalog-publication/authorization/types";
+import type { ArtifactReadFailure } from "../../catalog-publication/persistence/artifactReadFailure";
 import type {
   CatalogActivationReceiptId,
   CatalogCandidateId,
@@ -99,10 +100,7 @@ export type PublicationActivationError =
       readonly kind: "publication-regime-required";
       readonly receiptsPresent: true;
     }
-  | {
-      readonly kind: "artifact-missing";
-      readonly detail?: string;
-    }
+  | ArtifactReadFailure
   | {
       readonly kind: "predecessor-incomplete";
       readonly detail: string;

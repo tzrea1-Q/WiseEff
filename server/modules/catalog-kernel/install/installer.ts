@@ -15,6 +15,7 @@ import {
   type SwitchBackResult,
 } from "../../parameter-catalog-contract/index";
 
+import { decodeJsonBytes } from "../compiler/bundleBytes";
 import { compileCatalogRelease } from "../compiler/index";
 import type { CatalogReleaseBundle, CompiledCatalogRelease } from "../compiler/types";
 import type {
@@ -215,8 +216,7 @@ class CatalogKernelFailure extends Error {
 const parseBundle = async (
   source: CatalogReleaseSource,
 ): Promise<CatalogReleaseBundle> => {
-  const manifest = new TextDecoder().decode(await source.readManifest());
-  return JSON.parse(manifest) as CatalogReleaseBundle;
+  return decodeJsonBytes(await source.readManifest()) as CatalogReleaseBundle;
 };
 
 const compilePublishedRelease = async (

@@ -110,7 +110,7 @@ describe("stored publication candidate retired owner boundary", () => {
     expect(() => refuseRetiredOwnerDefinitionChanges(successor([...base.documents, subject, definition]).compiled)).not.toThrow();
   });
 
-  function storedCandidate(changed = retiredDefinition) {
+  function storedCandidate(changed = retiredDefinition, storedBytes?: Uint8Array) {
     const prepared = successor(base.documents.map((document) => document === changed ? revise(document, true) : document));
     const command = { mode: "online-publication", jobId: "cjob_old", candidateId: "ccand_old", authorizationId: "cauth_old", fencingToken: 1,
       expectedCurrent: { id: vendor.compiled.release.id, digest: vendor.compiled.aggregateDigest },
@@ -136,7 +136,7 @@ describe("stored publication candidate retired owner boundary", () => {
       impactReportDigest: "sha256:fixture-impact", capabilityContract: {}, createdAt: "2026-10-16T00:00:00Z",
     };
     const candidateRead = vi.spyOn(store, "getCandidate").mockResolvedValue({ ok: true, value: candidate });
-    const artifactBytes = encodeBundleBytes(prepared.bundle);
+    const artifactBytes = storedBytes ?? encodeBundleBytes(prepared.bundle);
     const artifactRead = vi.spyOn(store, "getArtifactByDigest").mockResolvedValue({ ok: true, value: {
       id: candidate.artifactId, bytesChecksum: store.sha256DigestOfBytes(artifactBytes), sourceKind: "typed-changeset",
       artifactDigest: candidate.artifactDigest, artifactBytes,
@@ -165,6 +165,24 @@ describe("stored publication candidate retired owner boundary", () => {
     const receiptRead = vi.spyOn(store, "getReceiptByJobId").mockResolvedValue({ ok: false, error: { kind: "not-found", entity: "receipt" } });
     return { prepared, command, pool, query, release, connect, materialize, candidateRead, artifactRead, authorize, receiptRead };
   }
+
+  it("reports unreadable bytes when the stored package exists and its checksum matches", async () => {
+    const { command, pool, materialize } = storedCandidate(retiredDefinition, Buffer.from('{"schemaVersion":'));
+    await expect(installPublishedRelease(pool, command)).resolves.toEqual({ ok: false, error: { kind: "artifact-unreadable" } });
+    expect(materialize).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [{ kind: "not-found", entity: "artifact" }, { kind: "artifact-missing" }],
+    [{ kind: "invalid-input", reason: "invalid-artifact-lineage" }, { kind: "artifact-unreadable" }],
+    [{ kind: "permission-denied", sqlstate: "42501", message: "denied" }, { kind: "artifact-read-failed", retryable: false }],
+    [{ kind: "constraint-violation", sqlstate: "40001", message: "serialization failure" }, { kind: "artifact-read-failed", retryable: true }],
+  ] as const)("classifies a %j read failure before materialization", async (error, expected) => {
+    const { command, pool, materialize, artifactRead } = storedCandidate();
+    artifactRead.mockResolvedValue({ ok: false, error });
+    await expect(installPublishedRelease(pool, command)).resolves.toEqual({ ok: false, error: expected });
+    expect(materialize).not.toHaveBeenCalled();
+  });
 
   it("releases the artifact reader before compiling and authorizes under the write lock", async () => {
     const { command, pool, query, release, materialize, artifactRead, authorize } = storedCandidate();

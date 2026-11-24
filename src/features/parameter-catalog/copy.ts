@@ -123,6 +123,16 @@ export function catalogErrorCopy(reason: CatalogApiFailureReason | "unknown"): s
       return "这条发布记录依据旧策略被拒绝。请重新预览并确认发布。";
     case "catalog-not-adopted":
       return "参数目录正在接管中，暂不能在线发布。请等待接管完成。";
+    case "artifact-missing":
+      return "未取得目录发布包。请管理员核对发布包记录和发布管理器版本，修复后重新预览并发布。";
+    case "artifact-unreadable":
+      return "目录发布包无法解析或校验。请管理员检查发布包及其前序版本，修复后重新预览并发布。";
+    case "artifact-scalar-too-large":
+      return "目录发布包中有单个字段超出运行时长度上限。请管理员检查该字段后重新预览。";
+    case "artifact-read-failed":
+      return "读取目录发布包时发生存储错误。请管理员检查数据库连接、读取权限和发布管理器日志。";
+    case "predecessor-incomplete":
+      return "目录发布包的前序版本不完整。请管理员检查版本历史，修复后重新预览。";
     case "publication-policy-disabled":
       return "目录发布策略已关闭，输入已保留。";
     case "publication-frozen":

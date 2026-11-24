@@ -15,6 +15,7 @@ import {
 } from "../../catalog-kernel/security/catalogRoleManifest";
 import type { AdoptedPreexistingEvidence } from "../../catalog-kernel/interface";
 import { compileCatalogRelease, isCatalogReleaseBundle } from "../../catalog-kernel/compiler/index";
+import { decodeJsonBytes } from "../../catalog-kernel/compiler/bundleBytes";
 import { installPublishedRelease } from "../../catalog-kernel/install/installer";
 import {
   readCurrentCatalogPointer,
@@ -94,8 +95,7 @@ export const checkAdoptPreexistingCatalog = async (
 
   let bundle;
   try {
-    const text = new TextDecoder("utf-8", { fatal: true }).decode(input.sourceBytes);
-    const parsed: unknown = JSON.parse(text);
+    const parsed = decodeJsonBytes(input.sourceBytes);
     if (!isCatalogReleaseBundle(parsed)) {
       return invalid("adoption source bytes are not a catalog release bundle");
     }

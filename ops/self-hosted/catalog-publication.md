@@ -87,10 +87,17 @@ For a long-running job, correlate `claimed`, `activation-timeout`, `settled`, an
 
 For shared subject renames and formal alias edits, the API can preview against a
 validated snapshot of the pinned release. The first preview of a legacy release
-can still take longer while it validates history. Once eligible, each candidate
-stores the new release and a reference to its predecessor. Activation and
-historical replay reconstruct the complete bundle. A change requiring historical
-evidence beyond the snapshot uses the complete validation path.
+can still take longer while it validates history. Eligible spelling edits and
+Markdown definition imports store one complete target release and a reference
+to its predecessor. The target includes the carried-forward definitions, the
+imported changes, source files, and manifest indexes. Markdown previews still
+validate the complete lineage. Activation and historical replay reconstruct
+the bundle from the stored releases.
+
+Older full artifacts also contain earlier release snapshots. Preview and
+activation can read those artifacts across the Node single-string limit.
+For a job already recorded as `failed-terminal` without an activation receipt,
+create a fresh preview and publish it after upgrading the API and manager.
 
 During a rolling upgrade, apply the schema migrations and upgrade the publication
 manager and other artifact readers before starting API instances that write the

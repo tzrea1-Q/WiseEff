@@ -16,6 +16,7 @@ import {
   sha256DigestOfBytes,
 } from "../../catalog-publication/persistence/store";
 import type { CatalogActivationReceiptRecord, ReleaseArtifactRecord } from "../../catalog-publication/persistence/types";
+import { artifactDecodeFailure, artifactReadFailure } from "../../catalog-publication/persistence/artifactReadFailure";
 import {
   CatalogActivationReceiptId,
   CatalogMaterializationFingerprint,
@@ -27,7 +28,8 @@ import {
 } from "../../parameter-catalog-contract/index";
 import type { Queryable } from "../../../shared/database/client";
 import { compileCatalogRelease } from "../compiler/index";
-import type { CatalogReleaseBundle, CompiledCatalogRelease } from "../compiler/types";
+import { parseBundleBytes } from "../compiler/bundleBytes";
+import type { CompiledCatalogRelease } from "../compiler/types";
 import type {
   AdoptedPreexistingEvidence,
   InstallPublishedReleaseCommand,
@@ -151,27 +153,6 @@ const identityFromCompiled = (
   digest: compiled.release.digest,
 });
 
-const parseArtifactBundle = (
-  bytes: Uint8Array,
-): CatalogReleaseBundle => {
-  const text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
-  const parsed: unknown = JSON.parse(text);
-  if (
-    parsed === null ||
-    typeof parsed !== "object" ||
-    Array.isArray(parsed) ||
-    !("schemaVersion" in parsed) ||
-    !("targetReleaseId" in parsed) ||
-    !("releases" in parsed)
-  ) {
-    throw new PublicationActivationFailure({
-      kind: "artifact-missing",
-      detail: "stored artifact bytes are not a catalog release bundle",
-    });
-  }
-  return parsed as CatalogReleaseBundle;
-};
-
 type OnlinePublicationCommand = Extract<InstallPublishedReleaseCommand, { mode: "online-publication" }>;
 type ArtifactIdentity = Pick<ReleaseArtifactRecord, "id" | "artifactDigest" | "bytesChecksum" | "targetReleaseId" | "targetReleaseDigest">;
 type OnlinePublicationPreparation =
@@ -240,7 +221,7 @@ const readOnlineArtifact = async (pool: pg.Pool, command: OnlinePublicationComma
     }
     const artifact = await getArtifactByDigest(db, candidate.value.artifactDigest);
     if (!artifact.ok) {
-      throw new PublicationActivationFailure({ kind: "artifact-missing", detail: "candidate artifact bytes are missing" });
+      throw new PublicationActivationFailure(artifactReadFailure(artifact.error));
     }
     if (artifact.value.artifactDigest !== candidate.value.artifactDigest || artifact.value.id !== candidate.value.artifactId) {
       throw new PublicationActivationFailure({
@@ -274,15 +255,10 @@ export const prepareOnlinePublication = async (
         kind: "publication-not-authorized", reason: "candidate-tampered", detail: "candidate artifact checksum does not match its bytes",
       });
     }
-    let bundle: CatalogReleaseBundle;
-    try {
-      bundle = parseArtifactBundle(artifactBytes);
-    } catch (error) {
-      if (error instanceof PublicationActivationFailure) throw error;
-      throw new PublicationActivationFailure({ kind: "artifact-missing", detail: "stored artifact bytes are unreadable" });
-    }
+    const parsed = parseBundleBytes(artifactBytes);
+    if (!parsed.ok) throw new PublicationActivationFailure({ kind: artifactDecodeFailure(parsed.detail) });
     remainingPublicationTime(command.activationDeadlineMs);
-    const compiled = compileCatalogRelease(bundle);
+    const compiled = compileCatalogRelease(parsed.bundle);
     remainingPublicationTime(command.activationDeadlineMs);
     if (!compiled.ok) throw new CatalogInstallFailure(compiled.error);
     refuseUnsupportedConsumerCapability(compiled.value, options?.consumerCapability?.allowList ?? CATALOG_CAPABILITY_ALLOW_LIST);
@@ -833,17 +809,14 @@ export const adoptPreexistingCurrent = async (
       detail: "adoption target artifact bytes are missing",
     });
   }
-  let bundle: CatalogReleaseBundle;
-  try {
-    bundle = parseArtifactBundle(artifact.value.artifactBytes);
-  } catch (error) {
-    if (error instanceof PublicationActivationFailure) throw error;
+  const parsed = parseBundleBytes(artifact.value.artifactBytes);
+  if (!parsed.ok) {
     throw new PublicationActivationFailure({
       kind: "adoption-evidence-invalid",
       detail: "adoption target artifact bytes are unreadable",
     });
   }
-  const compiled = compileCatalogRelease(bundle);
+  const compiled = compileCatalogRelease(parsed.bundle);
   if (!compiled.ok) {
     throw new CatalogInstallFailure(compiled.error);
   }

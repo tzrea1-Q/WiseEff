@@ -1,5 +1,4 @@
-import { createHash } from "node:crypto";
-
+import { hashContractJson } from "../../parameter-catalog-contract/chunkedSerialization";
 import {
   CatalogMaterializationFingerprint,
   CatalogReleaseDigest,
@@ -32,9 +31,6 @@ const compare = (left: string, right: string): number =>
 
 const canonicalKey = (value: ContractJsonValue): string =>
   serializeContract(value).trimEnd();
-
-const hash = (value: string | Uint8Array): string =>
-  `sha256:${createHash("sha256").update(value).digest("hex")}`;
 
 const sorted = <Value>(
   values: readonly Value[],
@@ -181,16 +177,14 @@ export const compileCatalogRelease = (
     compilerFingerprint: owned ? catalogCompilerOwnerContractFingerprint : catalogCompilerContractFingerprint,
     schemaDigest: owned ? ownerBundleContractArtifactDigest : s1BundleContractArtifactDigest,
   };
-  const toolchainDigest = hash(
-    serializeContract({
-      compilerContractFingerprint: compilerFingerprint,
-      s1BundleContractArtifactDigest: schemaDigest,
-      releases: releases.map(({ release, toolchain }) => ({
-        releaseId: release.id,
-        toolchain,
-      })),
-    } as unknown as ContractJsonValue),
-  );
+  const toolchainDigest = hashContractJson({
+    compilerContractFingerprint: compilerFingerprint,
+    s1BundleContractArtifactDigest: schemaDigest,
+    releases: releases.map(({ release, toolchain }) => ({
+      releaseId: release.id,
+      toolchain,
+    })),
+  } as unknown as ContractJsonValue);
   const model: CompiledCatalogReleaseModel = {
     schemaVersion: "1.0.0",
     compilerContractFingerprint: compilerFingerprint,
@@ -198,47 +192,50 @@ export const compileCatalogRelease = (
     toolchainDigest,
     releases,
   };
-  const bytes = serializeContract(model as unknown as ContractJsonValue);
-  const compiledReleaseDigest = hash(bytes);
-  const materializationFingerprint = hash(
-    serializeContract({
-      release: target.release,
-      subjects: target.documents
-        .filter((document) => document.kind === "subject")
-        .map((document) => document.content),
-      aliases: target.documents
-        .filter((document) => document.kind === "alias")
-        .map((document) => document.content),
-      definitions: target.documents
-        .filter((document) => document.kind === "definition")
-        .map((document) => document.content),
-    } as unknown as ContractJsonValue),
-  );
+  const compiledReleaseDigest = hashContractJson(model as unknown as ContractJsonValue);
+  const materializationFingerprint = hashContractJson({
+    release: target.release,
+    subjects: target.documents
+      .filter((document) => document.kind === "subject")
+      .map((document) => document.content),
+    aliases: target.documents
+      .filter((document) => document.kind === "alias")
+      .map((document) => document.content),
+    definitions: target.documents
+      .filter((document) => document.kind === "definition")
+      .map((document) => document.content),
+  } as unknown as ContractJsonValue);
 
+  const projection = freezeCatalogJson({
+    release: {
+      id: CatalogReleaseId(target.release.id),
+      version: CatalogReleaseVersion(target.release.version),
+      digest: CatalogReleaseDigest(target.release.digest),
+    },
+    predecessor:
+      target.release.predecessor === null
+        ? null
+        : {
+            id: CatalogReleaseId(target.release.predecessor.id),
+            digest: CatalogReleaseDigest(target.release.predecessor.digest),
+          },
+    aggregateDigest: CatalogReleaseDigest(target.release.digest),
+    compiledReleaseDigest: CatalogReleaseDigest(compiledReleaseDigest),
+    toolchainDigest: CatalogReleaseDigest(toolchainDigest),
+    materializationFingerprint: CatalogMaterializationFingerprint(materializationFingerprint),
+    counts: targetCounts(target.documents),
+    model,
+  });
+  // Installation only consumes the frozen projection and its digests. Materialize
+  // the complete canonical string only for callers explicitly requesting it.
+  let bytes: string | undefined;
   return {
     ok: true,
-    value: freezeCatalogJson({
-      release: {
-        id: CatalogReleaseId(target.release.id),
-        version: CatalogReleaseVersion(target.release.version),
-        digest: CatalogReleaseDigest(target.release.digest),
+    value: Object.freeze({
+      ...projection,
+      get bytes() {
+        return bytes ??= serializeContract(model as unknown as ContractJsonValue);
       },
-      predecessor:
-        target.release.predecessor === null
-          ? null
-          : {
-              id: CatalogReleaseId(target.release.predecessor.id),
-              digest: CatalogReleaseDigest(target.release.predecessor.digest),
-            },
-      aggregateDigest: CatalogReleaseDigest(target.release.digest),
-      compiledReleaseDigest: CatalogReleaseDigest(compiledReleaseDigest),
-      toolchainDigest: CatalogReleaseDigest(toolchainDigest),
-      materializationFingerprint: CatalogMaterializationFingerprint(
-        materializationFingerprint,
-      ),
-      counts: targetCounts(target.documents),
-      model,
-      bytes,
     }),
   };
 };
