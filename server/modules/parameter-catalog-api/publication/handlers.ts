@@ -1,3 +1,4 @@
+import { timeCatalogStage, withCatalogStageLogging } from "../../../observability/catalogPublicationStages";
 import {
   catalogCreatePublicationCandidateRequestSchema,
   catalogPublishPublicationCandidateRequestSchema,
@@ -315,5 +316,11 @@ export async function handleCatalogPublication(
   if (writeRoutes.has(matched.id) && !catalogReleaseHeader(request.headers)) {
     return validationFailed(request.requestId, "X-WiseEff-Catalog-Release");
   }
-  return dispatch(ports, { ...request, params: matched.params }, auth.scope, matched.id, matched.params);
+  const run = () => dispatch(ports, { ...request, params: matched.params }, auth.scope, matched.id, matched.params);
+  const command = asCommandName(matched.id);
+  if (command === "previewCandidate" || command === "publishCandidate") {
+    return withCatalogStageLogging({ requestId: request.requestId }, () =>
+      timeCatalogStage(command === "previewCandidate" ? "preview" : "enqueue-publication", run));
+  }
+  return run();
 }

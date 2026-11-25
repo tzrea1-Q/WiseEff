@@ -168,18 +168,18 @@ export const refreshSuccessorSource = (
   };
 };
 
-export const encodeBundleBytes = (bundle: CatalogReleaseBundle): Uint8Array => {
-  const canonical: CatalogReleaseBundle = {
-    schemaVersion: bundle.schemaVersion,
-    targetReleaseId: bundle.targetReleaseId,
-    releases: [...bundle.releases].sort((left, right) =>
-      compareBy(left, right, (release) =>
-        `${release.manifest.release.sequence}\n${release.manifest.release.id}`,
-      ),
+export const canonicalBundleEnvelope = (bundle: CatalogReleaseBundle): CatalogReleaseBundle => ({
+  schemaVersion: bundle.schemaVersion,
+  targetReleaseId: bundle.targetReleaseId,
+  releases: [...bundle.releases].sort((left, right) =>
+    compareBy(left, right, (release) =>
+      `${release.manifest.release.sequence}\n${release.manifest.release.id}`,
     ),
-  };
-  return encodeContractJsonBytes(canonical as unknown as ContractJsonValue);
-};
+  ),
+});
+
+export const encodeBundleBytes = (bundle: CatalogReleaseBundle): Uint8Array =>
+  encodeContractJsonBytes(canonicalBundleEnvelope(bundle) as unknown as ContractJsonValue);
 
 export const targetReleaseOf = (
   bundle: CatalogReleaseBundle,

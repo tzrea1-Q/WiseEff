@@ -72,7 +72,7 @@ import type {
 } from "./types";
 import { preparedPredecessorBundle } from "./preparedPredecessor";
 import { subjectIdentityProvenance } from "../../catalog-kernel/compiler/subjectIdentity";
-import { publicationHistoryCapabilities } from "./identitySnapshot";
+import { appendPreviewSnapshot, onlyDefinitionEdits, publicationHistoryCapabilities } from "./identitySnapshot";
 import { applySubjectIdentityChange } from "./subjectIdentity";
 import { applySubjectRulesChange } from "./subjectRules";
 
@@ -827,11 +827,12 @@ export async function buildCompleteSuccessor(
   return buildSuccessor(input);
 }
 
-export async function buildIdentitySuccessorFromSnapshot(input: BuildCompleteSuccessorInput, snapshot: PreviewSnapshot): Promise<BuildCompleteSuccessorResult> {
+export async function buildSuccessorFromSnapshot(input: BuildCompleteSuccessorInput, snapshot: PreviewSnapshot): Promise<BuildCompleteSuccessorResult> {
   const [change] = input.changeSet;
-  if (input.changeSet.length !== 1 || (change.op !== "rename-subject" && change.op !== "set-subject-alias") ||
+  const spelling = input.changeSet.length === 1 && (change.op === "rename-subject" || change.op === "set-subject-alias");
+  if ((!spelling && !onlyDefinitionEdits(input.changeSet)) ||
       snapshot.target.manifest.release.digest !== input.predecessorArtifact.digest || input.persist) {
-    return fail({ kind: "invalid-input", reason: "invalid identity snapshot build" });
+    return fail({ kind: "invalid-input", reason: "invalid preview snapshot build" });
   }
   return buildSuccessor(input, snapshot);
 }
@@ -1268,7 +1269,7 @@ async function buildSuccessor(
     }
   }
 
-  const history = snapshot ?? publicationHistoryCapabilities(bundle);
+  const history = snapshot ? appendPreviewSnapshot(snapshot, successor) : publicationHistoryCapabilities(bundle);
   const contract = capabilityContract(input.changeSet, successor.documents, history.hasSubjectRules, history.hasDtsExamples);
   const impact = { ...buildImpact(predecessorTarget, successor, requestedClasses), capabilityContractRevision: contract.revision };
   const impactReportDigest = canonicalDigest(impact as unknown as ContractJsonValue);

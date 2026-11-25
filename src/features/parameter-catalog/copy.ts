@@ -123,6 +123,8 @@ export function catalogErrorCopy(reason: CatalogApiFailureReason | "unknown"): s
       return "这条发布记录依据旧策略被拒绝。请重新预览并确认发布。";
     case "catalog-not-adopted":
       return "参数目录正在接管中，暂不能在线发布。请等待接管完成。";
+    case "activation-timeout":
+      return "目录激活超时。";
     case "artifact-missing":
       return "未取得目录发布包。请管理员核对发布包记录和发布管理器版本，修复后重新预览并发布。";
     case "artifact-unreadable":

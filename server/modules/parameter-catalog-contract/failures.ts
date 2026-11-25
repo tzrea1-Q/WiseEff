@@ -182,6 +182,7 @@ export const apiFailureReasons = freezeRegistry([
   "artifact-scalar-too-large",
   "artifact-read-failed",
   "predecessor-incomplete",
+  "activation-timeout",
   "activation-receipt-mismatch",
   "adoption-evidence-invalid",
   "catalog-not-adopted",

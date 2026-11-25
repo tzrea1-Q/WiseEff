@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 
 import pg from "pg";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { createAgentInvocation, createUserInvocation } from "../../auth/trustedInvocation";
 import {
@@ -12,14 +12,16 @@ import {
   CATALOG_PUBLICATION_COORDINATOR_ROLE,
   quoteIdent,
 } from "../../catalog-kernel/security/catalogRoleManifest";
-import { integerContent } from "../../catalog-publication/builder/predecessorHarness";
+import { allocationForRevision, frozenPageIdentity, integerContent } from "../../catalog-publication/builder/predecessorHarness";
+import { canAppendPreviewSnapshot } from "../../catalog-publication/builder/identitySnapshot";
 import { createCatalogInstaller } from "../../catalog-kernel/install/installer";
 import { readCurrentCatalogPointer } from "../../catalog-kernel/install/currentPointer";
 import { runPublicationManagerOnce } from "../../catalog-publication/jobs/manager";
 import { getReceiptByJobId } from "../../catalog-publication/persistence/store";
 import { getArtifactByDigest, getValidatedPreviewSnapshot } from "../../catalog-publication/persistence/store";
-import { preparePredecessorArtifact } from "../../catalog-publication/builder/preparedPredecessor";
+import { preparePredecessorArtifact, preparedPredecessorBundle, readPreparedPredecessor } from "../../catalog-publication/builder/preparedPredecessor";
 import { previewPublicationCandidate } from "../../catalog-publication/preview";
+import * as bundleCodec from "../../catalog-publication/builder/bundleCodec";
 import { encodeBundleBytes, parseBundleBytes, targetReleaseOf } from "../../catalog-publication/builder/bundleCodec";
 import { createCatalogReadHttpServer } from "../read/http";
 import { kernelOnlyTimelineComposer, unregisteredProjection, zeroUsageProjection } from "../read/ports";
@@ -791,7 +793,14 @@ it("publishes a mixed Markdown create and revision in one Candidate", async () =
     const clearPlan = catalogMarkdownImportResponseSchema.parse(clearPreview.body).item;
     expect(clearPlan).toMatchObject({ candidate: { riskClass: "high" }, entries: [{ outcome: "revise", riskClass: "high" }] });
     expect((await post(`/api/v2/catalog/publication-candidates/${clearPlan.candidate!.id}/publish`, { idempotencyKey: "md-clear" })).status).toBe(201);
-    expect(await runPublicationManagerOnce({ db, pool, installer: createCatalogInstaller(pool), resolvePublisherActor: async () => userActor(PUBLISHER, reviewerPermissions), ownerId: "markdown-clear-test" })).toBe("claimed");
+    // The second online activation verifies two compact rows and their full anchor without rebuilding artifact bytes.
+    const encodeDuringActivation = vi.spyOn(bundleCodec, "encodeBundleBytes");
+    try {
+      expect(await runPublicationManagerOnce({ db, pool, installer: createCatalogInstaller(pool), resolvePublisherActor: async () => userActor(PUBLISHER, reviewerPermissions), ownerId: "markdown-clear-test" })).toBe("claimed");
+      expect(encodeDuringActivation).not.toHaveBeenCalled();
+    } finally {
+      encodeDuringActivation.mockRestore();
+    }
     const clearedPointer = await readCurrentCatalogPointer(pool);
     if (clearedPointer.kind !== "installed") throw new Error("clear did not install a release");
     pin = clearedPointer.current;
@@ -815,6 +824,17 @@ it("publishes a mixed Markdown create and revision in one Candidate", async () =
       const expected = encodeBundleBytes({ schemaVersion: "1.0.0", targetReleaseId: release.id, releases: lineage });
       expect(Buffer.compare(hydrated.value.artifactBytes, expected)).toBe(0);
       expect(stored!.artifact_bytes.byteLength).toBeLessThan(expected.byteLength);
+      const encodeDuringColdRead = vi.spyOn(bundleCodec, "encodeBundleBytes");
+      try {
+        const cold = await readPreparedPredecessor(db, release.digest);
+        if (!cold.ok) throw new Error(JSON.stringify(cold.error));
+        const decoded = parseBundleBytes(expected);
+        if (!decoded.ok) throw new Error(decoded.detail);
+        expect(preparedPredecessorBundle(cold.value)).toEqual(decoded.bundle);
+        expect(encodeDuringColdRead).not.toHaveBeenCalled();
+      } finally {
+        encodeDuringColdRead.mockRestore();
+      }
     }
     const clearedHead = await client.query<{ content: Record<string, unknown> }>(`select r.content from parameter_catalog.catalog_release_definition_heads h
       join parameter_catalog.definition_revisions r on r.id = h.revision_id
@@ -898,6 +918,12 @@ it("publishes a mixed Markdown create and revision in one Candidate", async () =
     if (!snapshot.ok) throw new Error(JSON.stringify(snapshot.error));
     expect(snapshot.value.hasDtsExamples).toBe(true);
     expect(snapshot.value.target.documents.some(doc => doc.kind === "definition" && doc.content.revision.dtsExamples !== undefined)).toBe(false);
+    const oldRevision = allocationForRevision("iin_max", 1);
+    expect(snapshot.value.target.documents.some(doc => doc.kind === "definition" && doc.content.revision.id === oldRevision.revisionId)).toBe(false);
+    const available = (revisionId: string) => canAppendPreviewSnapshot(db, snapshot.value, undefined,
+      frozenPageIdentity([{ ...oldRevision, revisionId }], "next", "9.0.0"), `sha256:${"a".repeat(64)}`);
+    expect(await available("drev_fresh_import")).toBe(true);
+    expect(await available(oldRevision.revisionId)).toBe(false);
     const base = await getArtifactByDigest(db, removed.current.digest);
     if (!base.ok) throw new Error(JSON.stringify(base.error));
     const prepared = preparePredecessorArtifact({ digest: removed.current.digest, bytes: base.value.artifactBytes });

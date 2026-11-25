@@ -75,24 +75,15 @@ export const restoreCurrentDefinitionHeads = async (
   client: CatalogPointerClient,
   releaseId: string,
 ): Promise<void> => {
-  const heads = await client.query<{
-    definition_id: string;
-    revision_id: string;
-  }>(
-    `select definition_id, revision_id
-       from parameter_catalog.catalog_release_definition_heads
-      where release_id = $1`,
+  await client.query(
+    `update ${catalogDefinitionRelation} as definition
+        set current_revision_id = head.revision_id
+       from parameter_catalog.catalog_release_definition_heads as head
+      where head.release_id = $1
+        and definition.id = head.definition_id
+        and definition.current_revision_id is distinct from head.revision_id`,
     [releaseId],
   );
-  for (const head of heads.rows) {
-    await client.query(
-      `update ${catalogDefinitionRelation}
-          set current_revision_id = $2
-        where id = $1
-          and current_revision_id is distinct from $2`,
-      [head.definition_id, head.revision_id],
-    );
-  }
 };
 
 export const advanceCurrentPointer = async (

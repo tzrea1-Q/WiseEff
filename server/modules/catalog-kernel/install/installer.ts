@@ -1,5 +1,6 @@
 import pg from "pg";
 
+import { timeCatalogStage } from "../../../observability/catalogPublicationStages";
 import {
   CatalogMaterializationFingerprint,
   CatalogReleaseDigest,
@@ -662,11 +663,11 @@ const withCatalogWriteTransaction = async <T>(
       await setSynchronizerRole(client);
     }
     await applyPublicationTimeouts(client, session?.activationDeadlineMs);
-    await acquireCurrentPointerLockExclusive(client);
+    await timeCatalogStage("pointer-lock", () => acquireCurrentPointerLockExclusive(client));
     const value = await work(client);
     await applyPublicationTimeouts(client, session?.activationDeadlineMs);
     remainingPublicationTime(session?.activationDeadlineMs);
-    await client.query("commit");
+    await timeCatalogStage("commit", () => client.query("commit"));
     return ok(value);
   } catch (error) {
     await client.query("rollback").catch(() => { discard = true; });

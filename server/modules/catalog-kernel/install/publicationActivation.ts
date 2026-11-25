@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import pg from "pg";
 
+import { timeCatalogStage } from "../../../observability/catalogPublicationStages";
 import { verifyAuthorizationForActivation } from "../../catalog-publication/authorization/authorize";
 import {
   admitCompiledReleaseSchemas,
@@ -8,15 +9,17 @@ import {
 } from "../../catalog-publication/builder/capabilities";
 import type { CapabilityAllowListIdentity } from "../../catalog-publication/builder/types";
 import {
+  decodeStoredArtifact,
   getArtifactByDigest,
   getCandidate,
   getJob,
   getReceiptByJobId,
   insertReceipt,
-  sha256DigestOfBytes,
+  readArtifactLineage,
+  type StoredArtifactLineage,
 } from "../../catalog-publication/persistence/store";
 import type { CatalogActivationReceiptRecord, ReleaseArtifactRecord } from "../../catalog-publication/persistence/types";
-import { artifactDecodeFailure, artifactReadFailure } from "../../catalog-publication/persistence/artifactReadFailure";
+import { artifactReadFailure } from "../../catalog-publication/persistence/artifactReadFailure";
 import {
   CatalogActivationReceiptId,
   CatalogMaterializationFingerprint,
@@ -199,7 +202,7 @@ const requireOnlineJob = async (db: Queryable, command: OnlinePublicationCommand
   }
 };
 
-const readOnlineArtifact = async (pool: pg.Pool, command: OnlinePublicationCommand): Promise<ReleaseArtifactRecord | null> => {
+const readOnlineArtifact = async (pool: pg.Pool, command: OnlinePublicationCommand): Promise<StoredArtifactLineage | null> => {
   const client = await pool.connect();
   let discard = false;
   try {
@@ -219,11 +222,11 @@ const readOnlineArtifact = async (pool: pg.Pool, command: OnlinePublicationComma
         kind: "publication-not-authorized", reason: "candidate-stale", detail: "candidate not found",
       });
     }
-    const artifact = await getArtifactByDigest(db, candidate.value.artifactDigest);
+    const artifact = await readArtifactLineage(db, candidate.value.artifactDigest);
     if (!artifact.ok) {
       throw new PublicationActivationFailure(artifactReadFailure(artifact.error));
     }
-    if (artifact.value.artifactDigest !== candidate.value.artifactDigest || artifact.value.id !== candidate.value.artifactId) {
+    if (artifact.value.target.artifactDigest !== candidate.value.artifactDigest || artifact.value.target.id !== candidate.value.artifactId) {
       throw new PublicationActivationFailure({
         kind: "publication-not-authorized", reason: "candidate-tampered", detail: "artifact identity does not match the candidate",
       });
@@ -238,6 +241,25 @@ const readOnlineArtifact = async (pool: pg.Pool, command: OnlinePublicationComma
   }
 };
 
+// Physical byte buffers can be reclaimed while the compiler allocates its model.
+async function readOnlineBundle(pool: pg.Pool, command: OnlinePublicationCommand) {
+  const loaded = await readOnlineArtifact(pool, command);
+  if (loaded === null) return null;
+  remainingPublicationTime(command.activationDeadlineMs);
+  const { id, artifactDigest, bytesChecksum, targetReleaseId, targetReleaseDigest } = loaded.target;
+  const decoded = await timeCatalogStage("lineage-verify-decode", () =>
+    decodeStoredArtifact(loaded, () => remainingPublicationTime(command.activationDeadlineMs)));
+  if (!decoded.ok) {
+    if (decoded.error.kind === "invalid-input" && decoded.error.reason === "invalid-artifact-checksum") {
+      throw new PublicationActivationFailure({
+        kind: "publication-not-authorized", reason: "candidate-tampered", detail: "candidate artifact checksum does not match its bytes",
+      });
+    }
+    throw new PublicationActivationFailure(artifactReadFailure(decoded.error));
+  }
+  return { artifact: { id, artifactDigest, bytesChecksum, targetReleaseId, targetReleaseDigest }, bundle: decoded.value };
+}
+
 /** Prepare immutable artifact data after returning the read connection to the pool. */
 export const prepareOnlinePublication = async (
   pool: pg.Pool,
@@ -246,30 +268,22 @@ export const prepareOnlinePublication = async (
 ): Promise<OnlinePublicationPreparation> => {
   try {
     remainingPublicationTime(command.activationDeadlineMs);
-    const loaded = await readOnlineArtifact(pool, command);
-    if (loaded === null) return { kind: "receipt" };
+    const input = await readOnlineBundle(pool, command);
+    if (!input) return { kind: "receipt" };
+    const { artifact, bundle } = input;
     remainingPublicationTime(command.activationDeadlineMs);
-    const { id, artifactDigest, bytesChecksum, targetReleaseId, targetReleaseDigest, artifactBytes } = loaded;
-    if (sha256DigestOfBytes(artifactBytes) !== bytesChecksum) {
-      throw new PublicationActivationFailure({
-        kind: "publication-not-authorized", reason: "candidate-tampered", detail: "candidate artifact checksum does not match its bytes",
-      });
-    }
-    const parsed = parseBundleBytes(artifactBytes);
-    if (!parsed.ok) throw new PublicationActivationFailure({ kind: artifactDecodeFailure(parsed.detail) });
-    remainingPublicationTime(command.activationDeadlineMs);
-    const compiled = compileCatalogRelease(parsed.bundle);
+    const compiled = await timeCatalogStage("compile", () => compileCatalogRelease(bundle));
     remainingPublicationTime(command.activationDeadlineMs);
     if (!compiled.ok) throw new CatalogInstallFailure(compiled.error);
     refuseUnsupportedConsumerCapability(compiled.value, options?.consumerCapability?.allowList ?? CATALOG_CAPABILITY_ALLOW_LIST);
     remainingPublicationTime(command.activationDeadlineMs);
-    if (compiled.value.aggregateDigest !== artifactDigest ||
-        compiled.value.release.id !== targetReleaseId || compiled.value.release.digest !== targetReleaseDigest) {
+    if (compiled.value.aggregateDigest !== artifact.artifactDigest ||
+        compiled.value.release.id !== artifact.targetReleaseId || compiled.value.release.digest !== artifact.targetReleaseDigest) {
       throw new PublicationActivationFailure({
         kind: "publication-not-authorized", reason: "candidate-tampered", detail: "compiled artifact does not match the stored release pins",
       });
     }
-    return { kind: "prepared", artifact: { id, artifactDigest, bytesChecksum: loaded.storageBytesChecksum ?? bytesChecksum, targetReleaseId, targetReleaseDigest }, compiled: compiled.value };
+    return { kind: "prepared", artifact, compiled: compiled.value };
   } catch (error) {
     // A matching receipt or authoritative authorization failure can supersede this probe.
     return { kind: "failed", error };
@@ -564,7 +578,7 @@ export const activateOnlinePublication = async (
   preparation: OnlinePublicationPreparation,
   options?: PublicationActivationTestOptions,
 ): Promise<CatalogInstallOutcome> => {
-  await acquirePublicationGuardLock(client);
+  await timeCatalogStage("publication-lock", () => acquirePublicationGuardLock(client));
   if (options?.afterGuard) {
     await options.afterGuard(client);
   }
@@ -675,13 +689,13 @@ export const activateOnlinePublication = async (
         target: identityFromCompiled(compiled), expectedCurrent });
     }
   }
-  await materializeCompiledRelease(client, compiled, options);
+  await timeCatalogStage("materialize", () => materializeCompiledRelease(client, compiled, options));
   if (options?.afterMaterialize) {
     await options.afterMaterialize(client);
   }
 
   await applyPublicationTimeouts(client, command.activationDeadlineMs);
-  const staged = await verifyStagedReleaseProjection(client, compiled);
+  const staged = await timeCatalogStage("verify-projection", () => verifyStagedReleaseProjection(client, compiled));
   if (!staged.ok) {
     throw new CatalogInstallFailure(staged.error);
   }
@@ -721,10 +735,10 @@ export const activateOnlinePublication = async (
   });
   maybeFailStage(options, "receipt");
 
-  await restoreCurrentDefinitionHeads(client, compiled.release.id);
+  await timeCatalogStage("restore-heads", () => restoreCurrentDefinitionHeads(client, compiled.release.id));
   maybeFailStage(options, "pointer");
   await advanceCurrentPointer(client, compiled.release.id);
-  await client.query("set constraints all immediate");
+  await timeCatalogStage("verify-constraints", () => client.query("set constraints all immediate"));
   await markJobActivated(client, command.jobId, command.fencingToken);
   maybeFailStage(options, "job-status");
 

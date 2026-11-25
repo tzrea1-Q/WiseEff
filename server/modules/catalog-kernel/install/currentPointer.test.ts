@@ -1,5 +1,5 @@
 import pg from "pg";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   createEphemeralTestDatabase,
@@ -93,7 +93,10 @@ describe("current catalog pointer", () => {
     await client.query("begin");
     await client.query("set constraints all deferred");
     await acquireCurrentPointerLockExclusive(client);
+    const queries = vi.spyOn(client, "query");
     await restoreCurrentDefinitionHeads(client, pins.previous.id);
+    expect(queries).toHaveBeenCalledTimes(1);
+    queries.mockRestore();
     await switchCurrentPointerTo(client, pins.previous.id);
     await client.query("set constraints all immediate");
     await client.query("commit");

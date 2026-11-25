@@ -565,8 +565,10 @@ export function publicationSuccessKind(
   return null;
 }
 
-export function publicationJobIsPending(status: PublicationJobStatus): boolean {
-  return status === "queued" || status === "running";
+export function publicationJobIsPending(job: PublicationJobStatus | CatalogPublicationJobResponse["item"] | null): boolean {
+  if (!job || (typeof job !== "string" && publicationSuccessKind(job))) return false;
+  const status = typeof job === "string" ? job : job.status;
+  return status === "queued" || status === "running" || status === "failed-retryable";
 }
 
 export function publicationStatusCopy(job: CatalogPublicationJobResponse["item"]): {
@@ -588,6 +590,13 @@ export function publicationStatusCopy(job: CatalogPublicationJobResponse["item"]
   }
   if (job.status === "running") {
     return { tone: "info", message: publicationCopy.running };
+  }
+  if (job.status === "failed-retryable") {
+    const lastAttempt = job.failure?.reason === "activation-timeout" ? "目录激活超时" : "发布未成功";
+    return { tone: "info", message: `第 ${job.attemptCount} 次尝试：${lastAttempt}，正在等待发布管理器自动重试。` };
+  }
+  if (job.status === "failed-terminal" && job.failure?.reason === "activation-timeout") {
+    return { tone: "danger", message: `目录激活超时，已尝试 ${job.attemptCount} 次，自动重试已结束。请管理员检查发布管理器，修复后重新预览并发布。` };
   }
   if (job.status === "needs-rebase" || job.failure?.reason === "needs-rebase") {
     return { tone: "warning", message: publicationCopy.needsRebase };

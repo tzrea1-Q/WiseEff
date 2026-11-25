@@ -20,7 +20,7 @@ export function ClaimedOwnerPublicationDialog(props: {
   const requestGeneration = useRef(0);
   const claims = candidate?.impactSummary.ownerDeclarations ?? [];
   const success = job && publicationSuccessKind(job);
-  const inFlight = Boolean(job && publicationJobIsPending(job.status));
+  const inFlight = publicationJobIsPending(job);
   const unavailable = props.runtimeMode === "mock" || !props.catalog.previewClaimedOwners;
   const canPreview = !unavailable && props.actor !== "agent" && props.surface?.authoringAllowed === true;
   const canReview = !unavailable && props.actor !== "agent"

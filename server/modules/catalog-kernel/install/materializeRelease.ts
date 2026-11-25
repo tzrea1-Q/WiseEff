@@ -411,18 +411,19 @@ const stageHeads = async (
     (document): document is CatalogReleaseDefinitionDocument =>
       document.kind === "definition",
   );
-  for (const definition of definitions) {
-    await client.query(
-      `insert into parameter_catalog.catalog_release_definition_heads (
-         release_id, definition_id, revision_id
-       ) values ($1,$2,$3)`,
-      [
-        compiled.release.id,
-        definition.content.id,
-        definition.content.revision.id,
-      ],
-    );
-  }
+  if (definitions.length === 0) return;
+  await client.query(
+    `insert into parameter_catalog.catalog_release_definition_heads (
+       release_id, definition_id, revision_id
+     )
+     select $1, head.definition_id, head.revision_id
+       from unnest($2::text[], $3::text[]) as head(definition_id, revision_id)`,
+    [
+      compiled.release.id,
+      definitions.map((definition) => definition.content.id),
+      definitions.map((definition) => definition.content.revision.id),
+    ],
+  );
 };
 
 const stageEvidence = async (

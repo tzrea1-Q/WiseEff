@@ -117,7 +117,7 @@ export function SubjectIdentityPublicationDialog(props: {
   const [nextKind, setNextKind] = useState<(typeof kinds)[number]["value"]>(canonicalType === "driver" ? "node-type" : "driver");
   const [inheritChildren, setInheritChildren] = useState(false);
   const success = job ? publicationSuccessKind(job) : null;
-  const inFlight = Boolean(job && publicationJobIsPending(job.status));
+  const inFlight = publicationJobIsPending(job);
   const busy = pending || inFlight;
   const stale = Boolean(candidate && candidate.expectedBaseReleaseId !== catalogReleaseId);
   const impact = candidate?.impactSummary.subjectIdentity;

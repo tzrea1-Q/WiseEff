@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type pg from "pg";
 
+import { timeCatalogStage, withCatalogStageLogging } from "../../../observability/catalogPublicationStages";
 import type { CatalogInstaller } from "../../catalog-kernel/install/installer";
 import type { Database } from "../../../shared/database/client";
 import { withPublicationCoordinator } from "../coordinator";
@@ -150,14 +151,14 @@ export async function runPublicationManagerOnce(options: PublicationManagerOptio
     return "idle";
   }
 
-  log({
+  const attempt = {
     jobId: claimed.value.id,
     fence: claimed.value.fencingToken,
     attempt: claimed.value.attemptCount,
-    event: "claimed",
-  });
+  };
+  log({ ...attempt, event: "claimed" });
 
-  const work = executeClaimedPublicationJob({
+  const execute = () => executeClaimedPublicationJob({
     db: options.db,
     pool: options.pool,
     installer: options.installer,
@@ -165,7 +166,8 @@ export async function runPublicationManagerOnce(options: PublicationManagerOptio
     resolvePublisherActor: options.resolvePublisherActor,
     retryBudget,
     activationDeadlineMs,
-  }).then(
+  });
+  const work = withCatalogStageLogging(attempt, () => timeCatalogStage("activation", execute), log).then(
     (result) => ({ kind: "completed" as const, result }),
     (error: unknown) => ({ kind: "rejected" as const, reasonClass: error instanceof Error ? error.name : "unknown" }),
   );

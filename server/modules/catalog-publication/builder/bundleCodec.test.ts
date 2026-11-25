@@ -7,6 +7,7 @@ import { serializeContract, type ContractJsonValue } from "../../parameter-catal
 import { encodeBundleBytes, parseBundleBytes } from "./bundleCodec";
 
 describe("catalog release bundle bytes", () => {
+  const streamPadding = Buffer.alloc(32 * 1024 * 1024, " ");
   it("keeps legacy canonical bytes, including release order and trailing newline", () => {
     const bundle = validCatalogReleaseBundle();
     const bytes = encodeBundleBytes({ ...bundle, releases: [...bundle.releases].reverse() });
@@ -40,7 +41,7 @@ describe("catalog release bundle bytes", () => {
     const prefix = '\uFEFF{"targetReleaseId":"';
     const filler = "a".repeat(256 * 1024 - Buffer.byteLength(prefix) - 1);
     const source = prefix + filler + tail + '","__proto__":{"own":true},"releases":[],"schemaVersion":"0","schemaVersion":"1"}';
-    const parsed = parseBundleBytes(Buffer.from(source));
+    const parsed = parseBundleBytes(Buffer.concat([Buffer.from(source), streamPadding]));
     expect(parsed.ok).toBe(true);
     if (parsed.ok) {
       expect(parsed.bundle).toStrictEqual(JSON.parse(source.slice(1)));
@@ -57,7 +58,7 @@ describe("catalog release bundle bytes", () => {
       '{"schemaVersion":"1","releases":null,"targetReleaseId":"x"}',
       Buffer.from([0x22, 0xe9, 0x81, 0x22]), Buffer.from([0x22, 0xe9, 0x81]),
     ]) {
-      expect(parseBundleBytes(Buffer.concat([pad, Buffer.from(invalid)]))).toEqual({ ok: false, detail: "catalog-release-bundle-unreadable" });
+      expect(parseBundleBytes(Buffer.concat([streamPadding, pad, Buffer.from(invalid)]))).toEqual({ ok: false, detail: "catalog-release-bundle-unreadable" });
     }
   });
 });
