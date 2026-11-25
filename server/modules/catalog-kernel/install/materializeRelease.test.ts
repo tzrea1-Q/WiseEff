@@ -47,14 +47,14 @@ if (!pgVectorInstalled) {
   );
 }
 
-const firstReleaseBundle = (): CatalogReleaseBundle => {
+const firstReleaseBundle = () => {
   const full = validCatalogReleaseBundle();
-  const first = structuredClone(full.releases[0]!);
+  const first = structuredClone(full.releases[0]!) as Parameters<typeof refreshReleaseAggregateDigest>[0];
   return {
     schemaVersion: full.schemaVersion,
     targetReleaseId: first.manifest.release.id,
     releases: [first],
-  };
+  } satisfies CatalogReleaseBundle;
 };
 
 const compileFirst = () => {
@@ -134,9 +134,7 @@ describe("materializeCompiledRelease", () => {
 
   it("inserts the release's definition and revision pairs in a single statement", async () => {
     const bundle = firstReleaseBundle();
-    const release = structuredClone(bundle.releases[0]) as Parameters<
-      typeof refreshAuthoritativeSource
-    >[0];
+    const release = bundle.releases[0]!;
     const first = release.documents.find(
       (document) => document.kind === "definition",
     );
