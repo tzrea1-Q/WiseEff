@@ -164,6 +164,6 @@ export function usePublicationFlow(input: {
   return {
     candidate, setCandidate, candidateVerified, setCandidateVerified, previewFingerprint, setPreviewFingerprint,
     job, setJob, idempotencyKey, setIdempotencyKey, pending, setPending, failure: failure ?? pollFailure, setFailure,
-    confirm, setConfirm, gateRef, stopPolling, pollJob, reset, restore, preview, publish, captureError,
+    confirm, setConfirm, gateRef, stopPolling, pollJob, pollFailure, reset, restore, preview, publish, captureError,
   };
 }

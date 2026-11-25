@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { timeCatalogStage, withCatalogStageLogging } from "./catalogPublicationStages";
+import { linkCatalogStageToPublication, timeCatalogStage, withCatalogStageLogging } from "./catalogPublicationStages";
 
 describe("catalog publication stage logs", () => {
   it("isolates concurrent requests and claims, including their asynchronous work", async () => {
@@ -24,6 +24,25 @@ describe("catalog publication stage logs", () => {
       { event: "catalog-stage", stage: "markdown-plan", state: "threw", elapsedMs: expect.any(Number), requestId },
     ]));
     expect(entries).toHaveLength(4);
+  });
+
+  it("links successful preview and enqueue requests only to server-format record IDs", async () => {
+    const entries: Record<string, string | number>[] = [];
+    const log = (entry: Record<string, string | number>) => { entries.push(entry); };
+    const request = { requestId: "aecc13ea-2dad-49b9-80d7-62274bae264e" };
+    const candidateId = "ccand_554cafc9346d4dcc";
+    const jobId = "cjob_48a21828a87d41b5";
+    for (const [stage, candidate, job] of [
+      ["preview", candidateId, undefined], ["enqueue-publication", candidateId, jobId],
+      ["preview", "untrusted string", undefined], ["enqueue-publication", candidateId, "untrusted string"],
+    ] as const) {
+      await withCatalogStageLogging(request, () => timeCatalogStage(stage, () =>
+        linkCatalogStageToPublication(candidate, job)), log);
+    }
+    expect(entries.map(entry => [entry.candidateId, entry.jobId])).toEqual([
+      [undefined, undefined], [candidateId, undefined], [undefined, undefined], [candidateId, jobId],
+      [undefined, undefined], [undefined, undefined], [undefined, undefined], [candidateId, undefined],
+    ]);
   });
 
   it("hashes custom HTTP request IDs and isolates failures in the log sink", async () => {

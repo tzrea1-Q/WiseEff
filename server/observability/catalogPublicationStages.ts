@@ -10,7 +10,7 @@ type Stage =
 
 type Log = (fields: Record<string, string | number>) => void;
 type Correlation = { requestId: string } | { jobId: string; attempt: number; fence: number };
-type Trace = { correlation: Correlation; log: Log };
+type Trace = { correlation: Correlation; log: Log; publication?: { candidateId: string; jobId?: string } };
 const traces = new AsyncLocalStorage<Trace>();
 const writeJson: Log = fields => { process.stdout.write(JSON.stringify(fields) + "\n"); };
 
@@ -21,6 +21,14 @@ export function withCatalogStageLogging<T>(context: Correlation, work: () => T, 
     ? { requestId: createHash("sha256").update(context.requestId).digest("hex") }
     : context;
   return traces.run({ correlation, log }, work);
+}
+
+/** Link a persisted candidate or job to its API request once the command succeeds. */
+export function linkCatalogStageToPublication(candidateId?: string, jobId?: string): void {
+  const trace = traces.getStore();
+  if (!trace || !("requestId" in trace.correlation) || !candidateId || !/^ccand_[a-f0-9]{16}$/.test(candidateId)) return;
+  trace.publication = { candidateId };
+  if (jobId && /^cjob_[a-f0-9]{16}$/.test(jobId)) trace.publication.jobId = jobId;
 }
 
 type StageCounts = { artifactCount?: number; byteCount?: number };
@@ -36,6 +44,7 @@ export async function timeCatalogStage<T>(
     try {
       trace.log({
         event: "catalog-stage", stage, state, ...trace.correlation,
+        ...(state === "finished" ? trace.publication : undefined),
         ...(state === "started" ? {} : { elapsedMs: Math.round(performance.now() - started) }),
         ...countFields?.(),
       });

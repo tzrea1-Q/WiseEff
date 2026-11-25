@@ -263,8 +263,11 @@ export function SubjectIdentityPublicationDialog(props: {
         </div></div>
         <div className="dialog-actions">
           <button type="button" className="button subtle" disabled={pending} onClick={props.onClose}>关闭</button>
-          {stale || failure || job?.status === "needs-rebase" ? <button type="button" className="button subtle" disabled={busy}
-            onClick={() => void Promise.resolve().then(props.onRefreshEvidence).catch(flow.captureError)}>刷新目录状态</button> : null}
+          {stale || failure || job?.status === "needs-rebase" ? <button type="button" className="button subtle" disabled={pending || (inFlight && !flow.pollFailure)}
+            onClick={() => {
+              if (job && flow.pollFailure) { void flow.pollJob(job.id); return; }
+              void Promise.resolve().then(props.onRefreshEvidence).catch(flow.captureError);
+            }}>刷新目录状态</button> : null}
           {surface?.authoringAllowed && !success ? <button type="button" className="button subtle" disabled={!canPreview} onClick={() => setConfirm("preview")}>生成发布预览</button> : null}
           {canPublish ? <button type="button" className="button primary" onClick={() => setConfirm("publish")}>提交发布</button> : null}
         </div>

@@ -108,7 +108,8 @@ export function ClaimedOwnerPublicationDialog(props: {
         </div></div>
         <div className="dialog-actions">
           <button type="button" className="button subtle" disabled={pending} onClick={props.onClose}>关闭</button>
-          <button type="button" className="button subtle" disabled={pending || inFlight} onClick={() => {
+          <button type="button" className="button subtle" disabled={pending || (inFlight && !flow.pollFailure)} onClick={() => {
+            if (job && flow.pollFailure) { void flow.pollJob(job.id); return; }
             flow.setPending(true);
             void Promise.resolve().then(props.onRefreshEvidence).catch(flow.captureError).finally(() => flow.setPending(false));
           }}>刷新发布状态</button>
