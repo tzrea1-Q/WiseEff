@@ -2,6 +2,7 @@ import { convertToOpenAITool } from "@langchain/core/utils/function_calling";
 import type { LogAnalysisChatMessage, LogAnalysisNativeTool } from "./llmAnalyzer";
 
 export const MIN_LOG_ANALYSIS_OUTPUT_TOKENS = 128;
+export const MAX_LOG_ANALYSIS_OUTPUT_TOKENS = 8_192;
 
 export function estimateLogTokens(text: string) {
   return Math.ceil(Buffer.byteLength(text) / 4);
@@ -19,7 +20,7 @@ export function estimateLogToolTokens(tools: LogAnalysisNativeTool[]) {
   return estimateLogTokens(JSON.stringify(tools.map((tool) => convertToOpenAITool(tool))));
 }
 
-/** Reasoning models spend output on thinking before a report, so large budgets allow 4,096 output tokens. */
+/** Reasoning tokens count toward the completion limit. A 4,096-token cap truncated final reports. */
 export function logCompletionLimit(tokenBudget: number) {
-  return Math.min(4096, Math.max(256, Math.floor(tokenBudget / 4)));
+  return Math.min(MAX_LOG_ANALYSIS_OUTPUT_TOKENS, Math.max(256, Math.floor(tokenBudget / 4)));
 }

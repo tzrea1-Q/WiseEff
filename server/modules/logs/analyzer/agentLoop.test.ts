@@ -16,7 +16,7 @@ import {
 import { createDeterministicLogAnalysisLoopModel } from "./deterministicModel";
 import { LogAnalysisProviderError } from "./llmAnalyzer";
 import { createScriptedLogAnalysisModel, type ScriptedModelResponse } from "./scriptedModel";
-import { estimateLogPromptTokens } from "./modelBudget";
+import { estimateLogPromptTokens, MAX_LOG_ANALYSIS_OUTPUT_TOKENS } from "./modelBudget";
 import { summarizeTraceArguments, type LogAnalysisTraceStep } from "../traceTypes";
 import { logTraceStepSchema } from "../../contracts/dtoSchemas/logs";
 import { createLogAnalyzerFromEnv } from "./analyzerFromEnv";
@@ -535,7 +535,7 @@ describe("createAgentLoopLogAnalyzer", () => {
     ], {
       maxSteps: 6,
       // Fits the first two results verbatim; the fifth call must fold them and keep the latest two.
-      contextTokens: 6_000,
+      contextTokens: MAX_LOG_ANALYSIS_OUTPUT_TOKENS + 1_904,
       bindToolBackends: () => ({
         searchSource: async () => ({ items: Array.from({ length: 5 }, (_, index) => ({
           ...sourceLocation, line: index + 1, excerpt: sourceExcerpt, rank: 1, versionLabel: "v1"
