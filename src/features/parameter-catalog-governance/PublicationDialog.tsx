@@ -691,7 +691,7 @@ export function PublicationDialog({
               </div>
             </div>
             <div className="dialog-actions">
-              {draft.mode === "revise-definition" && job && !publicationJobIsPending(job.status) ? (
+              {draft.mode === "revise-definition" && job && !publicationJobIsPending(job) ? (
                 <button type="button" className="button primary sm" onClick={() => {
                   clearStoredPublicationJob();
                   flow.reset();
@@ -731,7 +731,7 @@ export function PublicationDialog({
                     !targetAllowed ||
                     !candidate ||
                     mustRePreview ||
-                    publicationJobIsPending(job?.status ?? "cancelled")
+                    publicationJobIsPending(job)
                   }
                   title={!canPublish ? "缺少发布权限" : undefined}
                   onClick={() => setConfirm("publish")}
@@ -751,7 +751,7 @@ export function PublicationDialog({
                   {requiresOwner ? "前往登记所属驱动" : publicationCopy.batchRegistration}
                 </button>
               ) : null}
-              {job && publicationJobIsPending(job.status) ? (
+              {job && publicationJobIsPending(job) ? (
                 <button
                   type="button"
                   className="button ghost sm"

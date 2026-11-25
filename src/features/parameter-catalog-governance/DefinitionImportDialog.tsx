@@ -108,6 +108,7 @@ export function DefinitionImportDialog(props: DefinitionImportDialogProps) {
   const mustRePreview = publicationMustRePreview({
     previewStale, jobStatus: job?.status, failureReason: job?.failure?.reason,
   });
+  const inputDisabled = pending || publicationJobIsPending(job);
   const succeeded = job ? publicationSuccessKind(job) : null;
   const status = job ? publicationStatusCopy(job) : null;
   const failedJobId = job?.status === "failed-terminal" ? job.id : null;
@@ -204,7 +205,7 @@ export function DefinitionImportDialog(props: DefinitionImportDialogProps) {
     setOrganizationSubjectSelections(current => [...current.filter(item => item.selector !== selector), ...(subjectId ? [{ selector, subjectId }] : [])]);
   };
   const runPreview = async () => {
-    if (!canPreview || pending || !hasContent || (parsedFingerprint === fingerprint && !mustRePreview) || !catalog.previewMarkdownImport) return;
+    if (!canPreview || inputDisabled || !hasContent || (parsedFingerprint === fingerprint && !mustRePreview) || !catalog.previewMarkdownImport) return;
     await flow.preview(async () => {
       const result = await catalog.previewMarkdownImport!(
         { markdownImport: { document, fileName, ...(additionalDocuments.length ? { additionalDocuments } : {}),
@@ -219,7 +220,7 @@ export function DefinitionImportDialog(props: DefinitionImportDialogProps) {
     }, fingerprint, flow.captureError);
   };
   const runPublish = async () => {
-    if (!canPublish || pending || !candidate || mustRePreview || (job && publicationJobIsPending(job.status))) return;
+    if (!canPublish || inputDisabled || !candidate || mustRePreview) return;
     await flow.publish(emptyPublicationDraft(), true, flow.captureError);
   };
   const refresh = async () => {
@@ -302,7 +303,6 @@ export function DefinitionImportDialog(props: DefinitionImportDialogProps) {
         : "补登记失败，可重试同一次操作。");
     } finally { if (epoch === registrationEpoch.current) setRegistrationPending(false); }
   };
-  const inputDisabled = pending || Boolean(job && publicationJobIsPending(job.status));
   const visibleEntries = entries?.filter((entry) =>
     !errorsOnly || entry.outcome === "error" || entry.outcome === "conflict");
   const counts = { create: 0, revise: 0, error: 0, skip: 0, conflict: 0 };
@@ -478,13 +478,13 @@ export function DefinitionImportDialog(props: DefinitionImportDialogProps) {
         <div className="dialog-actions">
           {canPreview && !succeeded && (!candidate || mustRePreview)
             ? <button type="button" className="button primary sm"
-            disabled={pending || !hasContent || (parsedFingerprint === fingerprint && !mustRePreview)} onClick={() => void runPreview()}>
-            {pending ? "正在解析全部文件…" : mustRePreview ? publicationCopy.rebase : "解析并预览"}</button> : null}
+            disabled={inputDisabled || !hasContent || (parsedFingerprint === fingerprint && !mustRePreview)} onClick={() => void runPreview()}>
+            {pending ? "正在解析并预览…" : mustRePreview ? publicationCopy.rebase : "解析并预览"}</button> : null}
           {canPublish && candidate && !succeeded ? <button type="button" className="button primary sm"
-            disabled={pending || mustRePreview || Boolean(job && publicationJobIsPending(job.status))}
+            disabled={inputDisabled || mustRePreview}
             onClick={() => setConfirm("publish")}>
             {pending ? publicationCopy.processing : publicationCopy.publish}</button> : null}
-          {job && publicationJobIsPending(job.status) ? <button type="button" className="button ghost sm"
+          {job && publicationJobIsPending(job) ? <button type="button" className="button ghost sm"
             onClick={() => void flow.pollJob(job.id)}>{publicationCopy.refreshJob}</button> : null}
           {canRefresh ? <button type="button" className="button ghost sm" disabled={pending}
             onClick={() => void refresh()}>更新发布状态</button> : null}

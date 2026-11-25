@@ -28,9 +28,11 @@
 
 import { createHash } from "node:crypto";
 import pg from "pg";
+
+import { timeCatalogStage } from "../../../observability/catalogPublicationStages";
 import { catalogCompilerContractFingerprint, catalogCompilerDtsContract, catalogCompilerOwnerContractFingerprint } from "../../catalog-kernel/compiler/contract";
-import type { CatalogReleaseNode } from "../../catalog-kernel/compiler/types";
-import { encodeBundleBytes, parseBundleBytes } from "../builder/bundleCodec";
+import type { CatalogReleaseBundle, CatalogReleaseNode } from "../../catalog-kernel/compiler/types";
+import { canonicalBundleEnvelope, encodeBundleBytes, parseBundleBytes } from "../builder/bundleCodec";
 
 import {
   CatalogActivationReceiptId,
@@ -404,27 +406,63 @@ export async function getArtifactByDigest(
   return readArtifact(db, artifactDigest, true);
 }
 
-async function readArtifact(db: Queryable, digest: string, includeLineage: boolean): Promise<CatalogPublicationStoreResult<ReleaseArtifactRecord>> {
+export type StoredArtifactLineage = {
+  readonly target: ReleaseArtifactRecord;
+  readonly records: ReadonlyMap<string, ReleaseArtifactRecord>;
+};
+
+/** Own all physical bytes in one database snapshot. Decode after releasing the reader. */
+export async function readArtifactLineage(
+  db: Queryable, digest: string, includeLineage = true,
+): Promise<CatalogPublicationStoreResult<StoredArtifactLineage>> {
   const invalid = requireSha256(digest, "artifactDigest");
   if (invalid) return fail(invalid);
   try {
-    const records = await readStoredArtifacts(db, { digest, includeLineage });
-    const first = records.get(digest);
-    if (!first) return fail({ kind: "not-found", entity: "artifact" });
-    return includeLineage && first.storageFormat ? hydrateArtifact(first, records) : ok(first);
+    const records = await timeCatalogStage("artifact-read", () => readStoredArtifacts(db, { digest, includeLineage }),
+      rows => ({
+        artifactCount: rows.size,
+        byteCount: Array.from(rows.values()).reduce((sum, row) => sum + row.artifactBytes.byteLength, 0),
+      }));
+    const target = records.get(digest);
+    return target ? ok({ target, records }) : fail({ kind: "not-found", entity: "artifact" });
   } catch (error) {
     return fail(mapWriteError(error));
   }
 }
 
-function hydrateArtifact(
+async function readArtifact(db: Queryable, digest: string, includeLineage: boolean): Promise<CatalogPublicationStoreResult<ReleaseArtifactRecord>> {
+  const lineage = await readArtifactLineage(db, digest, includeLineage);
+  if (!lineage.ok) return lineage;
+  const { target, records } = lineage.value;
+  return includeLineage && target.storageFormat
+    ? timeCatalogStage("lineage-verify-decode", () => hydrateArtifact(target, records))
+    : ok(target);
+}
+
+// Both bundle readers produce plain JSON trees. Overflowing numbers and negative
+// zero are the only parsed scalars that canonical contract encoding would reject.
+function checkParsedNumbers(value: unknown): void {
+  if (typeof value === "number" && (!Number.isFinite(value) || Object.is(value, -0))) {
+    throw new TypeError("invalid contract number");
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) checkParsedNumbers(item);
+  } else if (value !== null && typeof value === "object") {
+    for (const item of Object.values(value)) checkParsedNumbers(item);
+  }
+}
+
+function assembleArtifactBundle<T>(
   first: ReleaseArtifactRecord,
   records: ReadonlyMap<string, ReleaseArtifactRecord>,
-): CatalogPublicationStoreResult<ReleaseArtifactRecord> {
+  consume: (logical: CatalogReleaseBundle) => T,
+  checkpoint?: () => void,
+): CatalogPublicationStoreResult<T> {
   const suffix: CatalogReleaseNode[] = [];
   const visited = new Set<string>();
   let record = first;
   while (true) {
+    checkpoint?.();
     if (visited.has(record.artifactDigest) || sha256DigestOfBytes(record.artifactBytes) !== record.bytesChecksum) {
       return fail({ kind: "invalid-input", reason: "invalid-artifact-lineage" });
     }
@@ -443,20 +481,16 @@ function hydrateArtifact(
       if (!matchingTarget(record, bundle.releases.find(node => node.manifest.release.id === bundle.targetReleaseId))) {
         return fail({ kind: "invalid-input", reason: "invalid-artifact-base" });
       }
-      let artifactBytes: Uint8Array;
       try {
-        artifactBytes = encodeBundleBytes({
+        return ok(consume({
           ...bundle, targetReleaseId: first.targetReleaseId, releases: [...bundle.releases, ...suffix.reverse()],
-        });
+        }));
       } catch (error) {
-        // Parsed JSON may still contain values the canonical contract rejects, such as -0.
         if (error instanceof TypeError || (error instanceof RangeError && error.message === "Maximum call stack size exceeded")) {
           return fail({ kind: "invalid-input", reason: "invalid-artifact-bundle" });
         }
         throw error;
       }
-      return ok({ ...first, storageFormat: undefined, artifactBytes, bytesChecksum: sha256DigestOfBytes(artifactBytes),
-        storageBytesChecksum: first.bytesChecksum });
     }
     const node = bundle.releases[0];
     if (!node || bundle.releases.length !== 1 || !matchingTarget(record, node) ||
@@ -471,6 +505,33 @@ function hydrateArtifact(
     }
     record = base;
   }
+}
+
+function hydrateArtifact(
+  first: ReleaseArtifactRecord,
+  records: ReadonlyMap<string, ReleaseArtifactRecord>,
+): CatalogPublicationStoreResult<ReleaseArtifactRecord> {
+  const encoded = assembleArtifactBundle(first, records, encodeBundleBytes);
+  if (!encoded.ok) return encoded;
+  return ok({ ...first, storageFormat: undefined, artifactBytes: encoded.value, bytesChecksum: sha256DigestOfBytes(encoded.value),
+    storageBytesChecksum: first.bytesChecksum });
+}
+
+/** Verify the independently stored bytes and supply compiler input without emitting a logical byte stream. */
+export function decodeStoredArtifact({ target, records }: StoredArtifactLineage, checkpoint?: () => void):
+  CatalogPublicationStoreResult<CatalogReleaseBundle> {
+  if (target.storageFormat) {
+    return assembleArtifactBundle(target, records, logical => {
+      const bundle = canonicalBundleEnvelope(logical);
+      checkParsedNumbers(bundle.releases);
+      return bundle;
+    }, checkpoint);
+  }
+  if (sha256DigestOfBytes(target.artifactBytes) !== target.bytesChecksum) {
+    return fail({ kind: "invalid-input", reason: "invalid-artifact-checksum" });
+  }
+  const parsed = parseBundleBytes(target.artifactBytes);
+  return parsed.ok ? ok(parsed.bundle) : fail({ kind: "invalid-input", reason: parsed.detail });
 }
 
 /** Read one database snapshot for permanent Definition erasure, including pending candidates. */
@@ -577,7 +638,7 @@ export async function getValidatedPreviewSnapshot(
   db: Queryable, digest: string,
 ): Promise<CatalogPublicationStoreResult<PreviewSnapshot>> {
   try {
-    const result = await db.query<ArtifactByteChunkRow & {
+    const result = await timeCatalogStage("snapshot-read", () => db.query<ArtifactByteChunkRow & {
       target_release_id: string; target_checksum: string; has_subject_rules: boolean; has_dts_examples: boolean;
     }>(
       `select target_release_id, target_checksum, has_subject_rules, has_dts_examples, ${artifactByteColumns}
@@ -592,18 +653,20 @@ export async function getValidatedPreviewSnapshot(
          ${artifactByteChunkJoin}
          order by chunk.byte_start`,
       [digest, PREVIEW_VALIDATOR_VERSION],
-    );
+    ), read => ({ byteCount: read.rows[0]?.artifact_byte_length ?? 0 }));
     const row = result.rows[0];
     if (!row) return fail({ kind: "not-found", entity: "artifact" });
-    const bytes = assembleArtifactBytes(result.rows);
-    const parsed = parseBundleBytes(bytes);
-    const node = parsed.ok ? parsed.bundle.releases?.[0] : undefined;
-    if (sha256DigestOfBytes(bytes) !== row.target_checksum || !parsed.ok ||
-        parsed.bundle.releases?.length !== 1 || parsed.bundle.targetReleaseId !== row.target_release_id ||
-        !node || node.manifest?.release?.digest !== digest || node.manifest.release.id !== row.target_release_id) {
-      return fail({ kind: "invalid-input", reason: "invalid-preview-snapshot" });
-    }
-    return ok({ target: node, hasSubjectRules: row.has_subject_rules, hasDtsExamples: row.has_dts_examples });
+    return await timeCatalogStage("snapshot-verify-decode", () => {
+      const bytes = assembleArtifactBytes(result.rows);
+      const parsed = parseBundleBytes(bytes);
+      const node = parsed.ok ? parsed.bundle.releases?.[0] : undefined;
+      if (sha256DigestOfBytes(bytes) !== row.target_checksum || !parsed.ok ||
+          parsed.bundle.releases?.length !== 1 || parsed.bundle.targetReleaseId !== row.target_release_id ||
+          !node || node.manifest?.release?.digest !== digest || node.manifest.release.id !== row.target_release_id) {
+        return fail({ kind: "invalid-input", reason: "invalid-preview-snapshot" });
+      }
+      return ok({ target: node, hasSubjectRules: row.has_subject_rules, hasDtsExamples: row.has_dts_examples });
+    });
   } catch (error) {
     return fail(mapWriteError(error));
   }

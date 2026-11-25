@@ -1,3 +1,4 @@
+import { linkCatalogStageToPublication, timeCatalogStage, withCatalogStageLogging } from "../../../observability/catalogPublicationStages";
 import {
   catalogCreatePublicationCandidateRequestSchema,
   catalogPublishPublicationCandidateRequestSchema,
@@ -161,6 +162,7 @@ async function dispatch(
     if (!result.ok) {
       return mapPublicationFailure(result.error, request.requestId);
     }
+    linkCatalogStageToPublication("candidate" in result.value ? result.value.candidate?.id : result.value.id);
     if ("candidate" in result.value) {
       const value = result.value;
       return catalogPublicationOk({
@@ -231,6 +233,7 @@ async function dispatch(
     if (!result.ok) {
       return mapPublicationFailure(result.error, request.requestId);
     }
+    linkCatalogStageToPublication(result.value.candidateId, result.value.id);
     return catalogPublicationOk({
       status: result.replayed ? 200 : 201,
       body: itemEnvelope(mapPublicationJob(result.value)),
@@ -315,5 +318,11 @@ export async function handleCatalogPublication(
   if (writeRoutes.has(matched.id) && !catalogReleaseHeader(request.headers)) {
     return validationFailed(request.requestId, "X-WiseEff-Catalog-Release");
   }
-  return dispatch(ports, { ...request, params: matched.params }, auth.scope, matched.id, matched.params);
+  const run = () => dispatch(ports, { ...request, params: matched.params }, auth.scope, matched.id, matched.params);
+  const command = asCommandName(matched.id);
+  if (command === "previewCandidate" || command === "publishCandidate") {
+    return withCatalogStageLogging({ requestId: request.requestId }, () =>
+      timeCatalogStage(command === "previewCandidate" ? "preview" : "enqueue-publication", run));
+  }
+  return run();
 }

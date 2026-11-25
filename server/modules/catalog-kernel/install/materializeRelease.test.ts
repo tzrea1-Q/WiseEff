@@ -1,8 +1,9 @@
 import pg from "pg";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { compileCatalogRelease } from "../compiler/index";
 import {
+  refreshAuthoritativeSource,
   refreshReleaseAggregateDigest,
   validCatalogReleaseBundle,
 } from "../compiler/__fixtures__/catalogReleaseBundle";
@@ -46,14 +47,14 @@ if (!pgVectorInstalled) {
   );
 }
 
-const firstReleaseBundle = (): CatalogReleaseBundle => {
+const firstReleaseBundle = () => {
   const full = validCatalogReleaseBundle();
-  const first = structuredClone(full.releases[0]!);
+  const first = structuredClone(full.releases[0]!) as Parameters<typeof refreshReleaseAggregateDigest>[0];
   return {
     schemaVersion: full.schemaVersion,
     targetReleaseId: first.manifest.release.id,
     releases: [first],
-  };
+  } satisfies CatalogReleaseBundle;
 };
 
 const compileFirst = () => {
@@ -129,6 +130,47 @@ describe("materializeCompiledRelease", () => {
     expect(counts.heads).toBe("1");
     expect(counts.materializations).toBe("1");
     expect(counts.pointer).toBe("0");
+  });
+
+  it("inserts the release's definition and revision pairs in a single statement", async () => {
+    const bundle = firstReleaseBundle();
+    const release = bundle.releases[0]!;
+    const first = release.documents.find(
+      (document) => document.kind === "definition",
+    );
+    if (!first) throw new Error("fixture definition missing");
+    const second = structuredClone(first);
+    second.content.id = "pdef_acme_power_iin_min";
+    second.content.propertyKey = "iin_min";
+    second.content.revision.id = "drev_acme_power_iin_min_1";
+    release.documents.push(second);
+    refreshAuthoritativeSource(release);
+    const compiled = compileCatalogRelease({ ...bundle, releases: [release] });
+    if (!compiled.ok) throw new Error("two-definition fixture failed to compile");
+
+    await client.query("begin");
+    await client.query("set constraints all deferred");
+    await acquireCurrentPointerLockExclusive(client);
+    const queries = vi.spyOn(client, "query");
+    await materializeCompiledRelease(client, compiled.value);
+    const headInserts = queries.mock.calls.filter(
+      ([sql]) => typeof sql === "string" &&
+        sql.includes("insert into parameter_catalog.catalog_release_definition_heads"),
+    );
+    queries.mockRestore();
+    expect(headInserts).toHaveLength(1);
+    await client.query("commit");
+    const heads = await client.query(
+      `select definition_id, revision_id from parameter_catalog.catalog_release_definition_heads
+        where release_id = $1 order by definition_id`,
+      [compiled.value.release.id],
+    );
+    expect(heads.rows).toEqual(
+      [first, second].map(({ content }) => ({
+        definition_id: content.id,
+        revision_id: content.revision.id,
+      })),
+    );
   });
 
   it.each([

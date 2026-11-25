@@ -42,6 +42,7 @@ const FAILURE_CODE: Record<CatalogApiFailureReason, string> = {
   "artifact-scalar-too-large": "CONFLICT",
   "artifact-read-failed": "INTERNAL_ERROR",
   "predecessor-incomplete": "CONFLICT",
+  "activation-timeout": "CONFLICT",
   "activation-receipt-mismatch": "CONFLICT",
   "adoption-evidence-invalid": "CONFLICT",
   "catalog-not-adopted": "CONFLICT",

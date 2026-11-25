@@ -54,6 +54,8 @@ WiseEff 主要用于 PC。[界面质量检查清单](developer/ui-quality-checkl
 
 ### 路线图
 
+- [目录导入与激活性能](exec-plans/active/2026-11-25-catalog-publication-cost.md)跟踪大目录下的小批量导入、编译检查点及目标机验收。
+
 - `docs/exec-plans/active/development-roadmap.md`：长期交付路线图；不受 feature plan 归档元数据约束，也不属于本轮 TD-005 有界清单。
 
 ### 等待外部输入或目标环境

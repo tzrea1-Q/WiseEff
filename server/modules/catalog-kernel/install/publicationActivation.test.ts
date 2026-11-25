@@ -4,9 +4,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { compileVendorCatalogSuccessor } from "../../../../scripts/compile-vendor-catalog-release";
 import * as authorization from "../../catalog-publication/authorization/authorize";
 import type { VerifiedPublicationAuthorization } from "../../catalog-publication/authorization/types";
+import * as bundleCodec from "../../catalog-publication/builder/bundleCodec";
 import { encodeBundleBytes, refreshSuccessorSource } from "../../catalog-publication/builder/bundleCodec";
 import * as store from "../../catalog-publication/persistence/store";
-import type { CatalogActivationReceiptRecord, PublicationJobRecord } from "../../catalog-publication/persistence/types";
+import type { CatalogActivationReceiptRecord, PublicationJobRecord, ReleaseArtifactRecord } from "../../catalog-publication/persistence/types";
 import { CatalogArtifactId, PublicationPolicyRevision } from "../../parameter-catalog-contract/index";
 import * as freeze from "../../catalog-publication/runtime/freeze";
 import * as compiler from "../compiler/index";
@@ -15,7 +16,7 @@ import * as verification from "../verification/index";
 import * as currentPointer from "./currentPointer";
 import { installPublishedRelease } from "./installer";
 import * as materialization from "./materializeRelease";
-import { refuseRetiredOwnerDefinitionChanges } from "./publicationActivation";
+import { prepareOnlinePublication, refuseRetiredOwnerDefinitionChanges } from "./publicationActivation";
 import type { InstallPublishedReleaseCommand } from "../interface";
 
 afterEach(() => vi.restoreAllMocks());
@@ -137,12 +138,15 @@ describe("stored publication candidate retired owner boundary", () => {
     };
     const candidateRead = vi.spyOn(store, "getCandidate").mockResolvedValue({ ok: true, value: candidate });
     const artifactBytes = storedBytes ?? encodeBundleBytes(prepared.bundle);
-    const artifactRead = vi.spyOn(store, "getArtifactByDigest").mockResolvedValue({ ok: true, value: {
+    const target: ReleaseArtifactRecord = {
       id: candidate.artifactId, bytesChecksum: store.sha256DigestOfBytes(artifactBytes), sourceKind: "typed-changeset",
       artifactDigest: candidate.artifactDigest, artifactBytes,
       targetReleaseId: prepared.compiled.release.id, targetReleaseDigest: prepared.compiled.release.digest,
       predecessorReleaseId: command.expectedCurrent.id, predecessorReleaseDigest: command.expectedCurrent.digest,
       toolchain: {}, createdAt: "2026-10-16T00:00:00Z",
+    };
+    const artifactRead = vi.spyOn(store, "readArtifactLineage").mockResolvedValue({ ok: true, value: {
+      target, records: new Map([[target.artifactDigest, target]]),
     } });
     vi.spyOn(freeze, "isPublicationFrozen").mockResolvedValue(false);
     const policyRevision = PublicationPolicyRevision(1);
@@ -163,8 +167,66 @@ describe("stored publication candidate retired owner boundary", () => {
       ok: true, value: authorized,
     });
     const receiptRead = vi.spyOn(store, "getReceiptByJobId").mockResolvedValue({ ok: false, error: { kind: "not-found", entity: "receipt" } });
-    return { prepared, command, pool, query, release, connect, materialize, candidateRead, artifactRead, authorize, receiptRead };
+    return { prepared, target, command, pool, query, release, connect, materialize, candidateRead, artifactRead, authorize, receiptRead };
   }
+
+  function compactCandidate() {
+    const fixture = storedCandidate(activeDefinition);
+    const { prepared, target } = fixture;
+    const baseBytes = encodeBundleBytes(vendor.bundle);
+    const parent: ReleaseArtifactRecord = { ...target, id: CatalogArtifactId("cart_parent"),
+      targetReleaseId: vendor.compiled.release.id, targetReleaseDigest: vendor.compiled.aggregateDigest,
+      artifactDigest: vendor.compiled.aggregateDigest, artifactBytes: baseBytes, bytesChecksum: store.sha256DigestOfBytes(baseBytes),
+    };
+    const compactBytes = encodeBundleBytes({ ...prepared.bundle, releases: [prepared.bundle.releases.at(-1)!] });
+    const compact: ReleaseArtifactRecord = { ...target, storageFormat: "successor-v1", artifactBytes: compactBytes,
+      bytesChecksum: store.sha256DigestOfBytes(compactBytes) };
+    const useLineage = (tip: ReleaseArtifactRecord, ancestor: ReleaseArtifactRecord) => {
+      fixture.artifactRead.mockResolvedValue({ ok: true, value: { target: tip,
+        records: new Map([[tip.artifactDigest, tip], [ancestor.artifactDigest, ancestor]]) } });
+    };
+    useLineage(compact, parent);
+    return { ...fixture, compact, parent, useLineage };
+  }
+
+  it("compiles the independently decoded physical rows once and pins the physical tip under the lock", async () => {
+    const { command, pool, release, compact, prepared } = compactCandidate();
+    const parse = vi.spyOn(bundleCodec, "parseBundleBytes");
+    const encode = vi.spyOn(bundleCodec, "encodeBundleBytes");
+    const result = await prepareOnlinePublication(pool, command);
+    expect(result.kind).toBe("prepared");
+    if (result.kind !== "prepared") throw new Error("preparation failed");
+    expect(result.artifact.bytesChecksum).toBe(compact.bytesChecksum);
+    expect(result.compiled.compiledReleaseDigest).toBe(prepared.compiled.compiledReleaseDigest);
+    expect(result.compiled.materializationFingerprint).toBe(prepared.compiled.materializationFingerprint);
+    expect(parse).toHaveBeenCalledTimes(2);
+    expect(release.mock.invocationCallOrder[0]).toBeLessThan(parse.mock.invocationCallOrder[0]!);
+    expect(encode).not.toHaveBeenCalled();
+  });
+
+  it.each(["ancestor-checksum", "predecessor-id", "noncanonical-number"] as const)(
+    "rejects compact lineage with %s before calling the compiler", async failure => {
+      const { command, pool, compact, parent, useLineage } = compactCandidate();
+      if (failure === "ancestor-checksum") {
+        useLineage(compact, { ...parent, artifactBytes: Buffer.from("different bytes") });
+      } else if (failure === "predecessor-id") {
+        useLineage({ ...compact, predecessorReleaseId: compact.targetReleaseId }, parent);
+      } else {
+        const invalid = Buffer.from(Buffer.from(parent.artifactBytes).toString("utf8").replace('"manifest": {', '"unused": -0, "manifest": {'));
+        useLineage(compact, { ...parent, artifactBytes: invalid, bytesChecksum: store.sha256DigestOfBytes(invalid) });
+      }
+      const compile = vi.spyOn(compiler, "compileCatalogRelease");
+      await expect(installPublishedRelease(pool, command)).resolves.toEqual({ ok: false, error: { kind: "artifact-unreadable" } });
+      expect(compile).not.toHaveBeenCalled();
+    });
+
+  it("keeps a checksum mismatch on a full artifact distinct from invalid compact lineage", async () => {
+    const { command, pool, target, artifactRead } = storedCandidate();
+    artifactRead.mockResolvedValue({ ok: true, value: { target: { ...target, bytesChecksum: "corrupt" }, records: new Map() } });
+    await expect(installPublishedRelease(pool, command)).resolves.toMatchObject({ ok: false, error: {
+      kind: "publication-not-authorized", reason: "candidate-tampered",
+    } });
+  });
 
   it("reports unreadable bytes when the stored package exists and its checksum matches", async () => {
     const { command, pool, materialize } = storedCandidate(retiredDefinition, Buffer.from('{"schemaVersion":'));

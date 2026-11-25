@@ -7,6 +7,8 @@ import * as bundleCodec from "../../catalog-publication/builder/bundleCodec";
 import * as successorBuilder from "../../catalog-publication/builder/completeSuccessor";
 import { encodeBundleBytes, sha256Digest } from "../../catalog-publication/builder/bundleCodec";
 import { firstAcmePredecessor, integerContent } from "../../catalog-publication/builder/predecessorHarness";
+import { serializeMarkdownRevision } from "../../catalog-publication/import/markdownImport";
+import type { ReleaseArtifactRecord } from "../../catalog-publication/persistence/types";
 import * as publicationStore from "../../catalog-publication/persistence/store";
 import { CatalogArtifactId } from "../../parameter-catalog-contract/index";
 import type { Database } from "../../../shared/database/client";
@@ -16,16 +18,25 @@ import { bindCatalogPublicationCommands } from "./ports";
 
 afterEach(() => vi.restoreAllMocks());
 
+function mockStoredArtifact(target: ReleaseArtifactRecord) {
+  return vi.spyOn(publicationStore, "readArtifactLineage").mockResolvedValue({
+    ok: true, value: { target, records: new Map([[target.artifactDigest, target]]) },
+  });
+}
+
 describe("publication preview memory work", () => {
-  it("loads and parses the predecessor once across Markdown planning and candidate building", async () => {
+  it.each(["cold", "warm", "unproven", "unchanged"] as const)("bounds Markdown predecessor reads for a %s preview", async (mode) => {
     const predecessor = firstAcmePredecessor();
-    const load = vi.spyOn(publicationStore, "getArtifactByDigest").mockResolvedValue({ ok: true, value: {
+    const load = mockStoredArtifact({
       id: CatalogArtifactId("cart_import_memory"), artifactDigest: predecessor.digest,
       bytesChecksum: sha256Digest(predecessor.bytes), artifactBytes: predecessor.bytes,
       sourceKind: "adopted-preexisting", targetReleaseId: predecessor.compiled.release.id,
       targetReleaseDigest: predecessor.digest, predecessorReleaseId: null, predecessorReleaseDigest: null,
       toolchain: {}, createdAt: "2026-11-17T00:00:00Z",
-    } });
+    });
+    const snapshot = vi.spyOn(publicationStore, "getValidatedPreviewSnapshot").mockResolvedValue(mode === "cold"
+      ? { ok: false, error: { kind: "not-found", entity: "artifact" } }
+      : { ok: true, value: { target: predecessor.first, hasSubjectRules: false, hasDtsExamples: false } });
     vi.spyOn(currentPointer, "readCurrentCatalogPointer").mockResolvedValue({
       kind: "installed", current: predecessor.compiled.release, predecessorReleaseId: null, subjectOwnerEpoch: "0",
     });
@@ -35,22 +46,39 @@ describe("publication preview memory work", () => {
       candidate: { ...candidate, artifactDigest: artifact.artifactDigest, createdAt: "2026-11-17T00:00:00Z" },
     }));
     const parse = vi.spyOn(bundleCodec, "parseBundleBytes");
-    const db = { query: vi.fn().mockResolvedValue({ rows: [{ available: true }] }), transaction: vi.fn() } as unknown as Database;
+    const compactBuild = vi.spyOn(successorBuilder, "buildSuccessorFromSnapshot");
+    const fullBuild = vi.spyOn(successorBuilder, "buildCompleteSuccessor");
+    const db = {
+      query: vi.fn().mockResolvedValue({ rows: [{ available: true, can_read: true, usable: mode !== "unproven" }] }),
+      transaction: (work: (tx: Database) => Promise<unknown>) => work(db),
+    } as unknown as Database;
     const query = vi.fn().mockResolvedValue({ rows: [] });
     const commands = bindCatalogPublicationCommands({ db, pool: { query } as Parameters<typeof currentPointer.readCurrentCatalogPointer>[0] });
     const result = await commands.previewCandidate({
       trustedActor: createUserInvocation(makeTestAuthContext()),
       organizationId: "org-import-memory", principalId: "author", actorKind: "org-admin",
       permissions: ["catalog:author"], catalogReleaseId: predecessor.compiled.release.id,
-      markdownImport: { fileName: "memory.md", document: "# Driver `acme,power`\n## `memory_new` New definition\n| 字段 | 值 |\n| --- | --- |\n| 类型 | integer |\n" },
+      markdownImport: { fileName: "memory.md", document: mode === "unchanged"
+        ? serializeMarkdownRevision(predecessor.first, ["pdef_acme_power_iin_max"]).document
+        : "# Driver `acme,power`\n## `memory_new` New definition\n| 字段 | 值 |\n| --- | --- |\n| 类型 | integer |\n" },
     });
+    const historyReads = mode === "cold" || mode === "unproven" ? 1 : 0;
+    expect(load).toHaveBeenCalledTimes(historyReads);
+    expect(parse).toHaveBeenCalledTimes(historyReads);
+    if (mode === "unproven") {
+      expect(fullBuild.mock.calls[0]?.[0].frozenIdentity).toBe(compactBuild.mock.calls[0]![0].frozenIdentity);
+    }
+    expect(snapshot).toHaveBeenCalledTimes(1);
+    expect(query).toHaveBeenCalledExactlyOnceWith(expect.stringContaining("registration_recognition_rules"), ["org-import-memory"]);
+    if (mode === "unchanged") {
+      expect(result).toMatchObject({ ok: true, value: { candidate: null, noChange: true, entries: [{ outcome: "skip" }] } });
+      expect(persist).not.toHaveBeenCalled();
+      return;
+    }
     expect(result).toMatchObject({ ok: true, value: {
       candidate: { expectedBaseReleaseId: predecessor.compiled.release.id, impactSummary: { addedDefinitionCount: 1 } },
       entries: [{ outcome: "create", propertyKey: "memory_new" }],
     } });
-    expect(load).toHaveBeenCalledTimes(1);
-    expect(parse).toHaveBeenCalledTimes(1);
-    expect(query).toHaveBeenCalledExactlyOnceWith(expect.stringContaining("registration_recognition_rules"), ["org-import-memory"]);
     expect(persist).toHaveBeenCalledTimes(1);
     expect(persist.mock.calls[0]![1]).toMatchObject({ sourceKind: "markdown-import" });
   });
@@ -61,21 +89,18 @@ describe("publication preview duplicate definitions", () => {
     "reports a duplicate in the %s as a definition conflict without persisting",
     async (source) => {
       const predecessor = firstAcmePredecessor();
-      vi.spyOn(publicationStore, "getArtifactByDigest").mockResolvedValue({
-        ok: true,
-        value: {
-          id: CatalogArtifactId("cart_duplicate_definition"),
-          artifactDigest: predecessor.digest,
-          bytesChecksum: sha256Digest(predecessor.bytes),
-          artifactBytes: predecessor.bytes,
-          sourceKind: "adopted-preexisting",
-          targetReleaseId: predecessor.compiled.release.id,
-          targetReleaseDigest: predecessor.digest,
-          predecessorReleaseId: null,
-          predecessorReleaseDigest: null,
-          toolchain: {},
-          createdAt: "2026-10-26T00:00:00Z",
-        },
+      mockStoredArtifact({
+        id: CatalogArtifactId("cart_duplicate_definition"),
+        artifactDigest: predecessor.digest,
+        bytesChecksum: sha256Digest(predecessor.bytes),
+        artifactBytes: predecessor.bytes,
+        sourceKind: "adopted-preexisting",
+        targetReleaseId: predecessor.compiled.release.id,
+        targetReleaseDigest: predecessor.digest,
+        predecessorReleaseId: null,
+        predecessorReleaseDigest: null,
+        toolchain: {},
+        createdAt: "2026-10-26T00:00:00Z",
       });
       vi.spyOn(currentPointer, "readCurrentCatalogPointer").mockResolvedValue({
         kind: "installed", current: predecessor.compiled.release, predecessorReleaseId: null, subjectOwnerEpoch: "0",
@@ -116,21 +141,18 @@ describe("publication preview retired owner boundary", () => {
     "reports %s as subject-retired before any persistence", async (op) => {
       const vendor = compileVendorCatalogSuccessor();
       const bytes = encodeBundleBytes(vendor.bundle);
-      vi.spyOn(publicationStore, "getArtifactByDigest").mockResolvedValue({
-        ok: true,
-        value: {
-          id: CatalogArtifactId("cart_retired_owner"),
-          artifactDigest: vendor.compiled.aggregateDigest,
-          bytesChecksum: sha256Digest(bytes),
-          artifactBytes: bytes,
-          sourceKind: "adopted-preexisting",
-          targetReleaseId: vendor.compiled.release.id,
-          targetReleaseDigest: vendor.compiled.aggregateDigest,
-          predecessorReleaseId: null,
-          predecessorReleaseDigest: null,
-          toolchain: {},
-          createdAt: "2026-10-16T00:00:00Z",
-        },
+      mockStoredArtifact({
+        id: CatalogArtifactId("cart_retired_owner"),
+        artifactDigest: vendor.compiled.aggregateDigest,
+        bytesChecksum: sha256Digest(bytes),
+        artifactBytes: bytes,
+        sourceKind: "adopted-preexisting",
+        targetReleaseId: vendor.compiled.release.id,
+        targetReleaseDigest: vendor.compiled.aggregateDigest,
+        predecessorReleaseId: null,
+        predecessorReleaseDigest: null,
+        toolchain: {},
+        createdAt: "2026-10-16T00:00:00Z",
       });
       vi.spyOn(currentPointer, "readCurrentCatalogPointer").mockResolvedValue({
         kind: "installed", current: vendor.compiled.release, predecessorReleaseId: null, subjectOwnerEpoch: "0",

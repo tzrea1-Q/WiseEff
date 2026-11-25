@@ -21,6 +21,7 @@ import {
   catalogReplacementPreviewRequestSchema,
   catalogDocumentResponseSchema,
   catalogFailureClientBehaviors,
+  catalogPublicationFailureDtoSchema,
   catalogKernelReadOperations,
   catalogLegacyGoneResponseSchema,
   catalogLegacyIdentifierDtoSchema,
@@ -272,6 +273,12 @@ describe("S8-CON threat matrix", () => {
     expect(catalogFailureClientBehaviors["idempotency-key-conflict"]).toBe("new-idempotency-key");
     expect(catalogFailureClientBehaviors["needs-rebase"]).toBe("rebase-candidate");
     expect(catalogFailureClientBehaviors["activation-receipt-mismatch"]).toBe("inspect-receipt-no-retry");
+  });
+
+  it("exposes a manager activation timeout and rejects unrecognized publication failure reasons", () => {
+    const timeout = { class: "timeout", reason: "activation-timeout" };
+    expect(catalogPublicationFailureDtoSchema.parse(timeout)).toEqual(timeout);
+    expect(catalogPublicationFailureDtoSchema.safeParse({ ...timeout, reason: "private diagnostic" }).success).toBe(false);
   });
 
   it("freezes publication routes without v3, /admin, cancel, or retry", () => {

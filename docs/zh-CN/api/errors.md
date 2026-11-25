@@ -18,6 +18,7 @@
 - 任何 target-environment readiness、pilot-ready、release-ready 结论都必须有真实目标环境证据，不能由本地 skip 代替。
 - 新增错误码 `RATE_LIMITED` 对应 HTTP 429，用于本地账号登录/注册滑动窗口限流。完整码表见英文版。
 - 规范参数目录冻结 `SERVICE_UNAVAILABLE` / 503（`details.reason = catalog-not-ready`）以及 PCAT 稳定 `details.reason` 集合，并增加 CP-00 发布 reason（403/409/422；job GET 保持 200，`effective` 仅来自核验 Receipt，`active-superseded` 不是失败）。客户端必须按 reason 分支，不得解析 `message`。完整码表与 reason 列表见英文版。
+- 查询发布任务时，HTTP 200 响应中的 `item.failure.reason = activation-timeout` 表示激活尝试超时。`failed-retryable` 表示发布管理器可以再次领取任务，客户端继续查询同一任务，无需再次提交候选。`failed-terminal` 表示自动处理已结束，客户端显示 `attemptCount` 并保留输入，管理员排除超时原因后可重新预览。
 
 ## 同名定义预览冲突
 

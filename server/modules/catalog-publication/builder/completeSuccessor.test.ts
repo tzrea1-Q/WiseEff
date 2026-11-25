@@ -14,7 +14,7 @@ import {
   FIRST_ACME_RELEASE_ID,
   compileVendorCatalogSuccessor,
 } from "../../../../scripts/compile-vendor-catalog-release";
-import { buildCompleteSuccessor, buildIdentitySuccessorFromSnapshot } from "./completeSuccessor";
+import { buildCompleteSuccessor, buildSuccessorFromSnapshot } from "./completeSuccessor";
 import { identitySnapshotOf } from "./identitySnapshot";
 import { encodeBundleBytes } from "./bundleCodec";
 import {
@@ -55,7 +55,7 @@ describe("buildCompleteSuccessor", () => {
       frozenIdentity: frozenPageIdentity([], "aliased", "1.3.0"),
     };
     const full = await buildCompleteSuccessor(input);
-    const compact = await buildIdentitySuccessorFromSnapshot(input, snapshot);
+    const compact = await buildSuccessorFromSnapshot(input, snapshot);
     if (!full.ok || full.value.kind !== "successor") throw new Error(JSON.stringify(full));
     if (!compact.ok || compact.value.kind !== "successor") throw new Error(JSON.stringify(compact));
     expect(compact.value.candidate).toEqual(full.value.candidate);
@@ -88,6 +88,31 @@ describe("buildCompleteSuccessor", () => {
     expect(built.value.impact.definitions.changed).toMatchObject([{ contentClass: "documentation" }]);
     expect(await build([source.replace("iin_max", "another")])).toMatchObject({ ok: false, error: { detail: "dts-example-property-mismatch" } });
     expect(await build([source], { type: "integer", minimum: 33 })).toMatchObject({ ok: false, error: { detail: "dts-example-does-not-match-schema" } });
+  });
+
+  it("certifies a mixed definition import including the first DTS example against the full compiler", async () => {
+    const predecessor = firstAcmePredecessor();
+    const input = {
+      productPath: "m2-core" as const,
+      predecessorArtifact: { digest: predecessor.digest, bytes: predecessor.bytes },
+      storageFormat: "successor-v1" as const,
+      frozenIdentity: frozenPageIdentity([allocationFor("voltage_limit"), allocationForRevision("iin_max", 2)]),
+      changeSet: [pageIntegerChange("voltage_limit", "Voltage limit"), {
+        op: "revise-definition" as const, definitionId: "pdef_acme_power_iin_max", class: "documentation" as const,
+        content: { ...integerContent("Input current limit", "Maximum accepted input current."), dtsExamples: ["iin_max = <32>;"] },
+      }],
+    };
+    const full = await buildCompleteSuccessor(input);
+    const snapshot = identitySnapshotOf(predecessor.bundle, predecessor.first)!;
+    expect(snapshot.hasDtsExamples).toBe(false);
+    const compact = await buildSuccessorFromSnapshot(input, snapshot);
+    if (!full.ok || full.value.kind !== "successor" || !compact.ok || compact.value.kind !== "successor") {
+      throw new Error(JSON.stringify([full.ok, compact.ok, full.ok ? null : full.error, compact.ok ? null : compact.error]));
+    }
+    expect(compact.value.candidate).toEqual(full.value.candidate);
+    expect(compact.value.capabilityContract).toEqual(full.value.capabilityContract);
+    expect(compact.value.impact).toEqual(full.value.impact);
+    expect(compact.value.artifact.artifactBytes).toEqual(full.value.artifact.artifactBytes);
   });
 
   it("replays the old release and retains the previous compatible as an alias after a rename", async () => {

@@ -1,3 +1,7 @@
+import type { Queryable } from "../../../shared/database/client";
+import { timeCatalogStage } from "../../../observability/catalogPublicationStages";
+import { decodeStoredArtifact, readArtifactLineage } from "../persistence/store";
+import type { CatalogPublicationStoreResult } from "../persistence/types";
 import type { CatalogReleaseBundle } from "../../catalog-kernel/compiler/types";
 import { freezeCatalogJson } from "../../catalog-kernel/compiler/index";
 import { parseBundleBytes } from "./bundleCodec";
@@ -21,12 +25,26 @@ export function preparePredecessorArtifact(input: {
   | { readonly ok: false; readonly detail: string } {
   const parsed = parseBundleBytes(input.bytes);
   if (!parsed.ok) return parsed;
+  return { ok: true, artifact: ownBundle(input.digest, parsed.bundle) };
+}
+
+export async function readPreparedPredecessor(db: Queryable, digest: string):
+  Promise<CatalogPublicationStoreResult<PreparedPredecessorArtifact>> {
+  const lineage = await readArtifactLineage(db, digest);
+  if (!lineage.ok) return lineage;
+  return timeCatalogStage("predecessor-decode", () => {
+    const decoded = decodeStoredArtifact(lineage.value);
+    return decoded.ok ? { ok: true as const, value: ownBundle(digest, decoded.value) } : decoded;
+  });
+}
+
+function ownBundle(digest: string, bundle: CatalogReleaseBundle): PreparedPredecessorArtifact {
   // Planning and building share one graph. Neither the caller's original byte
   // buffer nor a planner may mutate that graph between those stages.
-  freezeCatalogJson(parsed.bundle);
-  const artifact = Object.freeze({ digest: input.digest }) as PreparedPredecessorArtifact;
-  bundles.set(artifact, parsed.bundle);
-  return { ok: true, artifact };
+  freezeCatalogJson(bundle);
+  const artifact = Object.freeze({ digest }) as PreparedPredecessorArtifact;
+  bundles.set(artifact, bundle);
+  return artifact;
 }
 
 export function preparedPredecessorBundle(

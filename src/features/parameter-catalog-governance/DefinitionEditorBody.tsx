@@ -334,7 +334,7 @@ export function DefinitionEditorBody({
     }
   };
   const publicationJobId = publicationJob?.id;
-  const publicationPending = Boolean(publicationJob && publicationJobIsPending(publicationJob.status));
+  const publicationPending = publicationJobIsPending(publicationJob);
 
   useEffect(() => {
     if (!publicationJobId || !publicationPending) return;
@@ -347,7 +347,7 @@ export function DefinitionEditorBody({
         if (cancelled) return;
         if (publicationSuccessKind(response.item)) await onRefreshEvidence?.();
         if (cancelled) return;
-        keepPolling = publicationJobIsPending(response.item.status);
+        keepPolling = publicationJobIsPending(response.item);
         setPublicationJob(response.item);
         setError("");
       } catch (caught) {
@@ -1204,12 +1204,12 @@ export function DefinitionEditorBody({
               <h3 className="definition-editor__card-title">内容修订结果</h3>
             </div>
             <p>{publicationStatusCopy(publicationJob).message}</p>
-            {publicationJobIsPending(publicationJob.status) ? (
+            {publicationJobIsPending(publicationJob) ? (
               <p className="parameter-catalog__muted">
                 发布任务仍在处理中，状态将自动更新。
               </p>
             ) : null}
-            {publicationJobIsPending(publicationJob.status) || error ? <button type="button" className="button subtle" onClick={() => void refreshPublication()}>刷新发布状态</button> : null}
+            {publicationJobIsPending(publicationJob) || error ? <button type="button" className="button subtle" onClick={() => void refreshPublication()}>刷新发布状态</button> : null}
             {onClose ? (
               <div className="dialog-actions definition-editor__dialog-actions">
                 <button type="button" className="button subtle" onClick={onClose}>

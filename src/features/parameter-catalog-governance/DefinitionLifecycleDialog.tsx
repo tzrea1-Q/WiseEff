@@ -12,13 +12,14 @@ import type {
   CatalogPublicationJobResponse
 } from "@/infrastructure/http/parameterCatalogDtos";
 
-import { canExecutePublicationAction, publicationStatusCopy } from "./publicationState";
+import { canExecutePublicationAction, publicationJobIsPending, publicationStatusCopy } from "./publicationState";
 import { createGovernanceIdempotencyKey, createGovernanceSubmitGate } from "./governanceState";
 import { catalogFailureReason } from "@/infrastructure/http/parameterCatalogClient";
 import type { WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
 import { catalogErrorCopy } from "@/features/parameter-catalog/copy";
 import { catalogLifecycleLabel } from "@/features/parameter-catalog/catalogPresentation";
 import { DEFINITION_BATCH_LIMIT, MOCK_DEFINITION_BATCH_UNSUPPORTED } from "@/application/parameter-catalog/definitionBatch";
+import { usePublicationJobPolling } from "./usePublicationJobPolling";
 import { formatUsageSummary } from "./formatUsageSummary";
 
 export type DefinitionLifecycleIntent = "retire-definition" | "restore-definition";
@@ -57,10 +58,6 @@ const copy = {
     impact: "共享目录中的其他组织可以再次为该身份建立新的匹配与引用。"
   }
 } as const;
-
-function jobIsPending(status: string): boolean {
-  return status === "queued" || status === "running";
-}
 
 type LifecycleContent = Extract<
   CatalogCreatePublicationCandidateRequest["changeSet"][number],
@@ -102,7 +99,6 @@ export function DefinitionLifecycleDialog({
   onRefreshEvidence
 }: DefinitionLifecycleDialogProps) {
   const gateRef = useRef(createGovernanceSubmitGate());
-  const pollRef = useRef<number | null>(null);
   const [reason, setReason] = useState("");
   const [candidate, setCandidate] = useState<CatalogPublicationCandidateResponse["item"] | null>(null);
   const [job, setJob] = useState<CatalogPublicationJobResponse["item"] | null>(null);
@@ -121,14 +117,9 @@ export function DefinitionLifecycleDialog({
   const policyUnavailable = targets.some((item) => item.usageSummary.policyCount === null);
   const usage = `本组织使用量：${formatUsageSummary({ policyCount: policyUnavailable ? null : targets.reduce((sum, item) => sum + (item.usageSummary.policyCount ?? 0), 0), projectCount: targets.reduce((sum, item) => sum + item.usageSummary.projectCount, 0), currentValueCount: targets.reduce((sum, item) => sum + item.usageSummary.currentValueCount, 0) })}`;
 
-  const stopPolling = () => {
-    if (pollRef.current !== null) {
-      window.clearInterval(pollRef.current);
-      pollRef.current = null;
-    }
-  };
+  const { startPolling, stopPolling, pollJob, pollFailure } = usePublicationJobPolling(catalog, setJob);
 
-  useEffect(() => stopPolling, []);
+  useEffect(() => stopPolling, [stopPolling]);
 
   useEffect(() => {
     if (!open) {
@@ -144,26 +135,7 @@ export function DefinitionLifecycleDialog({
     setFieldError("");
     setFailure("");
     setIdempotencyKey(null);
-  }, [open]);
-
-  const pollJob = async (jobId: string) => {
-    try {
-      const response = await catalog.getPublication(jobId);
-      setJob(response.item);
-      if (!jobIsPending(response.item.status)) {
-        stopPolling();
-      }
-    } catch (error) {
-      stopPolling();
-      setFailure(publicationFailureText(error));
-    }
-  };
-
-  const startPolling = (jobId: string) => {
-    stopPolling();
-    pollRef.current = window.setInterval(() => void pollJob(jobId), 1000);
-    void pollJob(jobId);
-  };
+  }, [open, stopPolling]);
 
   const captureCandidate = async () => {
     if (!allowed || pending) {
@@ -213,7 +185,7 @@ export function DefinitionLifecycleDialog({
       );
       setJob(published.item);
       setConfirmOpen(false);
-      if (jobIsPending(published.item.status)) {
+      if (publicationJobIsPending(published.item)) {
         startPolling(published.item.id);
       }
     } catch (error) {
@@ -282,9 +254,9 @@ export function DefinitionLifecycleDialog({
             {fieldError}
           </p>
         ) : null}
-        {failure ? (
+        {failure || pollFailure ? (
           <p role="alert" data-silent-retry="true">
-            {failure}
+            {failure || pollFailure}
           </p>
         ) : null}
         {status ? (
@@ -293,6 +265,7 @@ export function DefinitionLifecycleDialog({
           </p>
         ) : null}
         <div className="dialog-actions">
+          {pollFailure && job ? <button type="button" className="button ghost" onClick={() => void pollJob(job.id)}>刷新发布状态</button> : null}
           {!effective ? <button type="button" className="button ghost" onClick={() => void close()} disabled={pending}>
             取消
           </button> : null}
@@ -300,7 +273,7 @@ export function DefinitionLifecycleDialog({
             type="button"
             className="button primary"
             data-lifecycle-action={intent}
-            disabled={effective ? pending : !allowed || pending || Boolean(job && jobIsPending(job.status)) || (!batch && !reason.trim()) || (batch && (runtimeMode === "mock" || targets.length === 0 || targets.length > DEFINITION_BATCH_LIMIT))}
+            disabled={effective ? pending : !allowed || pending || publicationJobIsPending(job) || (!batch && !reason.trim()) || (batch && (runtimeMode === "mock" || targets.length === 0 || targets.length > DEFINITION_BATCH_LIMIT))}
             title={allowed ? undefined : "当前会话缺少目录编写或高风险复核权限，或者目录不可写。"}
             onClick={() => void (effective ? close() : captureCandidate())}
           >
@@ -353,11 +326,11 @@ function jobStatusText(job: CatalogPublicationJobResponse["item"], count: number
   if (job.status === "blocked") {
     return "发布被阻止，请检查策略与采用状态。";
   }
+  if (job.status === "failed-retryable" || job.failure?.reason === "activation-timeout") {
+    return publicationStatusCopy(job).message;
+  }
   if (job.status === "failed-terminal") {
     return "发布失败，且不会自动重试。";
-  }
-  if (job.status === "failed-retryable") {
-    return "发布暂时失败，可按既有幂等键重试。";
   }
   return "发布已接受，正在等待激活结果…";
 }

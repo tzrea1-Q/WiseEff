@@ -7,6 +7,7 @@ import type {
 } from "@/infrastructure/http/parameterCatalogDtos";
 import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 import { catalogFailureReason } from "@/infrastructure/http/parameterCatalogClient";
+import { usePublicationJobPolling } from "./usePublicationJobPolling";
 import { createGovernanceIdempotencyKey } from "./governanceState";
 import {
   clearStoredPublicationJob, readStoredPublicationJob, writeStoredPublicationJob,
@@ -34,7 +35,6 @@ export function usePublicationFlow(input: {
 }) {
   const { catalog, catalogReleaseId, currentPersonId, organizationId } = input;
   const gateRef = useRef<PublicationSubmitGate>(createPublicationSubmitGate());
-  const pollRef = useRef<number | null>(null);
   const completedRef = useRef(false);
   const [candidate, setCandidate] = useState<Candidate | null>(null);
   const [candidateVerified, setCandidateVerified] = useState(false);
@@ -45,35 +45,17 @@ export function usePublicationFlow(input: {
   const [failure, setFailure] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<"preview" | "publish" | null>(null);
 
-  const stopPolling = () => {
-    if (pollRef.current !== null) window.clearInterval(pollRef.current);
-    pollRef.current = null;
-  };
   const applyJob = (next: Job) => {
     setJob(next);
-    if (!publicationJobIsPending(next.status) || publicationSuccessKind(next)) {
-      stopPolling();
-      if (publicationSuccessKind(next) && !completedRef.current) {
-        completedRef.current = true;
-        clearStoredPublicationJob();
-        input.onCompleted?.();
-        void Promise.resolve().then(() => input.onRefreshEvidence?.())
-          .catch((error: unknown) => setFailure(publicationFailureCopy(error)));
-      }
+    if (publicationSuccessKind(next) && !completedRef.current) {
+      completedRef.current = true;
+      clearStoredPublicationJob();
+      input.onCompleted?.();
+      void Promise.resolve().then(() => input.onRefreshEvidence?.())
+        .catch((error: unknown) => setFailure(publicationFailureCopy(error)));
     }
   };
-  const pollJob = async (jobId: string) => {
-    try {
-      applyJob((await catalog.getPublication(jobId)).item);
-    } catch (error) {
-      setFailure(publicationFailureCopy(error));
-    }
-  };
-  const startPolling = (jobId: string) => {
-    stopPolling();
-    void pollJob(jobId);
-    pollRef.current = window.setInterval(() => { void pollJob(jobId); }, 1000);
-  };
+  const { startPolling, stopPolling, pollJob, pollFailure } = usePublicationJobPolling(catalog, applyJob);
   const reset = () => {
     stopPolling();
     gateRef.current = createPublicationSubmitGate();
@@ -169,7 +151,7 @@ export function usePublicationFlow(input: {
         ...(input.subjectIdentityId ? { subjectIdentityId: input.subjectIdentityId } : {}),
       });
       applyJob(published.item);
-      if (publicationJobIsPending(published.item.status)) startPolling(published.item.id);
+      if (publicationJobIsPending(published.item)) startPolling(published.item.id);
       setFailure(null);
     } catch (error) {
       onError(error);
@@ -181,7 +163,7 @@ export function usePublicationFlow(input: {
   };
   return {
     candidate, setCandidate, candidateVerified, setCandidateVerified, previewFingerprint, setPreviewFingerprint,
-    job, setJob, idempotencyKey, setIdempotencyKey, pending, setPending, failure, setFailure,
-    confirm, setConfirm, gateRef, stopPolling, pollJob, reset, restore, preview, publish, captureError,
+    job, setJob, idempotencyKey, setIdempotencyKey, pending, setPending, failure: failure ?? pollFailure, setFailure,
+    confirm, setConfirm, gateRef, stopPolling, pollJob, pollFailure, reset, restore, preview, publish, captureError,
   };
 }

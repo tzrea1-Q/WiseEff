@@ -127,14 +127,28 @@ describe("CP-07 publication manager production seam", () => {
     const prepared = await provisionOnlineActivation(pool, client, "iin_mgr");
     const healthQueued = await readPublicationManagerHealth(db);
     expect(healthQueued.queuedCount).toBeGreaterThanOrEqual(1);
+    const events: Record<string, string | number | boolean | null>[] = [];
     const claimed = await runPublicationManagerOnce({
       db,
       pool,
       installer: createCatalogInstaller(pool),
       resolvePublisherActor: async () => userActor("user-catalog-publisher", publisherPermissions),
       ownerId: "manager-once",
+      log: fields => { events.push(fields); },
     });
     expect(claimed).toBe("claimed");
+    for (const stage of [
+      "artifact-read", "lineage-verify-decode", "compile", "pointer-lock", "publication-lock",
+      "materialize", "verify-projection", "restore-heads", "verify-constraints", "commit", "activation",
+    ]) {
+      expect(events).toContainEqual(expect.objectContaining({
+        event: "catalog-stage", stage, state: "finished", elapsedMs: expect.any(Number),
+        jobId: prepared.job.id, attempt: 1, fence: 1,
+      }));
+    }
+    const read = events.find(entry => entry.stage === "artifact-read" && entry.state === "finished");
+    expect(read?.artifactCount).toBeGreaterThan(0);
+    expect(read?.byteCount).toBeGreaterThan(0);
     const job = await withPublicationCoordinator(db, (tx) => getJob(tx, prepared.job.id));
     expect(job.ok && job.value.status).toBe("active");
     const receipt = await withPublicationCoordinator(db, (tx) => getReceiptByJobId(tx, prepared.job.id));

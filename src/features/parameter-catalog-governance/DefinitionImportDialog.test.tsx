@@ -522,6 +522,41 @@ it("keeps the document on rebase and invalidates a preview after editing", async
   expect(screen.getByRole("button", { name: "解析并预览" })).toBeEnabled();
 });
 
+it("tracks an automatic retry and a transient status-read failure through terminal activation timeout", async () => {
+  const document = "# Driver `sc8562`";
+  const failure = { class: "timeout", reason: "activation-timeout" as const };
+  const getJob = vi.fn<ParameterCatalogRepository["getPublication"]>()
+    .mockResolvedValueOnce({ item: { ...catalogPublicationJob, status: "failed-retryable", attemptCount: 4, failure } })
+    .mockRejectedValueOnce(new TypeError("network error"))
+    .mockResolvedValue({ item: { ...catalogPublicationJob, status: "failed-terminal", attemptCount: 5, failure } });
+  const publish = vi.fn<ParameterCatalogRepository["publishPublicationCandidate"]>().mockResolvedValue({ item: catalogPublicationJob });
+  const { completed } = renderImport({ initialDocument: document, prepare: (ports) => {
+    ports.catalog.previewMarkdownImport = async () => ({ item: {
+      candidate: catalogPublicationCandidate, noChange: false, entries: [], placementHints: [],
+      source: { fileName: "粘贴.md", sha256: "sha256:test", parserVersion: "v1" },
+    } });
+    ports.catalog.publishPublicationCandidate = publish;
+    ports.catalog.getPublication = getJob;
+  } });
+  const user = userEvent.setup();
+  await user.click(screen.getByRole("button", { name: "解析并预览" }));
+  await user.click(await screen.findByRole("button", { name: "发布到目录" }));
+  await confirm("确认发布");
+  const status = await screen.findByRole("status", { name: "发布任务状态" });
+  expect(status).toHaveTextContent("第 4 次尝试：目录激活超时，正在等待发布管理器自动重试");
+  expect(screen.getByRole("button", { name: "发布到目录" })).toBeDisabled();
+  await screen.findByText(/暂时无法读取发布状态/, {}, { timeout: 3000 });
+  await waitFor(() => expect(status).toHaveTextContent("已尝试 5 次，自动重试已结束"), { timeout: 3000 });
+  expect(status).toHaveFocus();
+  expect(screen.queryByText(/暂时无法读取发布状态/)).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "刷新处理状态" })).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "重新预览" })).toBeEnabled();
+  expect(screen.getByLabelText("Markdown 文档")).toHaveValue(document);
+  expect(getJob.mock.calls.map(([id]) => id)).toEqual(Array(3).fill(catalogPublicationJob.id));
+  expect(publish).toHaveBeenCalledTimes(1);
+  expect(completed).not.toHaveBeenCalled();
+});
+
 it("explains an unreadable artifact and previews a fresh candidate from the unchanged Markdown", async () => {
   const document = "# Driver `sc8562`";
   const response = (id: string) => ({ item: {

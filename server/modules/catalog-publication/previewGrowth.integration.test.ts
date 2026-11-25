@@ -7,13 +7,13 @@ import { CatalogArtifactId, CatalogReleaseDigest, CatalogReleaseId } from "../pa
 import { jsonCatalogReleaseSource } from "../catalog-kernel/interface";
 import { installPublishedRelease } from "../catalog-kernel/install/installer";
 import { encodeBundleBytes, refreshSuccessorSource } from "./builder/bundleCodec";
-import { firstAcmePredecessor } from "./builder/predecessorHarness";
+import { firstAcmePredecessor, pageIntegerChange } from "./builder/predecessorHarness";
 import { withPublicationCoordinator } from "./coordinator";
 import { persistArtifact } from "./persistence/store";
 import { previewPublicationCandidate } from "./preview";
 import { dropLabRuntimeLogins, provisionPublicationRuntimeLogins } from "./runtime/provisionRuntimeLogins";
 
-it("bounds warm identity preview IO as release history grows at fixed Catalog size", async () => {
+it("bounds warm identity and Markdown definition preview IO as release history grows at fixed Catalog size", async () => {
   await withTempDatabase({ prefix: "previewgrowth", migrate: false }, async ({ db, connectionString }) => {
     await applyMigrations(db, migrationsDir, { before: "0368" });
     const token = randomBytes(8).toString("hex");
@@ -101,6 +101,12 @@ it("bounds warm identity preview IO as release history grows at fixed Catalog si
           }
         }
         samples.sort((a, b) => a - b);
+        const markdown = await previewPublicationCandidate({
+          db: observe(api), predecessorDigest: target.digest, authorPrincipalId: "growth-admin", authorOrganizationId: "growth",
+          changeSet: [pageIntegerChange("added_limit", "Added limit")],
+          markdownSource: { fileName: "growth.md", sha256: `sha256:${"0".repeat(64)}`, parserVersion: "markdown-import/v2" },
+        });
+        expect(markdown.ok, JSON.stringify(markdown.ok ? null : markdown.error)).toBe(true);
         console.info({ depth, cold, p50: samples[4], p95: samples[9], historyReads, maxArtifactBytes: Math.max(...writes) });
         expect.soft(historyReads).toBe(0);
         artifactSizes.push(...writes);

@@ -1,3 +1,4 @@
+import { timeCatalogStage } from "../../../observability/catalogPublicationStages";
 import { catalogApiFailureReasonSchema, catalogDefinitionReplacementSummarySchema, catalogDefinitionSuccessorChangeSummarySchema, catalogOwnerDeclarationSchema } from "../../contracts/dtoSchemas/parameterCatalog";
 import { isSubjectIdentityOp, subjectIdentityImpactSchema } from "../../contracts/dtoSchemas/catalogSubjectIdentity";
 import { planClaimedOwners } from "../../catalog-publication/claimedOwners";
@@ -16,10 +17,11 @@ import { CATALOG_CAPABILITY_CONTRACT_REVISION } from "../../catalog-publication/
 import { withPublicationCoordinator } from "../../catalog-publication/coordinator";
 import { enqueuePublicationJob } from "../../catalog-publication/enqueue";
 import { impactFactsFromAllocation } from "../../catalog-publication/jobs/execute";
-import { parsePublicationChangeSet, previewPublicationCandidate } from "../../catalog-publication/preview";
+import { parsePublicationChangeSet, prepareMarkdownPlanningSnapshot, previewPublicationCandidate } from "../../catalog-publication/preview";
+import type { CatalogReleaseNode } from "../../catalog-kernel/compiler/types";
 import { targetReleaseOf } from "../../catalog-publication/builder/bundleCodec";
 import {
-  preparePredecessorArtifact,
+  readPreparedPredecessor,
   preparedPredecessorBundle,
   type PreparedPredecessorArtifact,
 } from "../../catalog-publication/builder/preparedPredecessor";
@@ -29,13 +31,12 @@ import { dtsExampleMessages } from "../../../../src/domain/parameter-catalog/dts
 import { modulePath, readPlacementHintEvidence } from "../../parameter-governance/registration/readRepository";
 import {
   getCandidate,
-  getArtifactByDigest,
   getJob,
   getReceiptByJobId,
   listJobs,
 } from "../../catalog-publication/persistence/store";
 import { collectPublicationPolicyControlFacts } from "../../catalog-publication/authorization/instanceSnapshot";
-import { artifactDecodeFailure, artifactReadFailure } from "../../catalog-publication/persistence/artifactReadFailure";
+import { artifactReadFailure } from "../../catalog-publication/persistence/artifactReadFailure";
 import type { PublicationCandidateRecord, PublicationJobRecord } from "../../catalog-publication/persistence/types";
 import { readCurrentCatalogPointer } from "../../catalog-kernel/install/currentPointer";
 import type { Database } from "../../../shared/database/client";
@@ -309,22 +310,32 @@ export function bindCatalogPublicationCommands(input: {
       let plan: ReturnType<typeof planMarkdownImport> | undefined;
       let placementHints: PlacementHintWithWarnings[] = [];
       let predecessorArtifact: PreparedPredecessorArtifact | undefined;
-      if (command.markdownImport || command.claimedOwners) {
-        const artifact = await getArtifactByDigest(db, pointer.current.digest);
-        if (!artifact.ok) return { ok: false, error: { kind: "reason", reason: artifactReadFailure(artifact.error).kind } };
-        const prepared = preparePredecessorArtifact({ digest: pointer.current.digest, bytes: artifact.value.artifactBytes });
-        if (!prepared.ok) return { ok: false, error: { kind: "reason", reason: artifactDecodeFailure(prepared.detail) } };
-        predecessorArtifact = prepared.artifact;
+      let planningTarget: CatalogReleaseNode | null = null;
+      let previewCandidate = previewPublicationCandidate;
+      if (command.markdownImport && !command.claimedOwners) {
+        const prepared = await prepareMarkdownPlanningSnapshot(db, pointer.current.digest);
+        if (!prepared.ok) return { ok: false, error: mapPreviewError(prepared.error.kind) };
+        if (prepared.value) {
+          planningTarget = prepared.value.target;
+          previewCandidate = prepared.value.previewCandidate;
+        }
+      }
+      if (!planningTarget && (command.markdownImport || command.claimedOwners)) {
+        const prepared = await readPreparedPredecessor(db, pointer.current.digest);
+        if (!prepared.ok) return { ok: false, error: { kind: "reason", reason: artifactReadFailure(prepared.error).kind } };
+        predecessorArtifact = prepared.value;
+        const bundle = preparedPredecessorBundle(predecessorArtifact);
+        planningTarget = bundle ? targetReleaseOf(bundle) ?? null : null;
       }
       if (command.markdownImport) {
-        const bundle = predecessorArtifact && preparedPredecessorBundle(predecessorArtifact);
-        const snapshot = bundle ? targetReleaseOf(bundle) : null;
+        const snapshot = planningTarget;
         if (!snapshot) return { ok: false, error: { kind: "reason", reason: "predecessor-incomplete" } };
-        plan = planMarkdownImport(command.markdownImport.document, command.markdownImport.fileName, snapshot,
-          command.markdownImport.additionalDocuments, {
-            rules: pool ? await readImportCompatibleRules(pool, command.organizationId) : new Map(),
-            selections: command.markdownImport.organizationSubjectSelections,
-          });
+        const markdown = command.markdownImport;
+        const rules = pool ? await timeCatalogStage("import-rules-read", () => readImportCompatibleRules(pool, command.organizationId)) : new Map();
+        plan = await timeCatalogStage("markdown-plan", () => planMarkdownImport(
+          markdown.document, markdown.fileName, snapshot, markdown.additionalDocuments,
+          { rules, selections: markdown.organizationSubjectSelections },
+        ));
         placementHints = plan.placementHints;
         const semanticIds = plan.entries.flatMap((entry) => {
           if (entry.outcome !== "revise" || entry.revisionClass !== "semantic" || !entry.definitionId) return [];
@@ -357,10 +368,8 @@ export function bindCatalogPublicationCommands(input: {
       }
       let claimedChanges;
       if (command.claimedOwners) {
-        const bundle = predecessorArtifact && preparedPredecessorBundle(predecessorArtifact);
-        const predecessor = bundle ? targetReleaseOf(bundle) : null;
-        if (!predecessor) return { ok: false, error: { kind: "reason", reason: "predecessor-incomplete" } };
-        const planned = await planClaimedOwners(db, predecessor);
+        if (!planningTarget) return { ok: false, error: { kind: "reason", reason: "predecessor-incomplete" } };
+        const planned = await planClaimedOwners(db, planningTarget);
         if (!planned.ok) return { ok: false, error: { kind: "reason", reason: "candidate-stale" } };
         if (!planned.changes.length) return { ok: true, value: { candidate: null, noChange: true } };
         claimedChanges = planned.changes;
@@ -371,7 +380,7 @@ export function bindCatalogPublicationCommands(input: {
         (!isPlatformSubjectReviewer(command) || !command.permissions.includes("catalog:author"))) {
         return { ok: false, error: { kind: "forbidden", reason: "publication-capability-missing" } };
       }
-      const previewed = await previewPublicationCandidate({
+      const previewed = await previewCandidate({
         db,
         predecessorDigest: pointer.current.digest,
         predecessorArtifact,

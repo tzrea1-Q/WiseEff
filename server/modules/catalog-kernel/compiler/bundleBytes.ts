@@ -6,12 +6,15 @@ import { jsonParser, type TokenSource } from "stream-json/core/parser.js";
 import type { CatalogReleaseBundle } from "./types";
 
 const chunkSize = 256 * 1024;
+// A compact artifact can be tens of MiB. Decode it in one bounded native
+// parse. Large historical packages still use incremental UTF-8/token decoding.
+const nativeParseByteLimit = 32 * 1024 * 1024;
 
 export type BundleReadErrorDetail = "catalog-release-bundle-unreadable" | "catalog-release-bundle-scalar-too-large";
 
 function parseJson(bytes: Uint8Array): unknown {
   const decoder = new TextDecoder("utf-8", { fatal: true });
-  if (bytes.byteLength <= chunkSize) return JSON.parse(decoder.decode(bytes));
+  if (bytes.byteLength <= nativeParseByteLimit) return JSON.parse(decoder.decode(bytes));
 
   const assembler = new Assembler();
   // The tokenizer's flush protocol accepts `none` at EOF in addition to text.

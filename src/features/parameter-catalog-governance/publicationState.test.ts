@@ -298,6 +298,8 @@ describe("publication operator state", () => {
       tone: "success",
       message: publicationCopy.activeSuperseded
     });
+    expect(publicationJobIsPending({ ...superseded, status: "failed-retryable" })).toBe(false);
+    expect(publicationJobIsPending("failed-retryable")).toBe(true);
     expect(publicationJobIsPending("queued")).toBe(true);
     expect(publicationJobIsPending("active")).toBe(false);
   });

@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
-import { artifactDecodeFailure, artifactReadFailure, type ArtifactReadFailure } from "./persistence/artifactReadFailure";
+import { timeCatalogStage } from "../../observability/catalogPublicationStages";
+import { artifactReadFailure, type ArtifactReadFailure } from "./persistence/artifactReadFailure";
 import {
   CatalogArtifactId,
   CatalogCandidateId,
@@ -18,18 +19,20 @@ import type { OwnerDeclaration } from "./claimedOwners";
 import type { ImpactFacts, PublicationRiskClass } from "./authorization/types";
 import {
   buildCompleteSuccessor,
-  buildIdentitySuccessorFromSnapshot,
+  buildSuccessorFromSnapshot,
   impactSummaryFromReport,
   persistSuccessorBuild,
 } from "./builder/completeSuccessor";
 import { targetReleaseOf } from "./builder/bundleCodec";
-import { canAppendIdentitySnapshot, identitySnapshotOf, withPreviewBaseline } from "./builder/identitySnapshot";
+import { appendPreviewSnapshot, canAppendPreviewSnapshot, identitySnapshotOf, onlyDefinitionEdits, withPreviewBaseline } from "./builder/identitySnapshot";
 import {
-  preparePredecessorArtifact,
+  readPreparedPredecessor,
   preparedPredecessorBundle,
   type PreparedPredecessorArtifact,
 } from "./builder/preparedPredecessor";
 import type { CatalogReleaseNode } from "../catalog-kernel/compiler/types";
+import { freezeCatalogJson } from "../catalog-kernel/compiler/index";
+import { CATALOG_BASELINE_READER_ROLE } from "../catalog-kernel/security/catalogRoleManifest";
 import type {
   BuildCompleteSuccessorInput,
   CatalogChange,
@@ -43,7 +46,7 @@ import type {
 import { CATALOG_CAPABILITY_CONTRACT_REVISION } from "./builder/types";
 import { persistCandidate as storePersistCandidate } from "./persistence/store";
 import { persistArtifact as storePersistArtifact } from "./persistence/store";
-import { getArtifactByDigest, getValidatedPreviewSnapshot, putValidatedPreviewSnapshot } from "./persistence/store";
+import { getValidatedPreviewSnapshot, putValidatedPreviewSnapshot } from "./persistence/store";
 import type { JsonObject, PreviewSnapshot, PublicationCandidateRecord } from "./persistence/types";
 
 export const PUBLICATION_REQUEST_SCOPE = "instance:catalog-publication";
@@ -424,32 +427,51 @@ type PreviewInput = {
 
 export const previewPublicationCandidate = (input: PreviewInput) => preview(input, true);
 
-async function preview(input: PreviewInput, useSnapshot: boolean):
+const previewSnapshotAccess = async (db: Database) => (await db.query<{ available: boolean; can_read: boolean }>(
+  `select exists (select from pg_catalog.pg_attribute where attrelid=to_regclass('catalog_publication.preview_snapshots')
+    and attname='has_dts_examples' and not attisdropped) as available,
+    pg_catalog.pg_has_role(session_user, to_regrole($1), 'SET') as can_read`,
+  [CATALOG_BASELINE_READER_ROLE],
+)).rows[0];
+
+const loadPreviewSnapshot = (db: Database, digest: string) =>
+  withPreviewBaseline(db, tx => getValidatedPreviewSnapshot(tx, digest));
+
+/** The planner and builder share the exact snapshot verified against this artifact. */
+export async function prepareMarkdownPlanningSnapshot(db: Database, predecessorDigest: string) {
+  const access = await previewSnapshotAccess(db);
+  if (!access?.available || !access.can_read) return { ok: true as const, value: null };
+  const found = await loadPreviewSnapshot(db, predecessorDigest);
+  if (!found.ok) return found.error.kind === "not-found" ? { ok: true as const, value: null }
+    : { ok: false as const, error: artifactReadFailure(found.error) };
+  const snapshot = freezeCatalogJson(found.value);
+  return { ok: true as const, value: {
+    target: snapshot.target,
+    previewCandidate: (input: PreviewInput) => preview({ ...input, db, predecessorDigest }, true, snapshot),
+  } };
+}
+
+async function preview(input: PreviewInput, useSnapshot: boolean, planningSnapshot?: PreviewSnapshot,
+  fallbackIdentity?: FrozenPublicationIdentity):
   Promise<{ ok: true; value: PreviewPublicationValue } | { ok: false; error: PreviewPublicationError }> {
   const [first] = input.changeSet;
-  const checkSnapshotSchema = async () => (await input.db.query<{ available: boolean }>(
-    `select exists (select from pg_catalog.pg_attribute where attrelid=to_regclass('catalog_publication.preview_snapshots')
-      and attname='has_dts_examples' and not attisdropped) as available`,
-  )).rows[0]?.available;
   const spelling = input.changeSet.length === 1 && (first?.op === "rename-subject" || first?.op === "set-subject-alias") ? first : undefined;
+  const compactEligible = Boolean(spelling || (input.markdownSource && onlyDefinitionEdits(input.changeSet)));
   // Only compact writers need the storage format before building. Other edits
   // can reject invalid changes before checking whether to save a preview snapshot.
-  let snapshotsAvailable = spelling || input.markdownSource ? await checkSnapshotSchema() : undefined;
-  let snapshot: PreviewSnapshot | undefined;
-  if (snapshotsAvailable && useSnapshot && spelling && !input.predecessorArtifact) {
-    const found = await withPreviewBaseline(input.db, tx => getValidatedPreviewSnapshot(tx, input.predecessorDigest));
+  const access = !planningSnapshot && (spelling || input.markdownSource) ? await previewSnapshotAccess(input.db) : undefined;
+  let snapshotsAvailable = planningSnapshot ? true : access?.available;
+  let snapshot = useSnapshot && compactEligible ? planningSnapshot : undefined;
+  if (snapshotsAvailable && access?.can_read && useSnapshot && compactEligible && !snapshot && !input.predecessorArtifact) {
+    const found = await loadPreviewSnapshot(input.db, input.predecessorDigest);
     if (found.ok) snapshot = found.value;
     else if (found.error.kind !== "not-found") return { ok: false, error: { kind: "predecessor-incomplete", detail: found.error.kind } };
   }
   let predecessorArtifact = input.predecessorArtifact;
   if (!snapshot && !predecessorArtifact) {
-    const artifact = await getArtifactByDigest(input.db, input.predecessorDigest);
-    if (!artifact.ok) return { ok: false, error: artifactReadFailure(artifact.error) };
-    const prepared = preparePredecessorArtifact({
-      digest: input.predecessorDigest, bytes: artifact.value.artifactBytes,
-    });
-    if (!prepared.ok) return { ok: false, error: { kind: artifactDecodeFailure(prepared.detail) } };
-    predecessorArtifact = prepared.artifact;
+    const prepared = await readPreparedPredecessor(input.db, input.predecessorDigest);
+    if (!prepared.ok) return { ok: false, error: artifactReadFailure(prepared.error) };
+    predecessorArtifact = prepared.value;
   }
   const bundle = predecessorArtifact && preparedPredecessorBundle(predecessorArtifact);
   if (!snapshot && (!bundle || predecessorArtifact?.digest !== input.predecessorDigest)) {
@@ -460,7 +482,7 @@ async function preview(input: PreviewInput, useSnapshot: boolean):
     return { ok: false, error: { kind: "predecessor-incomplete", detail: "predecessor-target-missing" } };
   }
   const toolchain = predecessorTarget.manifest.toolchain;
-  const frozen = mintFrozenIdentity(
+  const frozen = fallbackIdentity ?? mintFrozenIdentity(
     predecessorTarget.manifest.release.version,
     {
       compiler: toolchain.compiler,
@@ -489,10 +511,11 @@ async function preview(input: PreviewInput, useSnapshot: boolean):
     proposal,
     productPath,
   };
-  const built = snapshot ? await buildIdentitySuccessorFromSnapshot(buildInput, snapshot) : await buildCompleteSuccessor(buildInput);
+  const built = await timeCatalogStage("candidate-build", () =>
+    snapshot ? buildSuccessorFromSnapshot(buildInput, snapshot) : buildCompleteSuccessor(buildInput));
   // Reviewed historical retirements may rely on an earlier successor state.
   // Resolve ambiguous diagnostics against the original complete lineage.
-  if (snapshot && !built.ok && built.error.kind === "invalid-release") return preview(input, false);
+  if (snapshot && !built.ok && built.error.kind === "invalid-release") return preview(input, false, undefined, frozen);
 
   if (!built.ok) {
     if (built.error.kind === "artifact-missing") {
@@ -542,8 +565,8 @@ async function preview(input: PreviewInput, useSnapshot: boolean):
   if (built.value.kind !== "successor") {
     return { ok: false, error: { kind: "invalid-input", reason: "noop-revise" } };
   }
-  if (snapshot && spelling && !await canAppendIdentitySnapshot(input.db, snapshot, spelling, frozen, built.value.artifact.artifactDigest)) {
-    return preview(input, false);
+  if (snapshot && !await canAppendPreviewSnapshot(input.db, snapshot, spelling, frozen, built.value.artifact.artifactDigest)) {
+    return preview(input, false, undefined, frozen);
   }
 
   const facts = { ...publicationImpactFacts(input.authorPrincipalId, input.changeSet, built.value.impact),
@@ -596,13 +619,14 @@ async function preview(input: PreviewInput, useSnapshot: boolean):
       reason: successorChange.reason ?? null,
     } } : {}),
     ...(replacementChange ? { definitionReplacement: replacementChange } : {}) };
-  snapshotsAvailable ??= await checkSnapshotSchema();
-  const baseSnapshot = snapshotsAvailable && spelling && bundle ? identitySnapshotOf(bundle, predecessorTarget) : undefined;
+  snapshotsAvailable ??= (await previewSnapshotAccess(input.db))?.available;
+  const baseSnapshot = snapshotsAvailable && compactEligible && bundle ? identitySnapshotOf(bundle, predecessorTarget) : undefined;
   const artifact = built.value.artifact;
-  const verifiedIdentityBase = snapshot ?? baseSnapshot;
-  const successorSnapshot = snapshotsAvailable && target && (verifiedIdentityBase ?
-    { ...verifiedIdentityBase, target } : identitySnapshotOf(artifact.bundle, target));
-  const persisted = await persistSuccessorBuild(
+  const verifiedBase = snapshot ?? baseSnapshot;
+  const successorSnapshot = snapshotsAvailable && target && (verifiedBase ?
+    appendPreviewSnapshot(verifiedBase, target) : identitySnapshotOf(artifact.bundle, target));
+  const candidate = built.value.candidate;
+  const persisted = await timeCatalogStage("candidate-persist", () => persistSuccessorBuild(
     {
       db: input.db,
       ports: {
@@ -634,9 +658,9 @@ async function preview(input: PreviewInput, useSnapshot: boolean):
           }),
       },
     },
-    input.markdownSource ? { ...built.value.artifact, sourceKind: "markdown-import", toolchain: { ...built.value.artifact.toolchain, markdownImport: input.markdownSource } } : built.value.artifact,
-    built.value.candidate,
-  );
+    input.markdownSource ? { ...artifact, sourceKind: "markdown-import", toolchain: { ...artifact.toolchain, markdownImport: input.markdownSource } } : artifact,
+    candidate,
+  ));
   if ("ok" in persisted) {
     return { ok: false, error: { kind: "persist-failed", detail: persisted.error.kind } };
   }
