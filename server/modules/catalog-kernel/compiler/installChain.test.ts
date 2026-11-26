@@ -82,6 +82,7 @@ describe("versioned installation chain", () => {
       expect(new Set(warm.newRevisionIds)).toEqual(new Set([added.content.revision.id, revised.content.revision.id]));
       expect(endpoints.releases.map(node => node.release.id)).toEqual([base.manifest.release.id, next.manifest.release.id]);
       expect("bytes" in warm.compiled).toBe(false);
+      expect("schemaVersion" in endpoints).toBe(false);
       expect(JSON.parse(bytes)).toEqual(model);
       expect(model.releases).toHaveLength(sequence);
       expect(cold.compiledReleaseDigest).toBe(hashContractJson(cold.modelReceipt as unknown as ContractJsonValue));

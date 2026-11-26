@@ -300,7 +300,7 @@ export function compileCatalogDefinitionAppend(
     modelReceipt,
     versionedSubjectIds: state.versionedSubjectIds,
     model: {
-      schemaVersion: "1.0.0", compilerContractFingerprint: modelReceipt.compilerContractFingerprint,
+      compilerContractFingerprint: modelReceipt.compilerContractFingerprint,
       targetReleaseId: after.id, toolchainDigest: modelReceipt.toolchainDigest,
       releases: [normalizeRelease(base), target],
     },

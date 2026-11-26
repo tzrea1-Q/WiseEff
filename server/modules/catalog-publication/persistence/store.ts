@@ -383,12 +383,15 @@ async function readStoredArtifacts(
     scope ? [scope.digest] : [],
   );
   const records = new Map<string, ReleaseArtifactRecord>();
-  for (let start = 0; start < rows.length;) {
-    const first = rows[start]!;
-    let end = start + 1;
-    while (rows[end]?.id === first.id) end += 1;
-    records.set(first.artifact_digest, toArtifact(first, assembleArtifactBytes(rows.slice(start, end))));
-    start = end;
+  // Consume rows in query order, releasing the driver's chunks after each
+  // artifact is assembled. Keeping every chunk until the end doubles the
+  // live physical history when a cold reader fetches many successors.
+  rows.reverse();
+  while (rows.length) {
+    const first = rows.pop()!;
+    const chunks = [first];
+    while (rows.at(-1)?.id === first.id) chunks.push(rows.pop()!);
+    records.set(first.artifact_digest, toArtifact(first, assembleArtifactBytes(chunks)));
   }
   return records;
 }

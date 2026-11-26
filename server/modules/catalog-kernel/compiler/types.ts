@@ -200,7 +200,7 @@ export interface CatalogModelReceipt {
 
 /** The installer needs both endpoints. This projection cannot be exported as a full model. */
 export interface CompiledCatalogAppend extends Omit<CompiledCatalogRelease, "model" | "modelReceipt" | "bytes"> {
-  readonly model: Omit<CompiledCatalogReleaseModel, "releases"> & {
+  readonly model: Omit<CompiledCatalogReleaseModel, "schemaVersion" | "releases"> & {
     readonly releases: readonly [CompiledCatalogReleaseModel["releases"][number], CompiledCatalogReleaseModel["releases"][number]];
   };
   readonly modelReceipt: CatalogModelReceipt;

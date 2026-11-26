@@ -763,8 +763,8 @@ export const activateOnlinePublication = async (
   refuseRetiredOwnerDefinitionChanges(compiled);
   const target = compiled.model.releases.find(release => release.release.id === compiled.release.id);
   const base = compiled.model.releases.find(release => release.release.id === expectedCurrent.id);
-  const installChain = !!target && isInstallChainToolchain(target.toolchain);
-  if ((base && isInstallChainToolchain(base.toolchain) && !installChain) || installChain !==
+  const installChain = isInstallChainToolchain(target?.toolchain);
+  if ((isInstallChainToolchain(base?.toolchain) && !installChain) || installChain !==
       (candidate.capabilityContract.revision === CATALOG_INSTALL_CHAIN_CAPABILITY_REVISION)) {
     throw new PublicationActivationFailure({ kind: "publication-not-authorized", reason: "candidate-tampered",
       detail: "candidate compiler is incompatible with its base or capability revision" });

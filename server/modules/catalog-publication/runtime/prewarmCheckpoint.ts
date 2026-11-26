@@ -40,26 +40,42 @@ async function loadCurrent(client: pg.PoolClient) {
   return { status: "loaded", epoch, lineage: lineage.value } as const;
 }
 
-async function prepareCurrent(input: Extract<Awaited<ReturnType<typeof loadCurrent>>, { status: "loaded" }>) {
-  const decoded = await timeCatalogStage("lineage-verify-decode", () => decodeStoredArtifact(input.lineage));
+// This frame owns the physical history. Its caller can compile the decoded
+// bundle without retaining the database buffers, including a legacy full base.
+async function readCurrentBundle(client: pg.PoolClient) {
+  await client.query("begin isolation level repeatable read read only");
+  await setSynchronizerRole(client);
+  const current = await loadCurrent(client);
+  await client.query("commit");
+  if (current.status !== "loaded") return current;
+  const decoded = await timeCatalogStage("lineage-verify-decode", () => decodeStoredArtifact(current.lineage));
   if (!decoded.ok) throw new Error("prewarm-artifact-integrity-failed");
-  const bundle = decoded.value;
+  const { artifactDigest, targetReleaseId, targetReleaseDigest, bytesChecksum, storageFormat } = current.lineage.target;
+  return { status: "decoded", epoch: current.epoch, bundle: decoded.value,
+    artifactDigest, targetReleaseId, targetReleaseDigest, bytesChecksum, storageFormat } as const;
+}
+
+// Only the target, proof and pins survive into the write transaction.
+async function prepareCurrent(client: pg.PoolClient) {
+  const input = await readCurrentBundle(client);
+  if (input.status !== "decoded") return input;
+  const { bundle } = input;
   const result = await timeCatalogStage("compile", () => compileCatalogRelease(bundle));
   const target = targetReleaseOf(bundle);
-  const artifact = input.lineage.target;
-  if (!result.ok || !target || result.value.aggregateDigest !== artifact.artifactDigest ||
-      result.value.release.id !== artifact.targetReleaseId || result.value.release.digest !== artifact.targetReleaseDigest) {
+  if (!result.ok || !target || result.value.aggregateDigest !== input.artifactDigest ||
+      result.value.release.id !== input.targetReleaseId || result.value.release.digest !== input.targetReleaseDigest) {
     throw new Error("prewarm-compiler-pins-mismatch");
   }
   const compiled = result.value;
   if (!admitCompiledReleaseSchemas(compiled).ok) throw new Error("prewarm-unsupported-capability");
   return {
+    status: "prepared" as const,
     checkpoint: {
       epoch: input.epoch, target, version: ACTIVATION_CHECKPOINT_VERSION, proof: buildCatalogInstallProof(compiled),
-      artifactChecksum: artifact.bytesChecksum, compiledReleaseDigest: compiled.compiledReleaseDigest,
+      artifactChecksum: input.bytesChecksum, compiledReleaseDigest: compiled.compiledReleaseDigest,
       toolchainDigest: compiled.toolchainDigest, materializationFingerprint: compiled.materializationFingerprint,
     },
-    preview: identitySnapshotOf(bundle, target), storageFormat: artifact.storageFormat,
+    preview: identitySnapshotOf(bundle, target), storageFormat: input.storageFormat,
   };
 }
 
@@ -70,12 +86,9 @@ export async function prewarmCatalogCheckpoint(pool: pg.Pool) {
   try {
     locked = (await client.query<{ acquired: boolean }>(`select pg_try_advisory_lock(${lockKey}) as acquired`)).rows[0]?.acquired === true;
     if (!locked) return { status: "prewarm-in-progress" } as const;
-    await client.query("begin isolation level repeatable read read only");
-    await setSynchronizerRole(client);
-    const current = await loadCurrent(client);
-    await client.query("commit");
-    if (current.status !== "loaded") return current;
-    const { checkpoint, preview, storageFormat } = await prepareCurrent(current);
+    const current = await prepareCurrent(client);
+    if (current.status !== "prepared") return current;
+    const { checkpoint, preview, storageFormat } = current;
     await client.query("begin");
     await setSynchronizerRole(client);
     await acquireCurrentPointerLockExclusive(client);

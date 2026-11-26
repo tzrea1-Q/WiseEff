@@ -12,7 +12,7 @@ import { Socket } from "node:net";
 import { parseArgs } from "node:util";
 import pg from "pg";
 
-import { createPostgresDatabase, getRootPostgresPool } from "../server/shared/database/client";
+import { createPostgresDatabase, getRootPostgresPool, type Database } from "../server/shared/database/client";
 import { withTempDatabase } from "../server/testing/tempDatabase";
 import { makeTestAuthContext } from "../server/testing/authContext";
 import { createUserInvocation } from "../server/modules/auth/trustedInvocation";
@@ -150,6 +150,22 @@ async function measure<T>(depth: number, currentDefinitions: number, stage: stri
   return result;
 }
 
+// The synthetic import graph and encoded seed can be reclaimed before any measured publication.
+async function installSyntheticSeed(api: Database, installerPool: pg.Pool) {
+  const bundle = syntheticBundle();
+  const base = bundle.releases[0]!.manifest;
+  const digest = CatalogReleaseDigest(base.release.digest);
+  const installed = await installPublishedRelease(installerPool, { mode: "bootstrap", source: jsonCatalogReleaseSource(bundle), expectedTargetDigest: digest });
+  if (!installed.ok) throw new Error(JSON.stringify(installed.error));
+  const artifactBytes = encodeBundleBytes(bundle);
+  const stored = await withPublicationCoordinator(api, tx => persistArtifact(tx, {
+    id: CatalogArtifactId("cart_bench_bootstrap"), artifactDigest: digest, artifactBytes, targetReleaseId: CatalogReleaseId(base.release.id),
+    targetReleaseDigest: digest, predecessorReleaseId: null, predecessorReleaseDigest: null, sourceKind: "repository-bundle", toolchain: base.toolchain,
+  }));
+  if (!stored.ok) throw new Error(JSON.stringify(stored.error));
+  return { id: base.release.id, baseArtifactBytes: artifactBytes.byteLength };
+}
+
 async function main() {
   assert(process.env.TEST_DATABASE_URL?.trim(), "Set TEST_DATABASE_URL to a disposable test cluster with pgvector");
   await withTempDatabase({ prefix: "mdpubbench", migrate: true }, async ({ db, connectionString }) => {
@@ -174,19 +190,9 @@ async function main() {
           isolatedInstanceConfirmation: EPHEMERAL_POLICY_REVISION_CONFIRMATION });
         assert(policy.ok, JSON.stringify(policy));
       });
-      const bundle = syntheticBundle();
-      const base = bundle.releases[0]!.manifest;
-      const digest = CatalogReleaseDigest(base.release.digest);
-      const installed = await installPublishedRelease(installerPool, { mode: "bootstrap", source: jsonCatalogReleaseSource(bundle), expectedTargetDigest: digest });
-      if (!installed.ok) throw new Error(JSON.stringify(installed.error));
-      const artifactBytes = encodeBundleBytes(bundle);
-      const stored = await withPublicationCoordinator(api, tx => persistArtifact(tx, {
-        id: CatalogArtifactId("cart_bench_bootstrap"), artifactDigest: digest, artifactBytes, targetReleaseId: CatalogReleaseId(base.release.id),
-        targetReleaseDigest: digest, predecessorReleaseId: null, predecessorReleaseDigest: null, sourceKind: "repository-bundle", toolchain: base.toolchain,
-      }));
-      if (!stored.ok) throw new Error(JSON.stringify(stored.error));
+      const seed = await installSyntheticSeed(api, installerPool);
       console.log(JSON.stringify({ stage: "setup", definitions, subjects: subjectCount, aliases: 2, rounds, legacy, documentationBytes,
-        activationTimeoutMs, baseArtifactBytes: artifactBytes.byteLength, node: process.version }));
+        activationTimeoutMs, baseArtifactBytes: seed.baseArtifactBytes, node: process.version }));
       async function measurePrewarm(depth: number, headCount: number) {
         const { prewarmCatalogCheckpoint } = await import("../server/modules/catalog-publication/runtime/prewarmCheckpoint");
         const warmed = await measure(depth, headCount, "prewarm", managerWire, () => prewarmCatalogCheckpoint(managerPool));
@@ -195,7 +201,7 @@ async function main() {
         assert.equal(repeated.status, "already-warm");
       }
       if (options.prewarm) await measurePrewarm(0, definitions);
-      let current = base.release.id;
+      let current = seed.id;
       let currentDefinitions = definitions;
       let lastRevisionMarkdown = "";
       for (let depth = 1; depth <= rounds; depth++) {

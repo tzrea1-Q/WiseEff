@@ -80,7 +80,7 @@ it.each(["epoch change", "corrupt concurrent preview"])("coalesces prewarms and 
       )).rowCount).toBe(1), { interval: 20, timeout: 10_000 });
       expect(await prewarmCatalogCheckpoint(manager)).toEqual({ status: "prewarm-in-progress" });
       if (race === "epoch change") {
-        await owner.query("update catalog_publication.checkpoint_epoch set generation=pg_current_xact_id() where singleton");
+        await owner.query("update catalog_publication.checkpoint_epoch set generation=generation+1 where singleton");
       } else {
         const saved = await putValidatedPreviewSnapshot(asQueryable(owner), base.digest, identitySnapshotOf(base.bundle, base.first));
         expect(saved.ok).toBe(true);

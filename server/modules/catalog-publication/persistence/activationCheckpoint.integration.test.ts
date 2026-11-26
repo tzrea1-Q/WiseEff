@@ -99,7 +99,7 @@ describe("durable activation proof", () => {
     const base = await installBase();
     const { client, url } = database;
     const predecessorDigest = base.target.manifest.release.digest;
-    const next = await buildAuthorizedJob(client, { predecessorDigest, propertyKey: "marked", compactInstallChain: true });
+    const next = await buildAuthorizedJob(client, { predecessorDigest, propertyKey: "marked", compilerFormat: "install-chain" });
     const old = await buildAuthorizedJob(client, { predecessorDigest, propertyKey: "legacy", enablePolicy: false });
     await withProductionLogin(client, url, "producer", async login => {
       await login.query("set role catalog_publication_coordinator_role");
@@ -140,7 +140,7 @@ describe("durable activation proof", () => {
     const db = asQueryable(client);
     const digest = base.target.manifest.release.digest;
     expect(await putActivationCheckpoint(db, base)).toBe(true);
-    const next = await buildAuthorizedJob(client, { predecessorDigest: digest, propertyKey: "checkpoint", compactInstallChain: true });
+    const next = await buildAuthorizedJob(client, { predecessorDigest: digest, propertyKey: "checkpoint", compilerFormat: "install-chain" });
     const installed = await installPublishedRelease(pool, next.command);
     expect(installed.ok).toBe(true);
     const targetDigest = next.candidate.artifactDigest;
@@ -172,7 +172,7 @@ describe("durable activation proof", () => {
 });
 
 it("upgrades an installed v1 base with an already authorized legacy job", async () => {
-  await withTempDatabase({ prefix: "catalog_proof_upgrade", migrate: false }, async ({ db, connectionString }) => {
+  await withTempDatabase({ prefix: "catproofupgrade", migrate: false }, async ({ db, connectionString }) => {
     await applyMigrations(db, migrationsDir, { through: "0375_log_report_procedure_checks.sql" });
     const pool = new pg.Pool({ connectionString });
     const client = new pg.Client({ connectionString });
