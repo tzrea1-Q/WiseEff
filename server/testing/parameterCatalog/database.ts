@@ -283,7 +283,9 @@ export const S2_SCH_0367_FINGERPRINT = "c0131d67b6d67d864437c7a66497aa02e3dc4507
 export const S2_SCH_0369_FINGERPRINT = "e0c64ede0ddcab825f166a3f86f65aea0382f5ee7b5918c64fd8241a316162e8";
 /** 0371 adds the set-based current suspension read. */
 export const S2_SCH_0371_FINGERPRINT = "9e41deec30c6b2891da1460f8149ca34545e0c0c6d6505d98c27f9918d03dd8a";
-export const S2_SCH_LIVE_FINGERPRINT = S2_SCH_0371_FINGERPRINT;
+/** 0376 invalidates activation checkpoints after catalog release or materialization rewrites. */
+export const S2_SCH_0376_FINGERPRINT = "41444c6a345143bc4b81fb502cec33a0420a25e2e9ab5ab7f53b9f64c5f276db";
+export const S2_SCH_LIVE_FINGERPRINT = S2_SCH_0376_FINGERPRINT;
 
 const CATALOG_DATABASE_PREFIX = "wiseeff_pcat_";
 const FAKE_ENGINE_PATTERN = /pglite|postgres-js|pg-mem|sqlite|:memory:|memory:\/\//i;
