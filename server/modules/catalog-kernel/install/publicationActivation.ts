@@ -4,12 +4,14 @@ import pg from "pg";
 import { timeCatalogStage } from "../../../observability/catalogPublicationStages";
 import { verifyAuthorizationForActivation } from "../../catalog-publication/authorization/authorize";
 import {
+  ACTIVATION_CHECKPOINT_VERSION,
   admitCompiledReleaseSchemas,
   CATALOG_CAPABILITY_ALLOW_LIST,
 } from "../../catalog-publication/builder/capabilities";
-import type { CapabilityAllowListIdentity } from "../../catalog-publication/builder/types";
+import { CATALOG_INSTALL_CHAIN_CAPABILITY_REVISION, type CapabilityAllowListIdentity } from "../../catalog-publication/builder/types";
 import {
   decodeStoredArtifact,
+  decodeStoredSuccessor,
   getArtifactByDigest,
   getCandidate,
   getJob,
@@ -18,6 +20,14 @@ import {
   readArtifactLineage,
   type StoredArtifactLineage,
 } from "../../catalog-publication/persistence/store";
+import {
+  CorruptActivationCheckpoint,
+  hasAvailableAppendIdentities,
+  lockCheckpointEpoch,
+  putActivationCheckpoint,
+  readActivationCheckpoint,
+  readCheckpointEpoch,
+} from "../../catalog-publication/persistence/activationCheckpoint";
 import type { CatalogActivationReceiptRecord, ReleaseArtifactRecord } from "../../catalog-publication/persistence/types";
 import { artifactReadFailure } from "../../catalog-publication/persistence/artifactReadFailure";
 import {
@@ -30,9 +40,17 @@ import {
   type CatalogReleasePin,
 } from "../../parameter-catalog-contract/index";
 import type { Queryable } from "../../../shared/database/client";
-import { compileCatalogRelease } from "../compiler/index";
+import {
+  buildCatalogInstallProof,
+  compileCatalogDefinitionAppend,
+  compileCatalogRelease,
+  isInstallChainToolchain,
+  isCatalogInstallProof,
+  type CatalogInstallationRelease,
+  type CatalogInstallProof,
+} from "../compiler/index";
 import { parseBundleBytes } from "../compiler/bundleBytes";
-import type { CompiledCatalogRelease } from "../compiler/types";
+import type { CatalogReleaseBundle, CatalogReleaseNode } from "../compiler/types";
 import type {
   AdoptedPreexistingEvidence,
   InstallPublishedReleaseCommand,
@@ -79,7 +97,7 @@ export type PublicationActivationTestOptions = PublicationActivationOptions &
 const SHA256_DIGEST = /^sha256:[0-9a-f]{64}$/;
 
 export const refuseUnsupportedConsumerCapability = (
-  compiled: CompiledCatalogRelease,
+  compiled: CatalogInstallationRelease,
   allowList: CapabilityAllowListIdentity = CATALOG_CAPABILITY_ALLOW_LIST,
 ): void => {
   const admitted = admitCompiledReleaseSchemas(compiled, allowList);
@@ -92,7 +110,7 @@ export const refuseUnsupportedConsumerCapability = (
   }
 };
 
-export const refuseRetiredOwnerDefinitionChanges = (compiled: CompiledCatalogRelease): void => {
+export const refuseRetiredOwnerDefinitionChanges = (compiled: CatalogInstallationRelease): void => {
   const base = compiled.model.releases.find((release) => release.release.id === compiled.predecessor?.id);
   const target = compiled.model.releases.find((release) => release.release.id === compiled.release.id);
   if (!base || !target) {
@@ -149,7 +167,7 @@ export const publicationRegimeActive = async (
 };
 
 const identityFromCompiled = (
-  compiled: CompiledCatalogRelease,
+  compiled: CatalogInstallationRelease,
 ): CatalogReleaseIdentity => ({
   id: compiled.release.id,
   version: compiled.release.version,
@@ -158,8 +176,17 @@ const identityFromCompiled = (
 
 type OnlinePublicationCommand = Extract<InstallPublishedReleaseCommand, { mode: "online-publication" }>;
 type ArtifactIdentity = Pick<ReleaseArtifactRecord, "id" | "artifactDigest" | "bytesChecksum" | "targetReleaseId" | "targetReleaseDigest">;
+type Checkpoint = NonNullable<Awaited<ReturnType<typeof readActivationCheckpoint>>>;
+type PreparedCheckpoint = {
+  readonly epoch: string;
+  readonly target: CatalogReleaseNode;
+  readonly proof: CatalogInstallProof;
+  /** The warm compiler validates the current pair. The database checks earlier identities. */
+  readonly newRevisionIds?: readonly string[];
+};
 type OnlinePublicationPreparation =
-  | { readonly kind: "prepared"; readonly artifact: ArtifactIdentity; readonly compiled: CompiledCatalogRelease }
+  | { readonly kind: "prepared"; readonly artifact: ArtifactIdentity; readonly compiled: CatalogInstallationRelease;
+      readonly checkpoint?: PreparedCheckpoint }
   | { readonly kind: "receipt" }
   | { readonly kind: "failed"; readonly error: unknown };
 
@@ -202,7 +229,9 @@ const requireOnlineJob = async (db: Queryable, command: OnlinePublicationCommand
   }
 };
 
-const readOnlineArtifact = async (pool: pg.Pool, command: OnlinePublicationCommand): Promise<StoredArtifactLineage | null> => {
+const readOnlineArtifact = async (
+  pool: pg.Pool, command: OnlinePublicationCommand, certify: boolean, tryAppend: boolean,
+): Promise<{ lineage: StoredArtifactLineage; base: Checkpoint | null; epoch: string | null } | null> => {
   const client = await pool.connect();
   let discard = false;
   try {
@@ -222,7 +251,12 @@ const readOnlineArtifact = async (pool: pg.Pool, command: OnlinePublicationComma
         kind: "publication-not-authorized", reason: "candidate-stale", detail: "candidate not found",
       });
     }
-    const artifact = await readArtifactLineage(db, candidate.value.artifactDigest);
+    const epoch = certify ? await readCheckpointEpoch(db) : null;
+    const marked = candidate.value.capabilityContract.revision === CATALOG_INSTALL_CHAIN_CAPABILITY_REVISION;
+    const base = epoch !== null && tryAppend && marked
+      ? await readActivationCheckpoint(db, candidate.value.expectedBaseReleaseDigest, ACTIVATION_CHECKPOINT_VERSION, epoch)
+      : null;
+    const artifact = await readArtifactLineage(db, candidate.value.artifactDigest, base === null);
     if (!artifact.ok) {
       throw new PublicationActivationFailure(artifactReadFailure(artifact.error));
     }
@@ -232,7 +266,7 @@ const readOnlineArtifact = async (pool: pg.Pool, command: OnlinePublicationComma
       });
     }
     await client.query("commit");
-    return artifact.value;
+    return { lineage: artifact.value, base, epoch };
   } catch (error) {
     await client.query("rollback").catch(() => { discard = true; });
     throw error;
@@ -241,14 +275,28 @@ const readOnlineArtifact = async (pool: pg.Pool, command: OnlinePublicationComma
   }
 };
 
-// Physical byte buffers can be reclaimed while the compiler allocates its model.
-async function readOnlineBundle(pool: pg.Pool, command: OnlinePublicationCommand) {
-  const loaded = await readOnlineArtifact(pool, command);
+type OnlineBundle = { artifact: ArtifactIdentity; epoch: string | null } & (
+  | { kind: "full"; bundle: CatalogReleaseBundle }
+  | { kind: "append"; base: Checkpoint; target: CatalogReleaseNode }
+);
+
+// Release the physical byte buffers before allocating the compiler model.
+async function readOnlineBundle(
+  pool: pg.Pool, command: OnlinePublicationCommand, certify: boolean, tryAppend: boolean,
+): Promise<OnlineBundle | null> {
+  const loaded = await readOnlineArtifact(pool, command, certify, tryAppend);
   if (loaded === null) return null;
   remainingPublicationTime(command.activationDeadlineMs);
-  const { id, artifactDigest, bytesChecksum, targetReleaseId, targetReleaseDigest } = loaded.target;
+  const { lineage, base, epoch } = loaded;
+  const { id, artifactDigest, bytesChecksum, targetReleaseId, targetReleaseDigest } = lineage.target;
+  const artifact = { id, artifactDigest, bytesChecksum, targetReleaseId, targetReleaseDigest };
+  if (base && lineage.target.storageFormat) {
+    const decoded = await timeCatalogStage("lineage-verify-decode", () => decodeStoredSuccessor(lineage.target));
+    if (!decoded.ok) throw new PublicationActivationFailure(artifactReadFailure(decoded.error));
+    return { kind: "append", artifact, epoch, base, target: decoded.value };
+  }
   const decoded = await timeCatalogStage("lineage-verify-decode", () =>
-    decodeStoredArtifact(loaded, () => remainingPublicationTime(command.activationDeadlineMs)));
+    decodeStoredArtifact(lineage, () => remainingPublicationTime(command.activationDeadlineMs)));
   if (!decoded.ok) {
     if (decoded.error.kind === "invalid-input" && decoded.error.reason === "invalid-artifact-checksum") {
       throw new PublicationActivationFailure({
@@ -257,7 +305,34 @@ async function readOnlineBundle(pool: pg.Pool, command: OnlinePublicationCommand
     }
     throw new PublicationActivationFailure(artifactReadFailure(decoded.error));
   }
-  return { artifact: { id, artifactDigest, bytesChecksum, targetReleaseId, targetReleaseDigest }, bundle: decoded.value };
+  return { kind: "full", artifact, epoch, bundle: decoded.value };
+}
+
+type CompiledInput = { compiled: CatalogInstallationRelease; checkpoint?: PreparedCheckpoint };
+
+async function compileOnlineInput(input: OnlineBundle): Promise<CompiledInput | null> {
+  if (input.kind === "append") {
+    const { base, target } = input;
+    const proof = base.proof;
+    if (!isCatalogInstallProof(proof) || proof.releaseId !== base.target.manifest.release.id ||
+        proof.releaseDigest !== base.target.manifest.release.digest ||
+        proof.compiledReleaseDigest !== base.compiledReleaseDigest || proof.toolchainDigest !== base.toolchainDigest ||
+        proof.materializationFingerprint !== base.materializationFingerprint) {
+      throw new PublicationActivationFailure({ kind: "artifact-unreadable" });
+    }
+    const appended = await timeCatalogStage("compile-append", () => compileCatalogDefinitionAppend(proof, base.target, target));
+    return appended && {
+      compiled: appended.compiled,
+      checkpoint: { epoch: base.epoch, target, proof: appended.proof, newRevisionIds: appended.newRevisionIds },
+    };
+  }
+  const { bundle, epoch } = input;
+  const result = await timeCatalogStage("compile", () => compileCatalogRelease(bundle));
+  if (!result.ok) throw new CatalogInstallFailure(result.error);
+  const compiled = result.value;
+  if (epoch === null) return { compiled };
+  const target = bundle.releases.find(node => node.manifest.release.id === bundle.targetReleaseId)!;
+  return { compiled, checkpoint: { epoch, target, proof: buildCatalogInstallProof(compiled) } };
 }
 
 /** Prepare immutable artifact data after returning the read connection to the pool. */
@@ -267,26 +342,34 @@ export const prepareOnlinePublication = async (
   options?: PublicationActivationTestOptions,
 ): Promise<OnlinePublicationPreparation> => {
   try {
-    remainingPublicationTime(command.activationDeadlineMs);
-    const input = await readOnlineBundle(pool, command);
-    if (!input) return { kind: "receipt" };
-    const { artifact, bundle } = input;
-    remainingPublicationTime(command.activationDeadlineMs);
-    const compiled = await timeCatalogStage("compile", () => compileCatalogRelease(bundle));
-    remainingPublicationTime(command.activationDeadlineMs);
-    if (!compiled.ok) throw new CatalogInstallFailure(compiled.error);
-    refuseUnsupportedConsumerCapability(compiled.value, options?.consumerCapability?.allowList ?? CATALOG_CAPABILITY_ALLOW_LIST);
-    remainingPublicationTime(command.activationDeadlineMs);
-    if (compiled.value.aggregateDigest !== artifact.artifactDigest ||
-        compiled.value.release.id !== artifact.targetReleaseId || compiled.value.release.digest !== artifact.targetReleaseDigest) {
-      throw new PublicationActivationFailure({
-        kind: "publication-not-authorized", reason: "candidate-tampered", detail: "compiled artifact does not match the stored release pins",
-      });
+    const allowList = options?.consumerCapability?.allowList ?? CATALOG_CAPABILITY_ALLOW_LIST;
+    const certify = allowList === CATALOG_CAPABILITY_ALLOW_LIST;
+    // Unmarked legacy releases and edits outside the append contract use the authoritative full compiler.
+    for (const tryAppend of [true, false]) {
+      remainingPublicationTime(command.activationDeadlineMs);
+      const input = await readOnlineBundle(pool, command, certify, tryAppend);
+      if (!input) return { kind: "receipt" };
+      remainingPublicationTime(command.activationDeadlineMs);
+      const result = await compileOnlineInput(input);
+      if (!result) continue;
+      const { compiled } = result;
+      remainingPublicationTime(command.activationDeadlineMs);
+      refuseUnsupportedConsumerCapability(compiled, allowList);
+      remainingPublicationTime(command.activationDeadlineMs);
+      const { artifact } = input;
+      if (compiled.aggregateDigest !== artifact.artifactDigest ||
+          compiled.release.id !== artifact.targetReleaseId || compiled.release.digest !== artifact.targetReleaseDigest) {
+        throw new PublicationActivationFailure({
+          kind: "publication-not-authorized", reason: "candidate-tampered", detail: "compiled artifact does not match the stored release pins",
+        });
+      }
+      return { kind: "prepared", artifact, ...result };
     }
-    return { kind: "prepared", artifact, compiled: compiled.value };
+    throw new PublicationActivationFailure({ kind: "artifact-unreadable" });
   } catch (error) {
     // A matching receipt or authoritative authorization failure can supersede this probe.
-    return { kind: "failed", error };
+    return { kind: "failed", error: error instanceof CorruptActivationCheckpoint
+      ? new PublicationActivationFailure({ kind: "artifact-unreadable" }) : error };
   }
 };
 
@@ -669,13 +752,26 @@ export const activateOnlinePublication = async (
     });
   }
 
+  const checkpoint = preparation.checkpoint;
+  if (checkpoint && (!await lockCheckpointEpoch(db, checkpoint.epoch) ||
+      (checkpoint.newRevisionIds && !await hasAvailableAppendIdentities(db, checkpoint.target, checkpoint.newRevisionIds)))) {
+    throw new PublicationActivationFailure({ kind: "needs-rebase", installed: pointer.current,
+      target: identityFromCompiled(compiled), expectedCurrent });
+  }
+
   await applyPublicationTimeouts(client, command.activationDeadlineMs);
   refuseRetiredOwnerDefinitionChanges(compiled);
   const target = compiled.model.releases.find(release => release.release.id === compiled.release.id);
+  const base = compiled.model.releases.find(release => release.release.id === expectedCurrent.id);
+  const installChain = !!target && isInstallChainToolchain(target.toolchain);
+  if ((base && isInstallChainToolchain(base.toolchain) && !installChain) || installChain !==
+      (candidate.capabilityContract.revision === CATALOG_INSTALL_CHAIN_CAPABILITY_REVISION)) {
+    throw new PublicationActivationFailure({ kind: "publication-not-authorized", reason: "candidate-tampered",
+      detail: "candidate compiler is incompatible with its base or capability revision" });
+  }
   if (target?.documents.some(document => subjectRulesProvenance(document)?.reviewReference === compiled.release.id)) {
     const review = candidate.identityAllocation.subjectRulesReview;
     const organizationId = candidate.identityAllocation.authorOrganizationId;
-    const base = compiled.model.releases.find(release => release.release.id === expectedCurrent.id);
     if (!review || typeof review !== "object" || Array.isArray(review) ||
         !("subjectId" in review) || typeof review.subjectId !== "string" ||
         !("fingerprint" in review) || typeof organizationId !== "string" || !base) {
@@ -738,6 +834,14 @@ export const activateOnlinePublication = async (
   await timeCatalogStage("restore-heads", () => restoreCurrentDefinitionHeads(client, compiled.release.id));
   maybeFailStage(options, "pointer");
   await advanceCurrentPointer(client, compiled.release.id);
+  if (checkpoint && !await putActivationCheckpoint(db, {
+    epoch: checkpoint.epoch, version: ACTIVATION_CHECKPOINT_VERSION, target: checkpoint.target, proof: checkpoint.proof,
+    artifactChecksum: artifact.bytesChecksum, compiledReleaseDigest: compiled.compiledReleaseDigest,
+    toolchainDigest: compiled.toolchainDigest, materializationFingerprint: compiled.materializationFingerprint,
+  })) {
+    throw new PublicationActivationFailure({ kind: "publication-not-authorized", reason: "candidate-stale",
+      detail: "activation checkpoint no longer matches the installed artifact" });
+  }
   await timeCatalogStage("verify-constraints", () => client.query("set constraints all immediate"));
   await markJobActivated(client, command.jobId, command.fencingToken);
   maybeFailStage(options, "job-status");

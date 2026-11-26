@@ -8,6 +8,26 @@ Work directory for every command unless noted:
 cd /srv/wiseeff/ops/self-hosted
 ```
 
+### Prewarm an existing catalog after upgrade
+
+After migration 0376, run once using the upgraded manager image. Upgrade the API, manager and offline catalog tooling together before creating v9 candidates. Keep the pre-upgrade backup when planning a binary rollback across the first install-chain publication.
+
+```bash
+./scripts/compose --env-file .env exec -T publication-manager \
+  node --import tsx scripts/catalog-publication-ops.ts prewarm-checkpoint
+```
+
+The command verifies the current historical lineage once and seeds preview and activation checkpoints. Its initial run can take minutes. Publication remains available during compilation. A short final transaction rechecks the current release, byte checksum, compiler and materialization before saving. The command preserves the release pointer, jobs, receipts, freeze and policy.
+
+| Status | Operator action |
+| --- | --- |
+| `warmed` or `already-warm` | Use normal preview and publish. |
+| `prewarm-in-progress` | Another prewarm is running. Repeat the command to confirm completion. |
+| `current-pins-changed` | The current release or its verified pins changed. Retry for the current release. Repeated mismatches require checking the installation and integrity. |
+| `no-current-release` | Prewarm after installing the first catalog. |
+
+For a warm ordinary definition batch, the API reports `snapshot-read` and the manager reports `activation-checkpoint-read` and `compile-append`. The manager still reads the new candidate and the complete predecessor target. A full compile is expected for operations requiring historical validation or when a compatible installation proof is missing.
+
 Use `./scripts/compose` rather than raw `docker compose`. Configuration sources:
 
 | File | Used by | Contents |

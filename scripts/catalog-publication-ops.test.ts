@@ -3,6 +3,11 @@ import { describe, expect, it } from "vitest";
 import { parseCatalogPublicationOpsArgv, resolvePolicyStatusDatabaseUrl } from "./catalog-publication-ops";
 
 describe("catalog-publication-ops argv", () => {
+  it("accepts a prewarm only for the installed current release", () => {
+    expect(parseCatalogPublicationOpsArgv(["prewarm-checkpoint"])).toEqual({ ok: true, command: { name: "prewarm-checkpoint" } });
+    expect(parseCatalogPublicationOpsArgv(["prewarm-checkpoint", "--release", "other"]).ok).toBe(false);
+  });
+
   it("parses inspect", () => {
     expect(parseCatalogPublicationOpsArgv(["inspect"])).toEqual({
       ok: true,

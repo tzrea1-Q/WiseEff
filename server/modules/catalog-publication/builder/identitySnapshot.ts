@@ -15,11 +15,13 @@ export function withPreviewBaseline<T>(db: Database, read: (tx: Database) => Pro
   });
 }
 
-/** Materialization records selector spellings. Legacy divergent natural keys require the full compiler. */
-export function identitySnapshotOf(bundle: CatalogReleaseBundle, target: CatalogReleaseNode): PreviewSnapshot | undefined {
-  if (bundle.releases.some(release => release.documents.some(doc => doc.kind === "subject" &&
-    doc.content.canonicalKey !== `${doc.content.kind}:${doc.content.selector.value}`))) return undefined;
-  return { target, ...publicationHistoryCapabilities(bundle) };
+// The materialized spelling index records selectors. Only spelling edits need
+// proof that this index also covers every historical subject natural key.
+const coversSubjectSpellings = (node: CatalogReleaseNode) => node.documents.every(doc =>
+  doc.kind !== "subject" || doc.content.canonicalKey === `${doc.content.kind}:${doc.content.selector.value}`);
+
+export function identitySnapshotOf(bundle: CatalogReleaseBundle, target: CatalogReleaseNode): PreviewSnapshot {
+  return { target, coversSubjectSpellings: bundle.releases.every(coversSubjectSpellings), ...publicationHistoryCapabilities(bundle) };
 }
 
 export function publicationHistoryCapabilities(bundle: CatalogReleaseBundle) {
@@ -36,6 +38,7 @@ export const onlyDefinitionEdits = (changes: readonly CatalogChange[]) => change
 export function appendPreviewSnapshot(base: PreviewSnapshot, target: CatalogReleaseNode): PreviewSnapshot {
   return {
     target,
+    coversSubjectSpellings: base.coversSubjectSpellings && coversSubjectSpellings(target),
     hasSubjectRules: base.hasSubjectRules || target.documents.some(subjectRulesProvenance),
     hasDtsExamples: base.hasDtsExamples || target.documents.some(doc =>
       doc.kind === "definition" && doc.content.revision.dtsExamples !== undefined),
@@ -49,6 +52,7 @@ export async function canAppendPreviewSnapshot(db: Database, snapshot: PreviewSn
   // the complete current release. Shared spellings in other scopes require
   // the original lineage check to disambiguate permanent natural-key claims.
   if (spelling) {
+    if (!snapshot.coversSubjectSpellings) return false;
     const subject = target.documents.find(doc => doc.kind === "subject" && doc.content.id === spelling.subjectId);
     if (subject?.kind !== "subject") return false;
     const aliasName = spelling.op === "set-subject-alias" ? spelling.selector : spelling.keepOldAlias ? subject.content.selector.value : undefined;

@@ -8,6 +8,26 @@
 cd /srv/wiseeff/ops/self-hosted
 ```
 
+### 升级后预热已有目录
+
+完成迁移 0376，将 API、发布管理器和离线目录工具升级到同一版本，再创建 v9 候选。若需回退至旧程序，保留首次新格式发布前配套的数据库备份。在 `ops/self-hosted` 目录运行一次：
+
+```bash
+./scripts/compose --env-file .env exec -T publication-manager \
+  node --import tsx scripts/catalog-publication-ops.ts prewarm-checkpoint
+```
+
+预热完整校验当前目录的历史，随后写入预览和激活所需的检查点。首次可能耗时数分钟。编译期间仍可发布，提交时短暂取得当前目录锁并重新核对版本、字节校验和、编译和物化指纹。预热保留现有目录、任务、回执、冻结和发布策略。
+
+| 返回状态 | 操作 |
+| --- | --- |
+| `warmed` 或 `already-warm` | 可以正常导入、发布。 |
+| `prewarm-in-progress` | 已有预热正在执行，稍后重新运行确认完成。 |
+| `current-pins-changed` | 当前版本或校验信息发生变化，可重新运行。持续出现时应核对已安装目录的完整性。 |
+| `no-current-release` | 安装首个目录后再执行。 |
+
+热路径下，常规定义预览记录 `snapshot-read`，发布记录 `activation-checkpoint-read` 和 `compile-append`。管理器仍需读取新候选及完整前驱目标。复杂变更或缺少兼容检查点时，管理器执行完整编译。
+
 使用 `./scripts/compose`，不要直接调 `docker compose`。配置来源：
 
 | 文件 | 使用者 | 内容 |

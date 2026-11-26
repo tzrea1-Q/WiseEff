@@ -1,6 +1,7 @@
 import pg from "pg";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
+import { withCatalogStageLogging } from "../../../observability/catalogPublicationStages";
 import { CATALOG_PUBLICATION_LOCK_ORDER } from "../../catalog-publication/authorization/types";
 import {
   CATALOG_PUBLICATION_COORDINATOR_ROLE,
@@ -113,6 +114,71 @@ describe("atomic online Catalog publication", () => {
     expect(audit.rows).toEqual([
       { kind: "catalog-activation", action: "online-publication", app: "catalog-publication" },
     ]);
+  });
+
+  it("extends an installed legacy checkpoint using just the physical successor and replays a committed receipt", async () => {
+    const first = await provisionOnlineActivation(pool, observer);
+    const legacy = await installPublishedRelease(pool, first.command);
+    expect(legacy).toMatchObject({ ok: true, value: { status: "installed",
+      materializationFingerprint: first.compiled.materializationFingerprint } });
+    const second = await buildAuthorizedJob(observer, {
+      predecessorDigest: first.compiled.aggregateDigest, propertyKey: "iin_append",
+      releaseVersion: "1.2.0", compilerFormat: "install-chain", enablePolicy: false,
+    });
+
+    const before = await domainSnapshot(observer);
+    const interrupted = await installPublishedRelease(pool, second.command, { failAfter: "job-status" });
+    expect(interrupted.ok).toBe(false);
+    expect(await domainSnapshot(observer)).toEqual(before);
+
+    const events: Record<string, string | number>[] = [];
+    const run = () => withCatalogStageLogging(
+      { jobId: second.command.jobId, attempt: 1, fence: second.command.fencingToken },
+      () => installPublishedRelease(pool, second.command), event => events.push(event),
+    );
+    expect(await run()).toMatchObject({ ok: true, value: { status: "installed",
+      materializationFingerprint: second.compiled.materializationFingerprint } });
+    expect(events.filter(event => event.stage === "activation-checkpoint-read" && event.state === "finished"))
+      .toMatchObject([{ artifactCount: 1, byteCount: expect.any(Number) }]);
+    expect(events.filter(event => event.stage === "artifact-read" && event.state === "finished"))
+      .toMatchObject([{ artifactCount: 1, byteCount: second.built.artifact.artifactBytes.length }]);
+    expect(events.some(event => event.stage === "compile-append" && event.state === "finished")).toBe(true);
+    expect(events.some(event => event.stage === "compile")).toBe(false);
+    const after = await domainSnapshot(observer);
+    expect(after.receipts).toBe("2");
+    events.length = 0;
+    expect(await run()).toMatchObject({ ok: true, value: { status: "already-recorded", currentness: "active",
+      materializationFingerprint: second.compiled.materializationFingerprint } });
+    expect(events.some(event => event.stage === "artifact-read")).toBe(false);
+    expect(await domainSnapshot(observer)).toEqual(after);
+
+    // A differently configured writer can negotiate a legacy target and capability together.
+    // Online activation must also check the already-installed base's compiler under the guard.
+    const downgrade = await buildAuthorizedJob(observer, {
+      predecessorDigest: second.compiled.aggregateDigest, propertyKey: "iin_downgrade",
+      releaseVersion: "1.3.0", enablePolicy: false,
+    });
+    const beforeDowngrade = await domainSnapshot(observer);
+    expect(await installPublishedRelease(pool, downgrade.command)).toMatchObject({
+      ok: false, error: { kind: "publication-not-authorized", reason: "candidate-tampered" },
+    });
+    expect(await domainSnapshot(observer)).toEqual(beforeDowngrade);
+  });
+
+  it("publishes a legacy source whose compiler name matches the v2 marker and allows its legacy successor", async () => {
+    const base = await bootstrapFirstAcme(pool);
+    await persistPredecessorArtifact(observer, base);
+    const legacy = await buildAuthorizedJob(observer, {
+      predecessorDigest: base.digest, propertyKey: "old_marker", compilerFormat: "legacy-marker",
+    });
+    expect(legacy.compiled.modelReceipt).toBeUndefined();
+    expect(await installPublishedRelease(pool, legacy.command)).toMatchObject({
+      ok: true, value: { status: "installed", materializationFingerprint: legacy.compiled.materializationFingerprint },
+    });
+    const next = await buildAuthorizedJob(observer, {
+      predecessorDigest: legacy.compiled.aggregateDigest, propertyKey: "old_writer", releaseVersion: "1.2.0", enablePolicy: false,
+    });
+    expect(await installPublishedRelease(pool, next.command)).toMatchObject({ ok: true, value: { status: "installed" } });
   });
 
   it.each(["subjects", "receipt", "pointer", "job-status"] as const)(

@@ -16,6 +16,7 @@ import type { CatalogReleaseNode } from "../../catalog-kernel/compiler/types";
 
 export type PreviewSnapshot = {
   readonly target: CatalogReleaseNode;
+  readonly coversSubjectSpellings: boolean;
   readonly hasSubjectRules: boolean;
   readonly hasDtsExamples: boolean;
 };

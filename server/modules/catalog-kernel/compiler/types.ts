@@ -181,8 +181,33 @@ export interface CompiledCatalogRelease {
   readonly materializationFingerprint: CatalogMaterializationFingerprint;
   readonly counts: CatalogReleaseCounts;
   readonly model: CompiledCatalogReleaseModel;
+  /** Explicitly marked successors commit to this receipt; bytes remains the full model export. */
+  readonly modelReceipt?: CatalogModelReceipt;
   readonly bytes: string;
 }
+
+export interface CatalogModelReceipt {
+  readonly version: "wiseeff-catalog-install-chain/v2";
+  readonly sourceFormat: "wiseeff-catalog-release@2";
+  readonly sourceCompilerFingerprint: string;
+  readonly compilerContractFingerprint: string;
+  readonly targetReleaseId: string;
+  readonly targetReleaseDigest: string;
+  readonly releaseCount: number;
+  readonly modelChainDigest: string;
+  readonly toolchainDigest: string;
+}
+
+/** The installer needs both endpoints. This projection cannot be exported as a full model. */
+export interface CompiledCatalogAppend extends Omit<CompiledCatalogRelease, "model" | "modelReceipt" | "bytes"> {
+  readonly model: Omit<CompiledCatalogReleaseModel, "releases"> & {
+    readonly releases: readonly [CompiledCatalogReleaseModel["releases"][number], CompiledCatalogReleaseModel["releases"][number]];
+  };
+  readonly modelReceipt: CatalogModelReceipt;
+  readonly versionedSubjectIds: readonly string[];
+}
+
+export type CatalogInstallationRelease = CompiledCatalogRelease | CompiledCatalogAppend;
 
 export type CompileCatalogReleaseResult = Result<
   CompiledCatalogRelease,

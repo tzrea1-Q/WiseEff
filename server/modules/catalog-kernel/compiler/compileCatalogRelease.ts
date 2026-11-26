@@ -12,12 +12,17 @@ import type {
   CatalogReleaseBundle,
   CatalogReleaseDocument,
   CatalogReleaseNode,
+  CompiledCatalogAppend,
   CompiledCatalogRelease,
   CompileCatalogReleaseResult,
   CompiledCatalogReleaseModel,
 } from "./types";
-import { catalogCompilerContractFingerprint, catalogCompilerDtsContract, catalogCompilerOwnerContractFingerprint } from "./contract";
-import { freezeCatalogJson, ownerBundleContractArtifactDigest, s1BundleContractArtifactDigest } from "./contractArtifacts";
+import { freezeCatalogJson } from "./contractArtifacts";
+import { isInstallChainToolchain } from "./contract";
+import {
+  extendInstallChain, fullInstallProofs, installChainReceipt,
+  isCatalogInstallProof, proofForInstall, replayInstallChain, sourceCompilerContract, type CatalogInstallProof,
+} from "./installChain";
 import {
   createBuildPreparation,
   firstFailedPhase,
@@ -152,6 +157,35 @@ export const createCatalogReleaseDigestValidator = () => {
   return (bundle: CatalogReleaseBundle) => validateDigest(bundle, prepare);
 };
 
+const projectTarget = (
+  target: CompiledCatalogReleaseModel["releases"][number],
+  compiledReleaseDigest: string,
+  toolchainDigest: string,
+) => {
+  const materializationFingerprint = hashContractJson({
+    release: target.release,
+    subjects: target.documents.filter(document => document.kind === "subject").map(document => document.content),
+    aliases: target.documents.filter(document => document.kind === "alias").map(document => document.content),
+    definitions: target.documents.filter(document => document.kind === "definition").map(document => document.content),
+  } as unknown as ContractJsonValue);
+  return {
+    release: {
+      id: CatalogReleaseId(target.release.id),
+      version: CatalogReleaseVersion(target.release.version),
+      digest: CatalogReleaseDigest(target.release.digest),
+    },
+    predecessor: target.release.predecessor === null ? null : {
+      id: CatalogReleaseId(target.release.predecessor.id),
+      digest: CatalogReleaseDigest(target.release.predecessor.digest),
+    },
+    aggregateDigest: CatalogReleaseDigest(target.release.digest),
+    compiledReleaseDigest: CatalogReleaseDigest(compiledReleaseDigest),
+    toolchainDigest: CatalogReleaseDigest(toolchainDigest),
+    materializationFingerprint: CatalogMaterializationFingerprint(materializationFingerprint),
+    counts: targetCounts(target.documents),
+  };
+};
+
 export const compileCatalogRelease = (
   bundle: CatalogReleaseBundle,
 ): CompileCatalogReleaseResult => {
@@ -173,11 +207,10 @@ export const compileCatalogRelease = (
     document.kind === "subject" && document.content.ownerSubjectId !== undefined));
   const hasDtsExamples = releases.some((release) => release.documents.some((document) =>
     document.kind === "definition" && document.content.revision.dtsExamples !== undefined));
-  const { compilerFingerprint, schemaDigest } = hasDtsExamples ? catalogCompilerDtsContract(owned) : {
-    compilerFingerprint: owned ? catalogCompilerOwnerContractFingerprint : catalogCompilerContractFingerprint,
-    schemaDigest: owned ? ownerBundleContractArtifactDigest : s1BundleContractArtifactDigest,
-  };
-  const toolchainDigest = hashContractJson({
+  const { compilerFingerprint, schemaDigest } = sourceCompilerContract(owned, hasDtsExamples);
+  const chain = isInstallChainToolchain(target.toolchain) ? replayInstallChain(releases) : undefined;
+  const modelReceipt = chain && installChainReceipt(chain, target);
+  const toolchainDigest = modelReceipt?.toolchainDigest ?? hashContractJson({
     compilerContractFingerprint: compilerFingerprint,
     s1BundleContractArtifactDigest: schemaDigest,
     releases: releases.map(({ release, toolchain }) => ({
@@ -187,55 +220,90 @@ export const compileCatalogRelease = (
   } as unknown as ContractJsonValue);
   const model: CompiledCatalogReleaseModel = {
     schemaVersion: "1.0.0",
-    compilerContractFingerprint: compilerFingerprint,
+    compilerContractFingerprint: modelReceipt?.compilerContractFingerprint ?? compilerFingerprint,
     targetReleaseId: authoritativeBundle.targetReleaseId,
     toolchainDigest,
     releases,
   };
-  const compiledReleaseDigest = hashContractJson(model as unknown as ContractJsonValue);
-  const materializationFingerprint = hashContractJson({
-    release: target.release,
-    subjects: target.documents
-      .filter((document) => document.kind === "subject")
-      .map((document) => document.content),
-    aliases: target.documents
-      .filter((document) => document.kind === "alias")
-      .map((document) => document.content),
-    definitions: target.documents
-      .filter((document) => document.kind === "definition")
-      .map((document) => document.content),
-  } as unknown as ContractJsonValue);
-
+  const compiledReleaseDigest = hashContractJson((modelReceipt ?? model) as unknown as ContractJsonValue);
   const projection = freezeCatalogJson({
-    release: {
-      id: CatalogReleaseId(target.release.id),
-      version: CatalogReleaseVersion(target.release.version),
-      digest: CatalogReleaseDigest(target.release.digest),
-    },
-    predecessor:
-      target.release.predecessor === null
-        ? null
-        : {
-            id: CatalogReleaseId(target.release.predecessor.id),
-            digest: CatalogReleaseDigest(target.release.predecessor.digest),
-          },
-    aggregateDigest: CatalogReleaseDigest(target.release.digest),
-    compiledReleaseDigest: CatalogReleaseDigest(compiledReleaseDigest),
-    toolchainDigest: CatalogReleaseDigest(toolchainDigest),
-    materializationFingerprint: CatalogMaterializationFingerprint(materializationFingerprint),
-    counts: targetCounts(target.documents),
+    ...projectTarget(target, compiledReleaseDigest, toolchainDigest),
+    ...(modelReceipt && { modelReceipt }),
     model,
   });
   // Installation only consumes the frozen projection and its digests. Materialize
   // the complete canonical string only for callers explicitly requesting it.
   let bytes: string | undefined;
-  return {
-    ok: true,
-    value: Object.freeze({
-      ...projection,
-      get bytes() {
-        return bytes ??= serializeContract(model as unknown as ContractJsonValue);
-      },
-    }),
-  };
+  const value = Object.freeze({
+    ...projection,
+    get bytes() {
+      return bytes ??= serializeContract(model as unknown as ContractJsonValue);
+    },
+  });
+  if (chain) fullInstallProofs.set(value, proofForInstall(chain, target, value));
+  return { ok: true, value };
 };
+
+const definitionAppendRevisionIds = (base: CatalogReleaseNode, target: CatalogReleaseNode): string[] | null => {
+  const byIdentity = new Map(base.documents.map(document => [`${document.kind}:${document.content.id}`, document]));
+  if (byIdentity.size !== base.documents.length) return null;
+  const seen = new Set<string>();
+  const newRevisionIds: string[] = [];
+  for (const document of target.documents) {
+    const identity = `${document.kind}:${document.content.id}`;
+    if (seen.has(identity)) return null;
+    seen.add(identity);
+    const previous = byIdentity.get(identity);
+    byIdentity.delete(identity);
+    if (previous?.normalizedDigest === document.normalizedDigest) continue;
+    if (document.kind !== "definition") return null;
+    const { revision } = document.content;
+    if (revision.lifecycle !== "active" || revision.successorDefinitionId !== undefined) return null;
+    if (previous?.kind === "definition") {
+      const prior = previous.content;
+      if (prior.subjectId !== document.content.subjectId || prior.propertyKey !== document.content.propertyKey ||
+          prior.revision.lifecycle !== revision.lifecycle || prior.revision.successorDefinitionId !== undefined ||
+          prior.revision.number + 1 !== revision.number || prior.revision.id === revision.id) return null;
+    } else if (revision.number !== 1) return null;
+    newRevisionIds.push(revision.id);
+  }
+  return byIdentity.size === 0 ? newRevisionIds : null;
+};
+
+/**
+ * The caller verifies the stored base and proof checksums/live install pins and
+ * must reject historical release/revision key collisions before using this projection.
+ * Both endpoints are complete snapshots. Unchanged identities and mandatory membership
+ * preserve all previous definition natural keys; advanced revisions have increasing numbers.
+ */
+export function compileCatalogDefinitionAppend(
+  proof: unknown, base: CatalogReleaseNode, successor: CatalogReleaseNode,
+): { readonly compiled: CompiledCatalogAppend; readonly proof: CatalogInstallProof; readonly newRevisionIds: readonly string[] } | null {
+  if (!isCatalogInstallProof(proof) || !isInstallChainToolchain(successor?.manifest?.toolchain)) return null;
+  const before = base?.manifest?.release;
+  const after = successor.manifest.release;
+  if (!before || !after || before.id !== proof.releaseId || before.digest !== proof.releaseDigest || before.sequence !== proof.sequence ||
+      after.predecessor?.id !== before.id || after.predecessor.digest !== before.digest ||
+      after.sequence !== before.sequence + 1) return null;
+  const validated = validateCompilationInput(
+    { schemaVersion: "1.0.0", targetReleaseId: after.id, releases: [base, successor] },
+    bundle => prepareIdentityAppend(bundle, base),
+  );
+  if (!validated.ok) return null;
+  const newRevisionIds = definitionAppendRevisionIds(base, validated.target);
+  if (!newRevisionIds) return null;
+  const target = normalizeRelease(validated.target);
+  const state = extendInstallChain(proof, target);
+  const modelReceipt = installChainReceipt(state, target);
+  const compiled: CompiledCatalogAppend = freezeCatalogJson({
+    ...projectTarget(target, hashContractJson(modelReceipt as unknown as ContractJsonValue), modelReceipt.toolchainDigest),
+    modelReceipt,
+    versionedSubjectIds: state.versionedSubjectIds,
+    model: {
+      schemaVersion: "1.0.0", compilerContractFingerprint: modelReceipt.compilerContractFingerprint,
+      targetReleaseId: after.id, toolchainDigest: modelReceipt.toolchainDigest,
+      releases: [normalizeRelease(base), target],
+    },
+  });
+  return { compiled, proof: proofForInstall(state, target, compiled), newRevisionIds };
+}

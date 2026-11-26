@@ -2,6 +2,7 @@ import { createRequire } from "node:module";
 
 import { serializeContract, type ContractJsonValue } from "../../parameter-catalog-contract/index";
 import type { CatalogReleaseBundle } from "./types";
+import { INSTALL_CHAIN_SOURCE_FORMAT, isInstallChainToolchain } from "./contract";
 import {
   catalogManifestSchema,
   catalogOwnerReleaseSchema,
@@ -62,15 +63,53 @@ function bundleSchemaForValidation() {
   return schema;
 }
 
+function manifestSchemaForValidation() {
+  const schema = structuredClone(catalogManifestSchema) as {
+    properties: { files: { uniqueItems?: boolean }; documents: { uniqueItems?: boolean } };
+    $defs: { toolchain: { properties: { sourceFormat: { const?: string; enum?: string[] } } } };
+  };
+  for (const inventory of [schema.properties.files, schema.properties.documents]) {
+    if (inventory.uniqueItems !== true) throw new Error("Catalog manifest inventory uniqueness contract changed");
+    delete inventory.uniqueItems;
+  }
+  const format = schema.$defs.toolchain.properties.sourceFormat;
+  if (format.const !== "wiseeff-catalog-release@1") throw new Error("Catalog source format contract changed");
+  // Keep the original manifest frozen. Its const rejects every v2 artifact on
+  // legacy workers, offline installers, and maintenance tools.
+  schema.$defs.toolchain.properties.sourceFormat = { enum: [format.const, INSTALL_CHAIN_SOURCE_FORMAT] };
+  return schema;
+}
+
 const contractAjv = new Ajv2020({ allErrors: true, strict: true });
-contractAjv.addSchema(catalogManifestSchema);
+contractAjv.addSchema(manifestSchemaForValidation());
 contractAjv.addFormat(paddedBase64Format, matchesPaddedBase64Syntax);
 // The v6 schema is additive; the original schema remains frozen for historical artifacts.
 const validateBundle = contractAjv.compile(bundleSchemaForValidation());
 
-export const isCatalogReleaseBundle = (
-  value: unknown,
-): value is CatalogReleaseBundle => validateBundle(value);
+export function isCatalogReleaseBundle(value: unknown): value is CatalogReleaseBundle {
+  if (!validateBundle(value)) return false;
+  // AJV compares every pair for uniqueItems on objects. Once the member schema
+  // passes, canonical equality is equivalent and needs one visit per member.
+  for (const release of (value as CatalogReleaseBundle).releases) {
+    const { toolchain } = release.manifest;
+    // @1 admitted every compiler string, including any future marker by coincidence.
+    if (toolchain.sourceFormat === INSTALL_CHAIN_SOURCE_FORMAT && !isInstallChainToolchain(toolchain)) return false;
+    for (const entries of [release.manifest.files, release.manifest.documents]) {
+      const seen = new Set<string>();
+      for (const entry of entries) {
+        let key: string;
+        try {
+          key = serializeContract(entry as unknown as ContractJsonValue);
+        } catch {
+          return false;
+        }
+        if (seen.has(key)) return false;
+        seen.add(key);
+      }
+    }
+  }
+  return true;
+}
 
 const valueSchemaValidity = new Map<string, boolean>();
 

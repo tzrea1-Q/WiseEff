@@ -163,6 +163,8 @@ export const FLOOR_MIGRATION = "0136_parameter_execution_principal_deleted_marke
 export const PUBLICATION_SCHEMA = "catalog_publication";
 
 export const PUBLICATION_RELATIONS = [
+  "checkpoint_epoch",
+  "activation_checkpoints",
   "preview_snapshots",
   "release_artifacts",
   "candidates",

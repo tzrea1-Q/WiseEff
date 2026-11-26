@@ -14,7 +14,7 @@ import {
   type VerificationResult,
 } from "../../parameter-catalog-contract/index";
 import { decodeJsonBytes } from "../compiler/bundleBytes";
-import { compileCatalogRelease } from "../compiler/index";
+import { compileCatalogRelease, type CatalogInstallationRelease } from "../compiler/index";
 import type {
   CatalogReleaseAliasDocument,
   CatalogReleaseBundle,
@@ -178,7 +178,7 @@ const compilePublishedRelease = async (
 };
 
 const identityFromCompiled = (
-  compiled: CompiledCatalogRelease,
+  compiled: CatalogInstallationRelease,
 ): CatalogReleaseIdentity => ({
   id: compiled.release.id,
   version: compiled.release.version,
@@ -206,7 +206,7 @@ const mapReadError = (error: unknown): CatalogKernelError => {
 };
 
 const targetDocuments = (
-  compiled: CompiledCatalogRelease,
+  compiled: CatalogInstallationRelease,
 ): readonly CatalogReleaseDocument[] => {
   const target = compiled.model.releases.find(
     (release) => release.release.id === compiled.release.id,
@@ -330,7 +330,7 @@ export type CompareCompiledProjectionOptions = {
 
 export const compareCompiledProjection = async (
   client: Pick<pg.Client, "query">,
-  compiled: CompiledCatalogRelease,
+  compiled: CatalogInstallationRelease,
   expected: CatalogReleasePin,
   options: CompareCompiledProjectionOptions = {},
 ): Promise<CatalogDriftViolation[]> => {
@@ -450,7 +450,8 @@ export const compareCompiledProjection = async (
   );
   const subjectOwners = await readCatalogSubjectOwners(client, releaseId);
   const subjectsById = new Map(subjectRows.rows.map((row) => [row.id, row]));
-  const versioned = new Set(compiled.model.releases.flatMap(release => release.documents.flatMap(document =>
+  const versioned = new Set("versionedSubjectIds" in compiled ? compiled.versionedSubjectIds :
+    compiled.model.releases.flatMap(release => release.documents.flatMap(document =>
     document.kind === "subject" && subjectRulesProvenance(document) ? [document.content.id] : [])));
   for (const subject of subjects) {
     const row = subjectsById.get(subject.content.id);
@@ -881,7 +882,7 @@ export const createCatalogVerifier = (pool: pg.Pool): CatalogVerifierAdapter => 
  */
 export const verifyStagedReleaseProjection = async (
   client: Pick<pg.Client, "query">,
-  compiled: CompiledCatalogRelease,
+  compiled: CatalogInstallationRelease,
   options: CompareCompiledProjectionOptions = {},
 ): Promise<Result<never, CatalogKernelError> | { readonly ok: true }> => {
   const expected = {

@@ -4,6 +4,7 @@ import {
   CATALOG_CAPABILITY_V3_CONSUMER_REVISIONS,
   CATALOG_CAPABILITY_V4_CONSUMER_REVISIONS,
   CATALOG_CAPABILITY_V5_CONSUMER_REVISIONS,
+  CATALOG_CAPABILITY_V8_CONSUMER_REVISIONS,
   admitCatalogCapabilityRevision,
   catalogConsumerSupportsRevision,
 } from "./capabilities";
@@ -24,6 +25,11 @@ describe("catalog consumer capability admission", () => {
     expect(catalogConsumerSupportsRevision("catalog-capability/v")).toBe(false);
     expect(catalogConsumerSupportsRevision("catalog-capability/v10")).toBe(false);
     expect(catalogConsumerSupportsRevision("")).toBe(false);
+  });
+
+  it("requires the v9 consumer for the install-chain compiler contract", () => {
+    expect(admitCatalogCapabilityRevision("catalog-capability/v9", CATALOG_CAPABILITY_V8_CONSUMER_REVISIONS)).toBe(false);
+    expect(catalogConsumerSupportsRevision("catalog-capability/v9")).toBe(true);
   });
 
   it("lets a frozen v3 consumer refuse v4 before install", () => {

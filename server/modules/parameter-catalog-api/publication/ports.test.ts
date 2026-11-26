@@ -36,7 +36,7 @@ describe("publication preview memory work", () => {
     });
     const snapshot = vi.spyOn(publicationStore, "getValidatedPreviewSnapshot").mockResolvedValue(mode === "cold"
       ? { ok: false, error: { kind: "not-found", entity: "artifact" } }
-      : { ok: true, value: { target: predecessor.first, hasSubjectRules: false, hasDtsExamples: false } });
+      : { ok: true, value: { target: predecessor.first, coversSubjectSpellings: true, hasSubjectRules: false, hasDtsExamples: false } });
     vi.spyOn(currentPointer, "readCurrentCatalogPointer").mockResolvedValue({
       kind: "installed", current: predecessor.compiled.release, predecessorReleaseId: null, subjectOwnerEpoch: "0",
     });

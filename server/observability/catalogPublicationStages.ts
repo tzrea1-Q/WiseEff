@@ -4,9 +4,9 @@ import { performance } from "node:perf_hooks";
 
 type Stage =
   | "preview" | "enqueue-publication" | "activation" | "artifact-read" | "lineage-verify-decode"
-  | "snapshot-read" | "snapshot-verify-decode" | "predecessor-decode"
+  | "activation-checkpoint-read" | "snapshot-read" | "snapshot-verify-decode" | "predecessor-decode"
   | "import-rules-read" | "markdown-plan" | "candidate-build" | "candidate-persist"
-  | "compile" | "pointer-lock" | "publication-lock" | "materialize" | "verify-projection" | "restore-heads" | "verify-constraints" | "commit";
+  | "compile" | "compile-append" | "pointer-lock" | "publication-lock" | "materialize" | "verify-projection" | "restore-heads" | "verify-constraints" | "commit";
 
 type Log = (fields: Record<string, string | number>) => void;
 type Correlation = { requestId: string } | { jobId: string; attempt: number; fence: number };

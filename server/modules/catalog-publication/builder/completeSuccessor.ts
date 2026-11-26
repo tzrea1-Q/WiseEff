@@ -10,7 +10,8 @@ import {
   serializeContract,
   type ContractJsonValue,
 } from "../../parameter-catalog-contract/index";
-import { createCatalogReleaseDigestValidator, freezeCatalogJson, validateIdentityAppendDigest } from "../../catalog-kernel/compiler/index";
+import { createCatalogReleaseDigestValidator, freezeCatalogJson, isInstallChainToolchain, validateIdentityAppendDigest } from "../../catalog-kernel/compiler/index";
+import { CATALOG_INSTALL_CHAIN_CAPABILITY_REVISION } from "./types";
 import type {
   CatalogReleaseBundle,
   CatalogReleaseDefinitionDocument,
@@ -152,11 +153,11 @@ export function impactSummaryFromReport(impact: CatalogImpactReport): {
   };
 }
 
-const capabilityContract = (changeSet: readonly CatalogChange[], documents: readonly CatalogReleaseDocument[], hasSubjectRules: boolean, hasDtsExamples: boolean): CapabilityContract => {
+const capabilityContract = (changeSet: readonly CatalogChange[], documents: readonly CatalogReleaseDocument[], hasSubjectRules: boolean, hasDtsExamples: boolean, installChain: boolean): CapabilityContract => {
   const identity = CATALOG_CAPABILITY_ALLOW_LIST;
   const { maxDtsExamples, maxDtsExampleChars, ...legacyBudgets } = identity.budgets;
   const budgets = hasDtsExamples ? { ...legacyBudgets, maxDtsExamples, maxDtsExampleChars } : legacyBudgets;
-  const revision = hasSubjectRules
+  const revision = installChain ? CATALOG_INSTALL_CHAIN_CAPABILITY_REVISION : hasSubjectRules
     ? CATALOG_SUBJECT_RULES_CAPABILITY_REVISION
     : documents.some(subjectIdentityProvenance) ? CATALOG_SUBJECT_IDENTITY_CAPABILITY_REVISION
     : documents.some((document) => document.kind === "subject" && document.content.ownerSubjectId)
@@ -829,7 +830,8 @@ export async function buildCompleteSuccessor(
 
 export async function buildSuccessorFromSnapshot(input: BuildCompleteSuccessorInput, snapshot: PreviewSnapshot): Promise<BuildCompleteSuccessorResult> {
   const [change] = input.changeSet;
-  const spelling = input.changeSet.length === 1 && (change.op === "rename-subject" || change.op === "set-subject-alias");
+  const spelling = snapshot.coversSubjectSpellings && input.changeSet.length === 1 &&
+    (change.op === "rename-subject" || change.op === "set-subject-alias");
   if ((!spelling && !onlyDefinitionEdits(input.changeSet)) ||
       snapshot.target.manifest.release.digest !== input.predecessorArtifact.digest || input.persist) {
     return fail({ kind: "invalid-input", reason: "invalid preview snapshot build" });
@@ -1270,7 +1272,7 @@ async function buildSuccessor(
   }
 
   const history = snapshot ? appendPreviewSnapshot(snapshot, successor) : publicationHistoryCapabilities(bundle);
-  const contract = capabilityContract(input.changeSet, successor.documents, history.hasSubjectRules, history.hasDtsExamples);
+  const contract = capabilityContract(input.changeSet, successor.documents, history.hasSubjectRules, history.hasDtsExamples, isInstallChainToolchain(frozen.toolchain));
   const impact = { ...buildImpact(predecessorTarget, successor, requestedClasses), capabilityContractRevision: contract.revision };
   const impactReportDigest = canonicalDigest(impact as unknown as ContractJsonValue);
   // Choose the physical representation after validating the change and its impact.

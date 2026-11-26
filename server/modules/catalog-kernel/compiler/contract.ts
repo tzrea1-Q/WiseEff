@@ -8,6 +8,14 @@ import {
 
 import { dtsExamplesBundleContractArtifactDigest, ownerBundleContractArtifactDigest, s1BundleContractArtifactDigest } from "./contractArtifacts";
 
+/** Both declarations enter the release aggregate; the source format also gates legacy validators. */
+export const INSTALL_CHAIN_COMPILER = "wiseeff-catalog-install-chain/v2";
+export const INSTALL_CHAIN_SOURCE_FORMAT = "wiseeff-catalog-release@2";
+
+export function isInstallChainToolchain(toolchain: { readonly compiler: string; readonly sourceFormat: string } | null | undefined): boolean {
+  return toolchain?.sourceFormat === INSTALL_CHAIN_SOURCE_FORMAT && toolchain.compiler === INSTALL_CHAIN_COMPILER;
+}
+
 const deepFreeze = <Value>(value: Value): Value => {
   if (value !== null && typeof value === "object" && !Object.isFrozen(value)) {
     for (const nested of Object.values(value)) deepFreeze(nested);
