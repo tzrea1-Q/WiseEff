@@ -13,11 +13,19 @@ A small import against an existing subject should have predictable preview and a
 - Insert a release's definition heads from paired arrays and restore the current heads with one joined update. Unchanged heads do not require an update. Other projection tables, triggers and verification still scale with the target.
 - A retryable job stays under observation in the UI. Terminal timeout is a typed failure. Structured request and attempt timings distinguish artifact reads, compilation, waits, projection and commit. When checking success, use the job and its matching receipt.
 
-## Next implementation
+## Checkpoint implementation
 
 1. **Prepare the current base once.** An idempotent maintenance operation reads a pinned base using a consistent snapshot, verifies it through the full compiler, and writes a versioned checkpoint only if the same release and bytes are still current. Cover existing installations and repeated all-skipped imports. Deduplicate concurrent warmups by base and compiler version. Make progress and completion observable.
 2. **Bound ordinary activation by one verified base plus the successor.** Persist the facts the compiler and installer require, including historical identity claims and toolchain/capability history. Bind the checkpoint to release ID, logical digest, physical checksum, compiler contract, validator version and materialization. Compare its output against full replay for counters, digest, capability decisions, projections and receipts. The existing compiled-model digest covers all normalized releases. Preserving its exact value requires an explicitly tested incremental encoding or a separately versioned conversion with compatibility for older artifacts.
 3. **Make checkpoints safe across the lifecycle.** Invalidate derived proofs during authorized erasure, rewrite and contract upgrades. Cover stale bases, missing/corrupt ancestors, restore, competing jobs and late receipts. Keep full replay available for incompatible or ambiguous inputs. Checkpoint absence triggers verification, failed integrity checks block unsafe activation. No retry may advance the pointer twice.
+
+The preview store distinguishes certificates for ordinary definition edits and subject spelling changes. A verified legacy subject whose selector and natural key differ can supply the former. Rename keeps its historical spelling checks. A read-only planning request with no changes can reuse either valid certificate.
+
+Migration 0376 adds a synchronizer-owned installation proof tied to the current release, bytes, compiler and materialization. The manager can explicitly prewarm both certificates for an already-installed release. A successful publication records the next installation proof in the same transaction as its receipt. An artifact, release or materialization rewrite invalidates activation proofs and advances their generation. A reader checks that generation again under the pointer lock.
+
+New Markdown definition successors on the migrated database use the manifest compiler `wiseeff-catalog-install-chain/v2` and capability v9. Descendants inherit the compiler contract. Full replay hashes verified normalized releases in numeric sequence into a typed model receipt. Ordinary definition appends extend those same commitments. Older releases keep the original compiled model and digest. Other operations on a v2 base still use full replay whenever the append proof cannot establish the required invariants. Operators upgrade compiler consumers together and keep a matched backup for rollback across the first v2 publication.
+
+The v2 source format is `wiseeff-catalog-release@2`. The manifest binds the compiler marker to this format, allowing older offline validators to reject it before modifying catalog state. For v2, `compiled_model_digest` is the SHA-256 digest of the canonical `modelReceipt`. The full export still supplies the normalized model bytes. Use the version-aware compiler to reproduce both.
 
 ## Release acceptance
 

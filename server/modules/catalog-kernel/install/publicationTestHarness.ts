@@ -38,7 +38,7 @@ import {
   PublicationPolicyRevision,
 } from "../../parameter-catalog-contract/index";
 import { createDatabase } from "../../../shared/database/client";
-import { compileCatalogRelease } from "../compiler/index";
+import { compileCatalogRelease, INSTALL_CHAIN_COMPILER, INSTALL_CHAIN_SOURCE_FORMAT } from "../compiler/index";
 import { jsonCatalogReleaseSource } from "../interface";
 import type { InstallPublishedReleaseCommand } from "../interface";
 import { installPublishedRelease } from "./installer";
@@ -158,6 +158,7 @@ export async function buildAuthorizedJob(
   client: pg.Client,
   input: {
     predecessorDigest: string;
+    compilerFormat?: "install-chain" | "legacy-marker";
     propertyKey: string;
     authorPrincipalId?: string;
     publisherUserId?: string;
@@ -201,7 +202,11 @@ export async function buildAuthorizedJob(
   const built = await buildCompleteSuccessor({
     predecessorArtifact: { digest: input.predecessorDigest },
     changeSet: [pageIntegerChange(input.propertyKey, `Input ${input.propertyKey}`)],
-    frozenIdentity: frozen,
+    frozenIdentity: input.compilerFormat ? { ...frozen, toolchain: {
+      ...frozen.toolchain, compiler: INSTALL_CHAIN_COMPILER,
+      sourceFormat: input.compilerFormat === "install-chain" ? INSTALL_CHAIN_SOURCE_FORMAT : frozen.toolchain.sourceFormat,
+    } } : frozen,
+    ...(input.compilerFormat ? { storageFormat: "successor-v1" as const } : {}),
     persist: {
       db: createDatabase(asQueryable(client)),
       ports: {

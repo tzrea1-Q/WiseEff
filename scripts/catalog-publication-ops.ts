@@ -1,9 +1,12 @@
 import { readFileSync } from "node:fs";
+import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
 
 import { runInspectCatalogPublicationBaseline } from "./inspect-catalog-publication-baseline";
+import { prewarmCatalogCheckpoint } from "../server/modules/catalog-publication/runtime/prewarmCheckpoint";
+import { withCatalogStageLogging } from "../server/observability/catalogPublicationStages";
 import {
   adoptPreexistingCatalog,
   checkAdoptPreexistingCatalog,
@@ -47,6 +50,7 @@ const CATALOG_CAPABILITIES = [
 
 export type CatalogPublicationOpsCommand =
   | { readonly name: "inspect" }
+  | { readonly name: "prewarm-checkpoint" }
   | {
       readonly name: "adopt";
       readonly mode: "check" | "execute";
@@ -95,6 +99,7 @@ export type CatalogPublicationOpsCommand =
 
 const usage = `Usage:
   npx tsx scripts/catalog-publication-ops.ts inspect
+  npx tsx scripts/catalog-publication-ops.ts prewarm-checkpoint
   npx tsx scripts/catalog-publication-ops.ts adopt --check|--execute --expected-id <id> --expected-digest sha256:... --bundle <file> --actor <userId> --verification-digest sha256:... --data-mode fresh|populated|restored [--evidence-kind synthetic-fixture]
   npx tsx scripts/catalog-publication-ops.ts capabilities grant|revoke|status --user-id <id> --organization-id <id> --capability catalog:author|catalog:publish|catalog:review-high-risk
   npx tsx scripts/catalog-publication-ops.ts policy status
@@ -149,6 +154,9 @@ export const parseCatalogPublicationOpsArgv = (
   }
   if (command === "inspect") {
     return { ok: true, command: { name: "inspect" } };
+  }
+  if (command === "prewarm-checkpoint" && argv.length === 1) {
+    return { ok: true, command: { name: "prewarm-checkpoint" } };
   }
   if (command === "adopt") {
     const mode = has(argv, "--execute") ? "execute" : has(argv, "--check") ? "check" : undefined;
@@ -342,6 +350,16 @@ export const runCatalogPublicationOps = async (
     return { exitCode: 0, payload: result.evidence };
   }
 
+  if (command.name === "prewarm-checkpoint") {
+    const pool = managerPool();
+    try {
+      const result = await withCatalogStageLogging({ requestId: randomUUID() }, () => prewarmCatalogCheckpoint(pool),
+        fields => { process.stderr.write(JSON.stringify(fields) + "\n"); });
+      return { exitCode: result.status === "current-pins-changed" ? 1 : 0, payload: result };
+    } finally {
+      await pool.end();
+    }
+  }
   if (command.name === "adopt") {
     const pool = managerPool();
     try {

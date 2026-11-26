@@ -6,6 +6,8 @@ import * as authorization from "../../catalog-publication/authorization/authoriz
 import type { VerifiedPublicationAuthorization } from "../../catalog-publication/authorization/types";
 import * as bundleCodec from "../../catalog-publication/builder/bundleCodec";
 import { encodeBundleBytes, refreshSuccessorSource } from "../../catalog-publication/builder/bundleCodec";
+import * as checkpoints from "../../catalog-publication/persistence/activationCheckpoint";
+import { CATALOG_INSTALL_CHAIN_CAPABILITY_REVISION } from "../../catalog-publication/builder/types";
 import * as store from "../../catalog-publication/persistence/store";
 import type { CatalogActivationReceiptRecord, PublicationJobRecord, ReleaseArtifactRecord } from "../../catalog-publication/persistence/types";
 import { CatalogArtifactId, PublicationPolicyRevision } from "../../parameter-catalog-contract/index";
@@ -28,10 +30,12 @@ const activeOwner = base.documents.find((document) => document.kind === "subject
 const activeDefinition = base.documents.find((document) => document.kind === "definition" && document.content.subjectId === activeOwner.content.id)!;
 const successorId = "crel_retired_owner_activation";
 
-function successor(documents: readonly CatalogReleaseDocument[]) {
+function successor(documents: readonly CatalogReleaseDocument[], installChain = false) {
   const target = refreshSuccessorSource({
     ...base, documents: documents.map((document) => structuredClone(document)),
-    manifest: { ...base.manifest, release: {
+    manifest: { ...base.manifest, toolchain: installChain ? {
+      ...base.manifest.toolchain, compiler: compiler.INSTALL_CHAIN_COMPILER, sourceFormat: compiler.INSTALL_CHAIN_SOURCE_FORMAT,
+    } : base.manifest.toolchain, release: {
       ...base.manifest.release, id: successorId, version: "9.0.0", sequence: base.manifest.release.sequence + 1,
       publishedAt: "2026-10-16T00:00:00Z",
       predecessor: { id: base.manifest.release.id, digest: vendor.compiled.aggregateDigest },
@@ -111,8 +115,8 @@ describe("stored publication candidate retired owner boundary", () => {
     expect(() => refuseRetiredOwnerDefinitionChanges(successor([...base.documents, subject, definition]).compiled)).not.toThrow();
   });
 
-  function storedCandidate(changed = retiredDefinition, storedBytes?: Uint8Array) {
-    const prepared = successor(base.documents.map((document) => document === changed ? revise(document, true) : document));
+  function storedCandidate(changed = retiredDefinition, storedBytes?: Uint8Array, installChain = false) {
+    const prepared = successor(base.documents.map((document) => document === changed ? revise(document, true) : document), installChain);
     const command = { mode: "online-publication", jobId: "cjob_old", candidateId: "ccand_old", authorizationId: "cauth_old", fencingToken: 1,
       expectedCurrent: { id: vendor.compiled.release.id, digest: vendor.compiled.aggregateDigest },
     } as Extract<InstallPublishedReleaseCommand, { mode: "online-publication" }>;
@@ -134,7 +138,7 @@ describe("stored publication candidate retired owner boundary", () => {
       artifactDigest: prepared.compiled.aggregateDigest,
       expectedBaseReleaseId: command.expectedCurrent.id, expectedBaseReleaseDigest: command.expectedCurrent.digest,
       proposalId: null, proposalRevisionId: null, identityAllocation: {},
-      impactReportDigest: "sha256:fixture-impact", capabilityContract: {}, createdAt: "2026-10-16T00:00:00Z",
+      impactReportDigest: "sha256:fixture-impact", capabilityContract: { revision: installChain ? CATALOG_INSTALL_CHAIN_CAPABILITY_REVISION : "v1" }, createdAt: "2026-10-16T00:00:00Z",
     };
     const candidateRead = vi.spyOn(store, "getCandidate").mockResolvedValue({ ok: true, value: candidate });
     const artifactBytes = storedBytes ?? encodeBundleBytes(prepared.bundle);
@@ -167,11 +171,11 @@ describe("stored publication candidate retired owner boundary", () => {
       ok: true, value: authorized,
     });
     const receiptRead = vi.spyOn(store, "getReceiptByJobId").mockResolvedValue({ ok: false, error: { kind: "not-found", entity: "receipt" } });
-    return { prepared, target, command, pool, query, release, connect, materialize, candidateRead, artifactRead, authorize, receiptRead };
+    return { prepared, target, command, pool, query, release, connect, materialize, candidate, candidateRead, artifactRead, authorize, receiptRead };
   }
 
-  function compactCandidate() {
-    const fixture = storedCandidate(activeDefinition);
+  function compactCandidate(installChain = false) {
+    const fixture = storedCandidate(activeDefinition, undefined, installChain);
     const { prepared, target } = fixture;
     const baseBytes = encodeBundleBytes(vendor.bundle);
     const parent: ReleaseArtifactRecord = { ...target, id: CatalogArtifactId("cart_parent"),
@@ -188,6 +192,34 @@ describe("stored publication candidate retired owner boundary", () => {
     useLineage(compact, parent);
     return { ...fixture, compact, parent, useLineage };
   }
+
+  it.each(["epoch", "revision-id", "retired-approver", "corrupt-base", "capability-marker"] as const)(
+    "rechecks %s on a checkpointed activation before staging any rows", async obstacle => {
+      const { command, pool, compact, artifactRead, materialize, candidate, candidateRead } = compactCandidate(true);
+      const proof = compiler.buildCatalogInstallProof(vendor.compiled);
+      vi.spyOn(checkpoints, "readCheckpointEpoch").mockResolvedValue("101");
+      vi.spyOn(checkpoints, "readActivationCheckpoint").mockResolvedValue({
+        target: base, proof, epoch: "101",
+        compiledReleaseDigest: obstacle === "corrupt-base" ? "corrupt" : proof.compiledReleaseDigest,
+        materializationFingerprint: proof.materializationFingerprint, toolchainDigest: proof.toolchainDigest,
+      });
+      vi.spyOn(checkpoints, "lockCheckpointEpoch").mockResolvedValue(obstacle !== "epoch");
+      vi.spyOn(checkpoints, "hasAvailableAppendIdentities").mockResolvedValue(obstacle !== "revision-id");
+      if (obstacle === "capability-marker") {
+        candidateRead.mockResolvedValue({ ok: true, value: { ...candidate, capabilityContract: { ...candidate.capabilityContract } } });
+        candidate.capabilityContract.revision = "legacy";
+      }
+      const revoked = obstacle === "retired-approver";
+      const result = await installPublishedRelease(pool, revoked ? { ...command, refreshTrustedActor: async () => null } : command);
+      expect(result).toMatchObject({ ok: false, error: revoked
+        ? { kind: "publication-not-authorized", reason: "publication-capability-missing" }
+        : obstacle === "capability-marker" ? { kind: "publication-not-authorized", reason: "candidate-tampered" }
+        : { kind: obstacle === "corrupt-base" ? "artifact-unreadable" : "needs-rebase" } });
+      expect(artifactRead.mock.calls.map(([, digest, includeLineage]) => [digest, includeLineage]))
+        .toEqual([[compact.artifactDigest, false]]);
+      expect(materialize).not.toHaveBeenCalled();
+    },
+  );
 
   it("compiles the independently decoded physical rows once and pins the physical tip under the lock", async () => {
     const { command, pool, release, compact, prepared } = compactCandidate();

@@ -383,12 +383,15 @@ async function readStoredArtifacts(
     scope ? [scope.digest] : [],
   );
   const records = new Map<string, ReleaseArtifactRecord>();
-  for (let start = 0; start < rows.length;) {
-    const first = rows[start]!;
-    let end = start + 1;
-    while (rows[end]?.id === first.id) end += 1;
-    records.set(first.artifact_digest, toArtifact(first, assembleArtifactBytes(rows.slice(start, end))));
-    start = end;
+  // Consume rows in query order, releasing the driver's chunks after each
+  // artifact is assembled. Keeping every chunk until the end doubles the
+  // live physical history when a cold reader fetches many successors.
+  rows.reverse();
+  while (rows.length) {
+    const first = rows.pop()!;
+    const chunks = [first];
+    while (rows.at(-1)?.id === first.id) chunks.push(rows.pop()!);
+    records.set(first.artifact_digest, toArtifact(first, assembleArtifactBytes(chunks)));
   }
   return records;
 }
@@ -452,6 +455,48 @@ function checkParsedNumbers(value: unknown): void {
   }
 }
 
+function decodePhysicalRelease(record: ReleaseArtifactRecord): CatalogPublicationStoreResult<CatalogReleaseBundle> {
+  if (sha256DigestOfBytes(record.artifactBytes) !== record.bytesChecksum) {
+    return fail({ kind: "invalid-input", reason: "invalid-artifact-lineage" });
+  }
+  const parsed = parseBundleBytes(record.artifactBytes);
+  if (!parsed.ok) {
+    return fail({ kind: "invalid-input", reason: parsed.detail === "catalog-release-bundle-scalar-too-large"
+      ? parsed.detail : "invalid-artifact-bundle" });
+  }
+  const { bundle } = parsed;
+  if (bundle.targetReleaseId !== record.targetReleaseId || bundle.releases.some(node =>
+    typeof node?.manifest?.release?.id !== "string" || !Number.isSafeInteger(node.manifest.release.sequence))) {
+    return fail({ kind: "invalid-input", reason: "invalid-artifact-bundle" });
+  }
+  if (record.storageFormat) {
+    const node = bundle.releases[0];
+    if (!node || bundle.releases.length !== 1 || !matchingTarget(record, node) ||
+        !record.predecessorReleaseDigest || node.manifest.release.predecessor?.digest !== record.predecessorReleaseDigest ||
+        node.manifest.release.predecessor.id !== record.predecessorReleaseId) {
+      return fail({ kind: "invalid-input", reason: "invalid-compact-artifact" });
+    }
+  }
+  return ok(bundle);
+}
+
+/** Verify one physically stored successor before extending a certified base. */
+export function decodeStoredSuccessor(record: ReleaseArtifactRecord): CatalogPublicationStoreResult<CatalogReleaseNode> {
+  if (!record.storageFormat) return fail({ kind: "invalid-input", reason: "invalid-compact-artifact" });
+  const parsed = decodePhysicalRelease(record);
+  if (!parsed.ok) return parsed;
+  const node = parsed.value.releases[0]!;
+  try {
+    checkParsedNumbers(node);
+  } catch (error) {
+    if (error instanceof TypeError || error instanceof RangeError) {
+      return fail({ kind: "invalid-input", reason: "invalid-artifact-bundle" });
+    }
+    throw error;
+  }
+  return ok(node);
+}
+
 function assembleArtifactBundle<T>(
   first: ReleaseArtifactRecord,
   records: ReadonlyMap<string, ReleaseArtifactRecord>,
@@ -463,20 +508,11 @@ function assembleArtifactBundle<T>(
   let record = first;
   while (true) {
     checkpoint?.();
-    if (visited.has(record.artifactDigest) || sha256DigestOfBytes(record.artifactBytes) !== record.bytesChecksum) {
-      return fail({ kind: "invalid-input", reason: "invalid-artifact-lineage" });
-    }
+    if (visited.has(record.artifactDigest)) return fail({ kind: "invalid-input", reason: "invalid-artifact-lineage" });
     visited.add(record.artifactDigest);
-    const parsed = parseBundleBytes(record.artifactBytes);
-    if (!parsed.ok) {
-      return fail({ kind: "invalid-input", reason: parsed.detail === "catalog-release-bundle-scalar-too-large"
-        ? parsed.detail : "invalid-artifact-bundle" });
-    }
-    const { bundle } = parsed;
-    if (bundle.targetReleaseId !== record.targetReleaseId || bundle.releases.some(node =>
-      typeof node?.manifest?.release?.id !== "string" || !Number.isSafeInteger(node.manifest.release.sequence))) {
-      return fail({ kind: "invalid-input", reason: "invalid-artifact-bundle" });
-    }
+    const decoded = decodePhysicalRelease(record);
+    if (!decoded.ok) return decoded;
+    const bundle = decoded.value;
     if (!record.storageFormat) {
       if (!matchingTarget(record, bundle.releases.find(node => node.manifest.release.id === bundle.targetReleaseId))) {
         return fail({ kind: "invalid-input", reason: "invalid-artifact-base" });
@@ -492,14 +528,8 @@ function assembleArtifactBundle<T>(
         throw error;
       }
     }
-    const node = bundle.releases[0];
-    if (!node || bundle.releases.length !== 1 || !matchingTarget(record, node) ||
-        !record.predecessorReleaseDigest || node.manifest.release.predecessor?.digest !== record.predecessorReleaseDigest ||
-        node.manifest.release.predecessor.id !== record.predecessorReleaseId) {
-      return fail({ kind: "invalid-input", reason: "invalid-compact-artifact" });
-    }
-    suffix.push(node);
-    const base = records.get(record.predecessorReleaseDigest);
+    suffix.push(bundle.releases[0]!);
+    const base = records.get(record.predecessorReleaseDigest!);
     if (!base || base.targetReleaseId !== record.predecessorReleaseId) {
       return fail({ kind: "invalid-input", reason: "invalid-artifact-base" });
     }
@@ -629,30 +659,35 @@ export async function persistArtifact(
 }
 
 /** Bump the algorithm revision for validation changes not captured by the compiler contracts. */
-const PREVIEW_VALIDATOR_VERSION = [
-  "catalog-subject-rename/v1", catalogCompilerContractFingerprint, catalogCompilerOwnerContractFingerprint,
+const previewValidatorVersion = (proof: string) => [
+  proof, catalogCompilerContractFingerprint, catalogCompilerOwnerContractFingerprint,
   catalogCompilerDtsContract(false).compilerFingerprint, catalogCompilerDtsContract(true).compilerFingerprint,
 ].join("/");
+// Existing readers recognize only the stronger certificate. Writing a separate
+// version prevents them from using a definitions-only target for a rename.
+const spellingProof = previewValidatorVersion("catalog-subject-rename/v1");
+const definitionProof = previewValidatorVersion("catalog-definition-edits/v1");
 
 export async function getValidatedPreviewSnapshot(
-  db: Queryable, digest: string,
+  db: Queryable, digest: string, scope: "definitions" | "spellings" = "definitions",
 ): Promise<CatalogPublicationStoreResult<PreviewSnapshot>> {
   try {
     const result = await timeCatalogStage("snapshot-read", () => db.query<ArtifactByteChunkRow & {
-      target_release_id: string; target_checksum: string; has_subject_rules: boolean; has_dts_examples: boolean;
+      target_release_id: string; target_checksum: string; has_subject_rules: boolean; has_dts_examples: boolean; validator_version: string;
     }>(
-      `select target_release_id, target_checksum, has_subject_rules, has_dts_examples, ${artifactByteColumns}
+      `select target_release_id, target_checksum, has_subject_rules, has_dts_examples, validator_version, ${artifactByteColumns}
          from (
-           select a.target_release_id, s.target_checksum, s.has_subject_rules, s.has_dts_examples,
+           select a.target_release_id, s.target_checksum, s.has_subject_rules, s.has_dts_examples, s.validator_version,
                   coalesce(s.target_bytes, a.artifact_bytes) as artifact_bytes
            from catalog_publication.preview_snapshots s
            join catalog_publication.release_artifacts a on a.id = s.artifact_id
            where a.artifact_digest = $1 and a.target_release_digest = $1
-             and s.bytes_checksum = a.bytes_checksum and s.validator_version = $2
+             and s.bytes_checksum = a.bytes_checksum and s.validator_version in ($2, $3)
+           order by (s.validator_version = $2) desc limit 1
          ) artifact
          ${artifactByteChunkJoin}
          order by chunk.byte_start`,
-      [digest, PREVIEW_VALIDATOR_VERSION],
+      [digest, spellingProof, scope === "definitions" ? definitionProof : null],
     ), read => ({ byteCount: read.rows[0]?.artifact_byte_length ?? 0 }));
     const row = result.rows[0];
     if (!row) return fail({ kind: "not-found", entity: "artifact" });
@@ -665,7 +700,8 @@ export async function getValidatedPreviewSnapshot(
           !node || node.manifest?.release?.digest !== digest || node.manifest.release.id !== row.target_release_id) {
         return fail({ kind: "invalid-input", reason: "invalid-preview-snapshot" });
       }
-      return ok({ target: node, hasSubjectRules: row.has_subject_rules, hasDtsExamples: row.has_dts_examples });
+      return ok({ target: node, coversSubjectSpellings: row.validator_version === spellingProof,
+        hasSubjectRules: row.has_subject_rules, hasDtsExamples: row.has_dts_examples });
     });
   } catch (error) {
     return fail(mapWriteError(error));
@@ -693,7 +729,7 @@ export async function putValidatedPreviewSnapshot(
          on conflict (artifact_id, validator_version) do nothing
        )
        select exists (select 1 from source) as present`,
-      [digest, release.id, PREVIEW_VALIDATOR_VERSION, snapshot.hasSubjectRules, targetBytes,
+      [digest, release.id, snapshot.coversSubjectSpellings ? spellingProof : definitionProof, snapshot.hasSubjectRules, targetBytes,
         targetBytes ? sha256DigestOfBytes(targetBytes) : null, Boolean(storageFormat), snapshot.hasDtsExamples],
     );
     return inserted.rows[0]?.present ? ok(undefined) : fail({ kind: "not-found", entity: "artifact" });

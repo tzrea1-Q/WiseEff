@@ -73,6 +73,7 @@ const revisionModel = (
   }
   if (revision.unit !== undefined) model["/unit"] = revision.unit;
   if (revision.examples !== undefined) model["/examples"] = revision.examples;
+  if (revision.dtsExamples !== undefined) model["/dtsExamples"] = revision.dtsExamples;
   return model;
 };
 

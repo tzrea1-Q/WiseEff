@@ -15,8 +15,8 @@ import {
   compileVendorCatalogSuccessor,
 } from "../../../../scripts/compile-vendor-catalog-release";
 import { buildCompleteSuccessor, buildSuccessorFromSnapshot } from "./completeSuccessor";
-import { identitySnapshotOf } from "./identitySnapshot";
-import { encodeBundleBytes } from "./bundleCodec";
+import { appendPreviewSnapshot, identitySnapshotOf } from "./identitySnapshot";
+import { encodeBundleBytes, refreshSuccessorSource } from "./bundleCodec";
 import {
   allocationFor,
   allocationForRevision,
@@ -48,7 +48,7 @@ describe("buildCompleteSuccessor", () => {
     if (!renamed.ok || renamed.value.kind !== "successor") throw new Error(JSON.stringify(renamed));
     const base = renamed.value.artifact;
     const snapshot = identitySnapshotOf(base.bundle, base.bundle.releases.at(-1)!);
-    if (!snapshot) throw new Error("expected a validated identity snapshot");
+    expect(snapshot.coversSubjectSpellings).toBe(true);
     const input = {
       productPath: "m2-core" as const, predecessorArtifact: { digest: base.artifactDigest, bytes: base.artifactBytes },
       changeSet: [{ op: "set-subject-alias" as const, subjectId, selector: "another", active: true }],
@@ -90,11 +90,15 @@ describe("buildCompleteSuccessor", () => {
     expect(await build([source], { type: "integer", minimum: 33 })).toMatchObject({ ok: false, error: { detail: "dts-example-does-not-match-schema" } });
   });
 
-  it("certifies a mixed definition import including the first DTS example against the full compiler", async () => {
+  it.each([false, true])("certifies mixed definitions and DTS against the full compiler (legacy spelling: %s)", async (legacy) => {
     const predecessor = firstAcmePredecessor();
+    const target = legacy ? refreshSuccessorSource({ ...predecessor.first, documents: predecessor.first.documents.map(doc =>
+      doc.kind === "subject" ? { ...doc, content: { ...doc.content, canonicalKey: "driver:acme,legacy" } } : doc),
+    }) : predecessor.first;
+    const bundle = { ...predecessor.bundle, releases: [target] };
     const input = {
       productPath: "m2-core" as const,
-      predecessorArtifact: { digest: predecessor.digest, bytes: predecessor.bytes },
+      predecessorArtifact: { digest: target.manifest.release.digest, bytes: encodeBundleBytes(bundle) },
       storageFormat: "successor-v1" as const,
       frozenIdentity: frozenPageIdentity([allocationFor("voltage_limit"), allocationForRevision("iin_max", 2)]),
       changeSet: [pageIntegerChange("voltage_limit", "Voltage limit"), {
@@ -103,7 +107,15 @@ describe("buildCompleteSuccessor", () => {
       }],
     };
     const full = await buildCompleteSuccessor(input);
-    const snapshot = identitySnapshotOf(predecessor.bundle, predecessor.first)!;
+    const snapshot = identitySnapshotOf(bundle, target);
+    expect(snapshot.coversSubjectSpellings).toBe(!legacy);
+    if (legacy) {
+      // A later target whose spelling now matches cannot certify older spellings.
+      expect(appendPreviewSnapshot(snapshot, predecessor.first).coversSubjectSpellings).toBe(false);
+      expect(await buildSuccessorFromSnapshot({ ...input,
+        changeSet: [{ op: "rename-subject", subjectId: "csub_acme_power", selector: "acme,renamed", keepOldAlias: false }],
+      }, snapshot)).toMatchObject({ ok: false, error: { kind: "invalid-input" } });
+    }
     expect(snapshot.hasDtsExamples).toBe(false);
     const compact = await buildSuccessorFromSnapshot(input, snapshot);
     if (!full.ok || full.value.kind !== "successor" || !compact.ok || compact.value.kind !== "successor") {

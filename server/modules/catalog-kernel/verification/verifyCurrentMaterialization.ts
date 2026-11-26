@@ -14,7 +14,7 @@ import {
   type VerificationResult,
 } from "../../parameter-catalog-contract/index";
 import { decodeJsonBytes } from "../compiler/bundleBytes";
-import { compileCatalogRelease } from "../compiler/index";
+import { compileCatalogRelease, type CatalogInstallationRelease } from "../compiler/index";
 import type {
   CatalogReleaseAliasDocument,
   CatalogReleaseBundle,
@@ -178,7 +178,7 @@ const compilePublishedRelease = async (
 };
 
 const identityFromCompiled = (
-  compiled: CompiledCatalogRelease,
+  compiled: CatalogInstallationRelease,
 ): CatalogReleaseIdentity => ({
   id: compiled.release.id,
   version: compiled.release.version,
@@ -206,7 +206,7 @@ const mapReadError = (error: unknown): CatalogKernelError => {
 };
 
 const targetDocuments = (
-  compiled: CompiledCatalogRelease,
+  compiled: CatalogInstallationRelease,
 ): readonly CatalogReleaseDocument[] => {
   const target = compiled.model.releases.find(
     (release) => release.release.id === compiled.release.id,
@@ -261,26 +261,6 @@ const violation = (
   detail,
 });
 
-const loadLineageIds = async (
-  client: Pick<pg.Client, "query">,
-  releaseId: string,
-): Promise<Set<string>> => {
-  const ids = new Set<string>();
-  let current: string | null = releaseId;
-  while (current && !ids.has(current)) {
-    ids.add(current);
-    const row: pg.QueryResult<{ predecessor_release_id: string | null }> =
-      await client.query<{ predecessor_release_id: string | null }>(
-        `select predecessor_release_id
-           from parameter_catalog.catalog_releases
-          where id = $1`,
-        [current],
-      );
-    current = row.rows[0]?.predecessor_release_id ?? null;
-  }
-  return ids;
-};
-
 type SubjectRow = {
   id: string;
   kind: string;
@@ -321,7 +301,7 @@ type RevisionRow = {
 type HeadRow = {
   definition_id: string;
   revision_id: string;
-  catalog_release_id: string;
+  in_lineage: boolean;
 };
 
 export type CompareCompiledProjectionOptions = {
@@ -330,7 +310,7 @@ export type CompareCompiledProjectionOptions = {
 
 export const compareCompiledProjection = async (
   client: Pick<pg.Client, "query">,
-  compiled: CompiledCatalogRelease,
+  compiled: CatalogInstallationRelease,
   expected: CatalogReleasePin,
   options: CompareCompiledProjectionOptions = {},
 ): Promise<CatalogDriftViolation[]> => {
@@ -346,6 +326,9 @@ export const compareCompiledProjection = async (
     (document): document is CatalogReleaseDefinitionDocument =>
       document.kind === "definition",
   );
+  const subjectIds = new Set(subjects.map(subject => subject.content.id));
+  const aliasIds = new Set(aliases.map(alias => alias.content.id));
+  const definitionIds = new Set(definitions.map(definition => definition.content.id));
   const violations: CatalogDriftViolation[] = [];
   const releaseId = compiled.release.id;
 
@@ -450,7 +433,8 @@ export const compareCompiledProjection = async (
   );
   const subjectOwners = await readCatalogSubjectOwners(client, releaseId);
   const subjectsById = new Map(subjectRows.rows.map((row) => [row.id, row]));
-  const versioned = new Set(compiled.model.releases.flatMap(release => release.documents.flatMap(document =>
+  const versioned = new Set("versionedSubjectIds" in compiled ? compiled.versionedSubjectIds :
+    compiled.model.releases.flatMap(release => release.documents.flatMap(document =>
     document.kind === "subject" && subjectRulesProvenance(document) ? [document.content.id] : [])));
   for (const subject of subjects) {
     const row = subjectsById.get(subject.content.id);
@@ -499,7 +483,7 @@ export const compareCompiledProjection = async (
     }
   }
   for (const row of subjectRows.rows) {
-    if (!subjects.some((subject) => subject.content.id === row.id)) {
+    if (!subjectIds.has(row.id)) {
       violations.push(
         violation(
           "unexpected-catalog-row",
@@ -578,7 +562,7 @@ export const compareCompiledProjection = async (
     }
   }
   for (const row of aliasRows.rows) {
-    if (!aliases.some((alias) => alias.content.id === row.id)) {
+    if (!aliasIds.has(row.id)) {
       violations.push(
         violation(
           "unexpected-catalog-row",
@@ -627,7 +611,7 @@ export const compareCompiledProjection = async (
     }
   }
   for (const row of definitionRows.rows) {
-    if (!definitions.some((definition) => definition.content.id === row.id)) {
+    if (!definitionIds.has(row.id)) {
       violations.push(
         violation(
           "unexpected-catalog-row",
@@ -687,16 +671,19 @@ export const compareCompiledProjection = async (
     }
   }
 
-  const lineage = await loadLineageIds(client, releaseId);
   const headRows = await client.query<HeadRow>(
-    `select
-       head.definition_id,
-       head.revision_id,
-       revision.catalog_release_id
+    `with recursive lineage(id) as (
+       select $1::text
+       union
+       select r.predecessor_release_id from parameter_catalog.catalog_releases r
+         join lineage on r.id = lineage.id where r.predecessor_release_id is not null
+     )
+     select head.definition_id, head.revision_id, lineage.id is not null as in_lineage
      from parameter_catalog.catalog_release_definition_heads head
      join parameter_catalog.definition_revisions revision
        on revision.definition_id = head.definition_id
       and revision.id = head.revision_id
+     left join lineage on lineage.id = revision.catalog_release_id
      where head.release_id = $1`,
     [releaseId],
   );
@@ -716,7 +703,7 @@ export const compareCompiledProjection = async (
       );
       continue;
     }
-    if (!lineage.has(row.catalog_release_id)) {
+    if (!row.in_lineage) {
       violations.push(
         violation(
           "release-head-provenance-mismatch",
@@ -728,7 +715,7 @@ export const compareCompiledProjection = async (
     }
   }
   for (const row of headRows.rows) {
-    if (!definitions.some((definition) => definition.content.id === row.definition_id)) {
+    if (!definitionIds.has(row.definition_id)) {
       violations.push(
         violation(
           "unexpected-catalog-row",
@@ -881,7 +868,7 @@ export const createCatalogVerifier = (pool: pg.Pool): CatalogVerifierAdapter => 
  */
 export const verifyStagedReleaseProjection = async (
   client: Pick<pg.Client, "query">,
-  compiled: CompiledCatalogRelease,
+  compiled: CatalogInstallationRelease,
   options: CompareCompiledProjectionOptions = {},
 ): Promise<Result<never, CatalogKernelError> | { readonly ok: true }> => {
   const expected = {

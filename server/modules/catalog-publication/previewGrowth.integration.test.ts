@@ -1,8 +1,11 @@
+import { execFile } from "node:child_process";
 import { randomBytes } from "node:crypto";
+import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
 import pg from "pg";
 import { expect, it } from "vitest";
 import { createPostgresDatabase, type Database } from "../../shared/database/client";
-import { applyMigrations, migrationsDir, withTempDatabase } from "../../testing/tempDatabase";
+import { applyMigrations, migrationsDir, resolveTestDatabaseUrl, withTempDatabase } from "../../testing/tempDatabase";
 import { CatalogArtifactId, CatalogReleaseDigest, CatalogReleaseId } from "../parameter-catalog-contract";
 import { jsonCatalogReleaseSource } from "../catalog-kernel/interface";
 import { installPublishedRelease } from "../catalog-kernel/install/installer";
@@ -12,6 +15,26 @@ import { withPublicationCoordinator } from "./coordinator";
 import { persistArtifact } from "./persistence/store";
 import { previewPublicationCandidate } from "./preview";
 import { dropLabRuntimeLogins, provisionPublicationRuntimeLogins } from "./runtime/provisionRuntimeLogins";
+
+it("reads no history for the next Markdown preview after publishing against legacy subject keys", async () => {
+  const script = fileURLToPath(new URL("../../../scripts/benchmark-catalog-markdown-publication.ts", import.meta.url));
+  // Exercise both runtime logins, including enqueue, manager activation and
+  // receipt verification. Measure BYTEA rows on the actual PostgreSQL socket.
+  const { stdout } = await promisify(execFile)(process.execPath, ["--import", "tsx", script, "2", "2", "--legacy-mixed", "--verify-replay", "--check-no-op"],
+    { env: { ...process.env, TEST_DATABASE_URL: resolveTestDatabaseUrl() } });
+  const rows = stdout.trim().split("\n").filter(line => line.startsWith("{")).map(line => JSON.parse(line) as {
+    stage: string; depth: number; historyReadBytes: number; snapshotReadBytes: number; checkpointReadBytes: number;
+  });
+  const previews = rows.filter(row => row.stage === "preview");
+  expect(previews).toHaveLength(2);
+  expect(previews[0]!.historyReadBytes).toBeGreaterThan(0);
+  expect(previews[1]!.historyReadBytes).toBe(0);
+  expect(previews[1]!.snapshotReadBytes).toBeGreaterThan(0);
+  expect(rows.find(row => row.stage === "unchanged-preview")).toMatchObject({ historyReadBytes: 0 });
+  const activation = rows.find(row => row.stage === "manager" && row.depth === 2);
+  expect(activation).toMatchObject({ artifactRecordsRead: 1 });
+  expect(activation?.checkpointReadBytes).toBeGreaterThan(0);
+}, 120_000);
 
 it("bounds warm identity and Markdown definition preview IO as release history grows at fixed Catalog size", async () => {
   await withTempDatabase({ prefix: "previewgrowth", migrate: false }, async ({ db, connectionString }) => {

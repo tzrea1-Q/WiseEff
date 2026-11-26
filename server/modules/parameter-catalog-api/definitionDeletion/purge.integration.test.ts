@@ -24,10 +24,13 @@ describe("platform Definition erasure through the runtime API database role", ()
         predecessorReleaseDigest: fixture.chain.pinC.digest, sourceKind: "typed-changeset", toolchain: target.manifest.toolchain,
         storageFormat: "successor-v1", artifactBytes: encodeBundleBytes({ ...bundle, releases: [target] }),
       })).ok).toBe(true);
-      expect((await putValidatedPreviewSnapshot(tx, fixture.chain.pinC.digest, { target: previous, hasSubjectRules: false, hasDtsExamples: false })).ok).toBe(true);
-      expect((await putValidatedPreviewSnapshot(tx, release.digest, { target, hasSubjectRules: false, hasDtsExamples: false }, "successor-v1")).ok).toBe(true);
+      expect((await putValidatedPreviewSnapshot(tx, fixture.chain.pinC.digest, { target: previous, coversSubjectSpellings: true, hasSubjectRules: false, hasDtsExamples: false })).ok).toBe(true);
+      expect((await putValidatedPreviewSnapshot(tx, fixture.chain.pinC.digest, { target: previous, coversSubjectSpellings: false, hasSubjectRules: false, hasDtsExamples: false })).ok).toBe(true);
+      expect((await putValidatedPreviewSnapshot(tx, release.digest, { target, coversSubjectSpellings: false, hasSubjectRules: false, hasDtsExamples: false }, "successor-v1")).ok).toBe(true);
     });
-    expect(await getValidatedPreviewSnapshot(fixture.api, release.digest)).toMatchObject({ ok: true, value: { target, hasDtsExamples: false } });
+    expect(await getValidatedPreviewSnapshot(fixture.api, fixture.chain.pinC.digest)).toMatchObject({ ok: true, value: { coversSubjectSpellings: true } });
+    expect(await getValidatedPreviewSnapshot(fixture.api, release.digest)).toMatchObject({ ok: true, value: { target, coversSubjectSpellings: false, hasDtsExamples: false } });
+    expect(await getValidatedPreviewSnapshot(fixture.api, release.digest, "spellings")).toEqual({ ok: false, error: { kind: "not-found", entity: "artifact" } });
     const complete = await getArtifactByDigest(fixture.api, release.digest);
     if (!complete.ok) throw new Error(JSON.stringify(complete.error));
     expect(Buffer.from(complete.value.artifactBytes).equals(encodeBundleBytes(bundle))).toBe(true);
@@ -112,7 +115,7 @@ describe("platform Definition erasure through the runtime API database role", ()
     expect((await fixture.root.query("select id,value from parameter_catalog.project_parameter_values order by id")).rows).toEqual(before);
     expect((await fixture.root.query("select id from public.parameter_specs where id='legacy-erase-spec'")).rows).toHaveLength(1);
     expect((await fixture.root.query("select * from parameter_catalog.definition_erasures")).rows).toHaveLength(0);
-    expect((await fixture.api.query("select 1 from catalog_publication.preview_snapshots")).rows).toHaveLength(2);
+    expect((await fixture.api.query("select 1 from catalog_publication.preview_snapshots")).rows).toHaveLength(3);
   });
 
   it("erases all target data, retains the other Definition and raw source, and supports cleanup retry", async () => {

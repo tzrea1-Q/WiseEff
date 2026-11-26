@@ -117,6 +117,8 @@ describe("fresh database fixture policy", () => {
       "server/modules/catalog-kernel/schema/catalogSchemaPrivileges.integration.test.ts": ["pcat_compat:false", "pcat_floor:false", "pcat_fresh:false", "pcat_privileges:true", "pcat_upgrade:false"],
       "server/modules/catalog-kernel/security/catalogRoles.integration.test.ts": ["pcat_rbac_0138_replay:false", "pcat_rbac_0170_upgrade:false", "pcat_rbac_0179:false", "pcat_rbac_0179_v1:false", "pcat_rbac_floor:false", "pcat_rbac_fresh:true", "pcat_rbac_missing:false", "pcat_rbac_upgrade:false"],
       "server/modules/catalog-kernel/security/retainedDismissedIdentities.integration.test.ts": ["retainedfresh:true", "retainedids:false"],
+      // Freeze a pending publication on the pre-checkpoint schema before applying 0376.
+      "server/modules/catalog-publication/persistence/activationCheckpoint.integration.test.ts": ["catproofupgrade:false"],
       "server/modules/catalog-publication/persistence/markdownSourceUpgrade.integration.test.ts": ["md_source_upgrade:false"],
       "server/modules/catalog-publication/persistence/schema.integration.test.ts": ["cp02pop:false"],
       "server/modules/catalog-publication/previewGrowth.integration.test.ts": ["previewgrowth:false"],
@@ -125,6 +127,8 @@ describe("fresh database fixture policy", () => {
       "server/modules/catalog-publication/runtime/draftReadUpgrade.integration.test.ts": ["draft_acl_upgrade:false", "structure_baseline_upgrade:false"],
       "server/modules/catalog-publication/runtime/sourceSuspensionUpgrade.integration.test.ts": ["scope_acl_upgrade:false"],
       // Replay 0331 with existing API logins before replacing the bounded read RPC.
+      // Install a legacy release and receipt before testing the first checkpoint prewarm.
+      "server/modules/catalog-publication/runtime/prewarmCheckpoint.integration.test.ts": ["prewarmupgrade:false"],
       "server/modules/catalog-publication/runtime/sourceSuspensionReadUpgrade.integration.test.ts": ["suspension_read_upgrade:false"],
       // Replay pre-0260 authors and published revisions to prove truthful backfill.
       "server/modules/knowledge/historicalAttribution.migration.integration.test.ts": ["history1386upgrade:false"],

@@ -31,7 +31,7 @@ import {
   type PreparedPredecessorArtifact,
 } from "./builder/preparedPredecessor";
 import type { CatalogReleaseNode } from "../catalog-kernel/compiler/types";
-import { freezeCatalogJson } from "../catalog-kernel/compiler/index";
+import { freezeCatalogJson, INSTALL_CHAIN_COMPILER, INSTALL_CHAIN_SOURCE_FORMAT } from "../catalog-kernel/compiler/index";
 import { CATALOG_BASELINE_READER_ROLE } from "../catalog-kernel/security/catalogRoleManifest";
 import type {
   BuildCompleteSuccessorInput,
@@ -427,15 +427,16 @@ type PreviewInput = {
 
 export const previewPublicationCandidate = (input: PreviewInput) => preview(input, true);
 
-const previewSnapshotAccess = async (db: Database) => (await db.query<{ available: boolean; can_read: boolean }>(
+const previewSnapshotAccess = async (db: Database) => (await db.query<{ available: boolean; can_read: boolean; checkpoint_format: boolean }>(
   `select exists (select from pg_catalog.pg_attribute where attrelid=to_regclass('catalog_publication.preview_snapshots')
     and attname='has_dts_examples' and not attisdropped) as available,
+    to_regclass('catalog_publication.activation_checkpoints') is not null as checkpoint_format,
     pg_catalog.pg_has_role(session_user, to_regrole($1), 'SET') as can_read`,
   [CATALOG_BASELINE_READER_ROLE],
 )).rows[0];
 
-const loadPreviewSnapshot = (db: Database, digest: string) =>
-  withPreviewBaseline(db, tx => getValidatedPreviewSnapshot(tx, digest));
+const loadPreviewSnapshot = (db: Database, digest: string, scope?: "definitions" | "spellings") =>
+  withPreviewBaseline(db, tx => getValidatedPreviewSnapshot(tx, digest, scope));
 
 /** The planner and builder share the exact snapshot verified against this artifact. */
 export async function prepareMarkdownPlanningSnapshot(db: Database, predecessorDigest: string) {
@@ -447,12 +448,12 @@ export async function prepareMarkdownPlanningSnapshot(db: Database, predecessorD
   const snapshot = freezeCatalogJson(found.value);
   return { ok: true as const, value: {
     target: snapshot.target,
-    previewCandidate: (input: PreviewInput) => preview({ ...input, db, predecessorDigest }, true, snapshot),
+    previewCandidate: (input: PreviewInput) => preview({ ...input, db, predecessorDigest }, true, snapshot, undefined, access.checkpoint_format),
   } };
 }
 
 async function preview(input: PreviewInput, useSnapshot: boolean, planningSnapshot?: PreviewSnapshot,
-  fallbackIdentity?: FrozenPublicationIdentity):
+  fallbackIdentity?: FrozenPublicationIdentity, planningCheckpointFormat = false):
   Promise<{ ok: true; value: PreviewPublicationValue } | { ok: false; error: PreviewPublicationError }> {
   const [first] = input.changeSet;
   const spelling = input.changeSet.length === 1 && (first?.op === "rename-subject" || first?.op === "set-subject-alias") ? first : undefined;
@@ -461,9 +462,9 @@ async function preview(input: PreviewInput, useSnapshot: boolean, planningSnapsh
   // can reject invalid changes before checking whether to save a preview snapshot.
   const access = !planningSnapshot && (spelling || input.markdownSource) ? await previewSnapshotAccess(input.db) : undefined;
   let snapshotsAvailable = planningSnapshot ? true : access?.available;
-  let snapshot = useSnapshot && compactEligible ? planningSnapshot : undefined;
+  let snapshot = useSnapshot && compactEligible && (!spelling || planningSnapshot?.coversSubjectSpellings) ? planningSnapshot : undefined;
   if (snapshotsAvailable && access?.can_read && useSnapshot && compactEligible && !snapshot && !input.predecessorArtifact) {
-    const found = await loadPreviewSnapshot(input.db, input.predecessorDigest);
+    const found = await loadPreviewSnapshot(input.db, input.predecessorDigest, spelling ? "spellings" : "definitions");
     if (found.ok) snapshot = found.value;
     else if (found.error.kind !== "not-found") return { ok: false, error: { kind: "predecessor-incomplete", detail: found.error.kind } };
   }
@@ -482,12 +483,13 @@ async function preview(input: PreviewInput, useSnapshot: boolean, planningSnapsh
     return { ok: false, error: { kind: "predecessor-incomplete", detail: "predecessor-target-missing" } };
   }
   const toolchain = predecessorTarget.manifest.toolchain;
+  const useInstallChain = (planningCheckpointFormat || access?.checkpoint_format) && input.markdownSource && onlyDefinitionEdits(input.changeSet);
   const frozen = fallbackIdentity ?? mintFrozenIdentity(
     predecessorTarget.manifest.release.version,
     {
-      compiler: toolchain.compiler,
+      compiler: useInstallChain ? INSTALL_CHAIN_COMPILER : toolchain.compiler,
       jsonSchemaDialect: toolchain.jsonSchemaDialect,
-      sourceFormat: toolchain.sourceFormat,
+      sourceFormat: useInstallChain ? INSTALL_CHAIN_SOURCE_FORMAT : toolchain.sourceFormat,
     },
     input.changeSet,
     predecessorTarget,

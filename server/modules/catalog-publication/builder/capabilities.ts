@@ -6,7 +6,12 @@
  * not widen. `$ref`, pattern, and format stay forbidden.
  */
 import type { ContractJsonValue, Result } from "../../parameter-catalog-contract/index";
-import type { CatalogReleaseSubjectDocument, CompiledCatalogRelease } from "../../catalog-kernel/compiler/types";
+import {
+  catalogCompilerContractFingerprint, catalogCompilerDtsContract, catalogCompilerOwnerContractFingerprint,
+  INSTALL_CHAIN_COMPILER, INSTALL_CHAIN_SOURCE_FORMAT,
+} from "../../catalog-kernel/compiler/contract";
+import { hashContractJson } from "../../parameter-catalog-contract/chunkedSerialization";
+import type { CatalogReleaseSubjectDocument, CompiledCatalogReleaseModel } from "../../catalog-kernel/compiler/types";
 import {
   dtsExampleIssue, exampleMatchesSchema, hasDtsExampleControlCharacters, MAX_DTS_EXAMPLE_CHARS,
   MAX_DTS_EXAMPLES, normalizeDtsExample,
@@ -80,6 +85,16 @@ export const CATALOG_CAPABILITY_ALLOW_LIST: CapabilityAllowListIdentity = {
     maxDtsExampleChars: MAX_DTS_EXAMPLE_CHARS,
   },
 };
+
+/** Bump the algorithm revision for changes to admission logic outside the frozen contracts. */
+export const ACTIVATION_CHECKPOINT_VERSION = hashContractJson({
+  algorithm: "catalog-activation-checkpoint/v1",
+  compiler: INSTALL_CHAIN_COMPILER,
+  sourceFormat: INSTALL_CHAIN_SOURCE_FORMAT,
+  sourceContracts: [catalogCompilerContractFingerprint, catalogCompilerOwnerContractFingerprint,
+    catalogCompilerDtsContract(false).compilerFingerprint, catalogCompilerDtsContract(true).compilerFingerprint],
+  allowList: CATALOG_CAPABILITY_ALLOW_LIST,
+} as unknown as ContractJsonValue);
 
 const CONTENT_KEYS = new Set([
   "displayName",
@@ -480,7 +495,7 @@ export const validateSupportedDefinitionContent = (
   validateSupportedDefinitionContentAt(content, path, CATALOG_CAPABILITY_ALLOW_LIST);
 
 export const admitCompiledReleaseSchemas = (
-  compiled: CompiledCatalogRelease,
+  compiled: { readonly model: Pick<CompiledCatalogReleaseModel, "releases"> },
   allowList: CapabilityAllowListIdentity = CATALOG_CAPABILITY_ALLOW_LIST,
 ): Result<void, { readonly detail: string }> => {
   for (const release of compiled.model.releases) {

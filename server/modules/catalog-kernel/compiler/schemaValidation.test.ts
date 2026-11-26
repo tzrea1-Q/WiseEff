@@ -3,9 +3,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { validCatalogReleaseBundle } from "./__fixtures__/catalogReleaseBundle";
 import { isCatalogReleaseBundle, isValidJsonSchema202012 } from "./schemaValidation";
+import { INSTALL_CHAIN_COMPILER, INSTALL_CHAIN_SOURCE_FORMAT } from "./contract";
+import { catalogManifestSchema } from "./contractArtifacts";
 
 const Ajv2020 = (createRequire(import.meta.url)("ajv/dist/2020") as {
-  default: { prototype: { compile(schema: unknown): unknown } };
+  default: { new (): { compile(schema: unknown): (value: unknown) => boolean }; prototype: { compile(schema: unknown): unknown } };
 }).default;
 
 afterEach(() => vi.restoreAllMocks());
@@ -37,6 +39,42 @@ describe("Catalog bundle source encoding", () => {
       expect(isCatalogReleaseBundle(bundleWithSourceBytes(bytes))).toBe(false);
     },
   );
+});
+
+describe("Catalog manifest inventory uniqueness", () => {
+  it.each(["files", "documents"] as const)("rejects equal %s entries in different property order", field => {
+    const bundle = validCatalogReleaseBundle();
+    const first = bundle.releases[0]!;
+    const entry = first.manifest[field][0]!;
+    const duplicate = Object.fromEntries(Object.entries(entry).reverse());
+    const withEntry = (extra: object) => ({
+      ...bundle, releases: [{ ...first, manifest: { ...first.manifest, [field]: [...first.manifest[field], extra] } }],
+    });
+    expect(isCatalogReleaseBundle(withEntry(duplicate))).toBe(false);
+    // Schema uniqueness compares the entire member. Source/content consistency
+    // checks belong to later compiler phases.
+    const digestField = field === "files" ? "digest" : "normalizedDigest";
+    expect(isCatalogReleaseBundle(withEntry({ ...duplicate, [digestField]: `sha256:${"c".repeat(64)}` }))).toBe(true);
+  });
+});
+
+it("requires paired v2 declarations and makes frozen legacy validators reject a marked release", () => {
+  const legacyManifest = new Ajv2020().compile(catalogManifestSchema);
+  const bundle = validCatalogReleaseBundle();
+  const base = bundle.releases[0]!;
+  const manifest = (compiler: string, sourceFormat: string) => ({
+    ...base.manifest, toolchain: { ...base.manifest.toolchain, compiler, sourceFormat },
+  });
+  const schemaAccepts = (declaration: typeof base.manifest) =>
+    isCatalogReleaseBundle({ ...bundle, releases: [{ ...base, manifest: declaration }] });
+  const { compiler, sourceFormat } = base.manifest.toolchain;
+  const marked = manifest(INSTALL_CHAIN_COMPILER, INSTALL_CHAIN_SOURCE_FORMAT);
+  expect(legacyManifest(base.manifest)).toBe(true);
+  expect(legacyManifest(marked)).toBe(false);
+  expect(schemaAccepts(marked)).toBe(true);
+  expect(schemaAccepts(manifest(INSTALL_CHAIN_COMPILER, sourceFormat))).toBe(true);
+  expect(schemaAccepts(manifest(compiler, INSTALL_CHAIN_SOURCE_FORMAT))).toBe(false);
+  expect(schemaAccepts(manifest(INSTALL_CHAIN_COMPILER, "unknown-format"))).toBe(false);
 });
 
 describe("Catalog value schema validation cache", () => {

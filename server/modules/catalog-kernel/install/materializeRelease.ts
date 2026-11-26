@@ -4,12 +4,12 @@ import {
   CatalogReleaseDigest,
   type CatalogKernelError,
 } from "../../parameter-catalog-contract/index";
+import type { CatalogInstallationRelease } from "../compiler/index";
 import type {
   CatalogReleaseAliasDocument,
   CatalogReleaseDefinitionDocument,
   CatalogReleaseDocument,
   CatalogReleaseSubjectDocument,
-  CompiledCatalogRelease,
 } from "../compiler/types";
 import { SUBJECT_IDENTITY_CORRECTION, SUBJECT_RULES_CORRECTION, subjectRulesProvenance, subjectRulesSnapshot } from "../compiler/subjectIdentity";
 
@@ -60,7 +60,7 @@ class CatalogKernelFailure extends Error {
 }
 
 const targetDocuments = (
-  compiled: CompiledCatalogRelease,
+  compiled: CatalogInstallationRelease,
 ): readonly CatalogReleaseDocument[] => {
   const target = compiled.model.releases.find(
     (release) => release.release.id === compiled.release.id,
@@ -133,45 +133,33 @@ const tombstoneProvenance = (
 
 const loadExistingIds = async (
   client: CatalogMaterializeClient,
+  documents: readonly CatalogReleaseDocument[],
 ): Promise<{
-  releases: Map<string, { digest: string; fingerprint: string | null }>;
   subjects: Set<string>;
   aliases: Set<string>;
   definitions: Set<string>;
   revisions: Set<string>;
 }> => {
-  const releases = await client.query<{
-    id: string;
-    release_digest: string;
-    compiled_fingerprint: string | null;
-  }>(
-    `select
-       release.id,
-       release.release_digest,
-       materialization.compiled_fingerprint
-     from parameter_catalog.catalog_releases release
-     left join parameter_catalog.catalog_materializations materialization
-       on materialization.release_id = release.id`,
-  );
+  const ids: Record<CatalogReleaseDocument["kind"] | "revision", string[]> = {
+    subject: [], alias: [], definition: [], revision: [],
+  };
+  for (const document of documents) {
+    ids[document.kind].push(document.content.id);
+    if (document.kind === "definition") ids.revision.push(document.content.revision.id);
+  }
   const subjects = await client.query<{ id: string }>(
-    `select id from parameter_catalog.catalog_subjects`,
+    `select id from parameter_catalog.catalog_subjects where id = any($1::text[])`, [ids.subject],
   );
   const aliases = await client.query<{ id: string }>(
-    `select id from parameter_catalog.catalog_subject_aliases`,
+    `select id from parameter_catalog.catalog_subject_aliases where id = any($1::text[])`, [ids.alias],
   );
   const definitions = await client.query<{ id: string }>(
-    `select id from ${catalogDefinitionRelation}`,
+    `select id from ${catalogDefinitionRelation} where id = any($1::text[])`, [ids.definition],
   );
   const revisions = await client.query<{ id: string }>(
-    `select id from parameter_catalog.definition_revisions`,
+    `select id from parameter_catalog.definition_revisions where id = any($1::text[])`, [ids.revision],
   );
   return {
-    releases: new Map(
-      releases.rows.map((row) => [
-        row.id,
-        { digest: row.release_digest, fingerprint: row.compiled_fingerprint },
-      ]),
-    ),
     subjects: new Set(subjects.rows.map((row) => row.id)),
     aliases: new Set(aliases.rows.map((row) => row.id)),
     definitions: new Set(definitions.rows.map((row) => row.id)),
@@ -181,7 +169,7 @@ const loadExistingIds = async (
 
 const stageRelease = async (
   client: CatalogMaterializeClient,
-  compiled: CompiledCatalogRelease,
+  compiled: CatalogInstallationRelease,
 ): Promise<void> => {
   const target = compiled.model.releases.find(
     (release) => release.release.id === compiled.release.id,
@@ -220,7 +208,7 @@ const stageRelease = async (
 
 const stageSubjects = async (
   client: CatalogMaterializeClient,
-  compiled: CompiledCatalogRelease,
+  compiled: CatalogInstallationRelease,
   documents: readonly CatalogReleaseDocument[],
   existingSubjects: Set<string>,
 ): Promise<void> => {
@@ -228,7 +216,8 @@ const stageSubjects = async (
     (document): document is CatalogReleaseSubjectDocument =>
       document.kind === "subject",
   );
-  const versionedSubjects = new Set(compiled.model.releases.flatMap(release => release.documents.flatMap(document =>
+  const versionedSubjects = new Set("versionedSubjectIds" in compiled ? compiled.versionedSubjectIds :
+    compiled.model.releases.flatMap(release => release.documents.flatMap(document =>
     document.kind === "subject" && subjectRulesProvenance(document) ? [document.content.id] : [])));
   for (const subject of subjects) {
     if (!existingSubjects.has(subject.content.id)) {
@@ -300,7 +289,7 @@ const stageSubjects = async (
 
 const stageAliases = async (
   client: CatalogMaterializeClient,
-  compiled: CompiledCatalogRelease,
+  compiled: CatalogInstallationRelease,
   documents: readonly CatalogReleaseDocument[],
   existingAliases: Set<string>,
 ): Promise<void> => {
@@ -341,7 +330,7 @@ const stageAliases = async (
 
 const stageDefinitions = async (
   client: CatalogMaterializeClient,
-  compiled: CompiledCatalogRelease,
+  compiled: CatalogInstallationRelease,
   documents: readonly CatalogReleaseDocument[],
   existing: {
     definitions: Set<string>;
@@ -373,7 +362,7 @@ const stageDefinitions = async (
 
 const stageRevisions = async (
   client: CatalogMaterializeClient,
-  compiled: CompiledCatalogRelease,
+  compiled: CatalogInstallationRelease,
   documents: readonly CatalogReleaseDocument[],
   existingRevisions: Set<string>,
 ): Promise<void> => {
@@ -404,7 +393,7 @@ const stageRevisions = async (
 
 const stageHeads = async (
   client: CatalogMaterializeClient,
-  compiled: CompiledCatalogRelease,
+  compiled: CatalogInstallationRelease,
   documents: readonly CatalogReleaseDocument[],
 ): Promise<void> => {
   const definitions = documents.filter(
@@ -428,7 +417,7 @@ const stageHeads = async (
 
 const stageEvidence = async (
   client: CatalogMaterializeClient,
-  compiled: CompiledCatalogRelease,
+  compiled: CatalogInstallationRelease,
 ): Promise<void> => {
   await client.query(
     `insert into parameter_catalog.catalog_materializations (
@@ -445,11 +434,16 @@ const stageEvidence = async (
 
 export const materializeCompiledRelease = async (
   client: CatalogMaterializeClient,
-  compiled: CompiledCatalogRelease,
+  compiled: CatalogInstallationRelease,
   options?: MaterializeReleaseOptions,
 ): Promise<MaterializeReleaseOutcome> => {
-  const existing = await loadExistingIds(client);
-  const recorded = existing.releases.get(compiled.release.id);
+  const release = await client.query<{ digest: string; fingerprint: string | null }>(
+    `select r.release_digest as digest, m.compiled_fingerprint as fingerprint
+       from parameter_catalog.catalog_releases r
+       left join parameter_catalog.catalog_materializations m on m.release_id = r.id
+       where r.id = $1`, [compiled.release.id],
+  );
+  const recorded = release.rows[0];
   if (recorded) {
     if (recorded.digest !== compiled.release.digest) {
       throw new CatalogKernelFailure({
@@ -487,6 +481,7 @@ export const materializeCompiledRelease = async (
   }
 
   const documents = targetDocuments(compiled);
+  const existing = await loadExistingIds(client, documents);
   maybeFail(options, "before-write");
   await stageRelease(client, compiled);
   maybeFail(options, "releases");
