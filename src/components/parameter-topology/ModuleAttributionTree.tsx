@@ -1,7 +1,8 @@
 import { ChevronDown, ChevronRight } from "lucide-react";
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
 
 import { PARAMETER_ADMIN_UI } from "@/application/parameters/parameterAdminUiCopy";
+import { CATALOG_UNREGISTERED_GROUP_ID, CATALOG_UNREGISTERED_GROUP_LABEL } from "@/features/parameter-catalog/catalogModuleScope";
 import { ModuleCreateDialog, type ModuleCreateSaveDraft } from "@/components/admin/ModuleCreateDialog";
 import { ModuleEditDialog, type ModuleEditSavePatch } from "@/components/admin/ModuleEditDialog";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
@@ -41,18 +42,45 @@ import {
 } from "./moduleAttributionTreeUtils";
 
 export type ModuleTreeSubject = {
-  id: string; moduleId: string; name: string;
+  id: string; moduleId: string | null; name: string;
   displayAlias?: string;
   kind: "driver" | "node-type" | "configuration-schema"; definitionCount: number;
   ownerSubjectId?: string;
 };
+
+const unregisteredGroup: ModuleTreeNode = {
+  id: CATALOG_UNREGISTERED_GROUP_ID, name: CATALOG_UNREGISTERED_GROUP_LABEL,
+  parentId: null, depth: 0, path: CATALOG_UNREGISTERED_GROUP_ID, children: []
+};
+
+type SubjectBranch = { roots: ModuleTreeSubject[]; owned: Map<string, ModuleTreeSubject[]>; count: number };
+
+function groupSubjects(subjects: readonly ModuleTreeSubject[]) {
+  const byId = new Map(subjects.map(subject => [subject.id, subject]));
+  const branches = new Map<string, SubjectBranch>();
+  for (const subject of subjects) {
+    const parent = subject.moduleId ?? unregisteredGroup.id;
+    const branch: SubjectBranch = branches.get(parent) ?? { roots: [], owned: new Map(), count: 0 };
+    branches.set(parent, branch);
+    branch.count++;
+    const owner = subject.ownerSubjectId ? byId.get(subject.ownerSubjectId) : undefined;
+    if (subject.kind === "node-type" && owner?.kind === "driver" && owner.moduleId === subject.moduleId) {
+      const children = branch.owned.get(owner.id) ?? [];
+      children.push(subject);
+      branch.owned.set(owner.id, children);
+    } else {
+      branch.roots.push(subject);
+    }
+  }
+  return branches;
+}
 
 export type ModuleAttributionTreeProps = {
   modules: readonly ParameterModule[];
   mappings: readonly ParameterModuleMapping[];
   subjects?: readonly ModuleTreeSubject[];
   selectedSubjectId?: string | null;
-  onSelectSubject?: (subjectId: string, moduleId: string) => void;
+  onSelectSubject?: (subjectId: string, moduleId: string | null) => void;
   canAdmin?: boolean;
   busy?: boolean;
   /** Parse coverage rollup from listDriverRegistry (moduleId → summary). */
@@ -124,9 +152,9 @@ type RowProps = {
   focusedModuleId: string | null;
   onFocusModule: (moduleId: string) => void;
   onTreeKeyDown: (event: KeyboardEvent<HTMLLIElement>, node: ModuleTreeNode) => void;
-  subjects: readonly ModuleTreeSubject[];
+  subjectBranches: ReadonlyMap<string, SubjectBranch>;
   selectedSubjectId?: string | null;
-  onSelectSubject?: (subjectId: string, moduleId: string) => void;
+  onSelectSubject?: ModuleAttributionTreeProps["onSelectSubject"];
   onSubjectKeyDown: (event: KeyboardEvent<HTMLLIElement>, subject: ModuleTreeSubject) => void;
 };
 
@@ -185,32 +213,27 @@ function ModuleAttributionTreeRow({
   focusedModuleId,
   onFocusModule,
   onTreeKeyDown,
-  subjects,
+  subjectBranches,
   selectedSubjectId,
   onSelectSubject,
   onSubjectKeyDown
 }: RowProps) {
   const module = modulesById.get(node.id);
-  if (!module) return null;
-
-  const subjectChildren = subjects.filter((subject) => subject.moduleId === module.id);
-  const subjectIds = new Set(subjectChildren.map((subject) => subject.id));
-  const ownedBySubject = new Map<string, ModuleTreeSubject[]>();
-  for (const subject of subjectChildren) if (subject.ownerSubjectId) {
-    const owned = ownedBySubject.get(subject.ownerSubjectId) ?? [];
-    owned.push(subject);
-    ownedBySubject.set(subject.ownerSubjectId, owned);
-  }
-  const hasChildren = node.children.length > 0 || subjectChildren.length > 0;
+  const branch = subjectBranches.get(node.id);
+  const hasChildren = node.children.length > 0 || Boolean(branch?.count);
   const isExpanded = expandedIds.has(node.id);
-  const compatibleCount = mappingsForModule(mappings, module.id).filter(
+  const toggleNode = (event: MouseEvent<HTMLButtonElement>) => {
+    onToggle(node.id);
+    event.currentTarget.closest<HTMLElement>('[role="treeitem"]')?.focus();
+  };
+  const compatibleCount = mappingsForModule(mappings, node.id).filter(
     (mapping) => mapping.matchKind === "compatible"
   ).length;
   const coverageSummary =
-    module.kind === "driver-group" ? driverCoverage?.get(module.id) : undefined;
+    module?.kind === "driver-group" ? driverCoverage?.get(module.id) : undefined;
   const coverageChip = coverageSummary ? formatCoverageChip(coverageSummary) : null;
   const renderSubject = (subject: ModuleTreeSubject, subjectDepth: number): ReactNode => {
-    const owned = ownedBySubject.get(subject.id) ?? [];
+    const owned = branch?.owned.get(subject.id) ?? [];
     return <li key={subject.id} role="treeitem" aria-level={subjectDepth + 1}
       aria-expanded={owned.length ? true : undefined}
       aria-selected={selectedSubjectId === subject.id} data-module-tree-id={`subject:${subject.id}`}
@@ -231,6 +254,29 @@ function ModuleAttributionTreeRow({
       {owned.length ? <ul role="group">{owned.map((child) => renderSubject(child, subjectDepth + 1))}</ul> : null}
     </li>;
   };
+
+  if (!module) {
+    if (node !== unregisteredGroup || !branch) return null;
+    return <li role="treeitem" className="module-attribution-tree__item is-root" data-module-tree-id={node.id}
+      aria-level={1} aria-selected={false} aria-expanded={isExpanded} tabIndex={focusedModuleId === node.id ? 0 : -1}
+      onFocus={event => { if (event.target === event.currentTarget) onFocusModule(node.id); }}
+      onKeyDown={event => { if (event.target === event.currentTarget) onTreeKeyDown(event, node); }}>
+      <div className="module-attribution-tree__row">
+        <div className="module-attribution-tree__identity">
+          <button type="button" className="module-attribution-tree__toggle" tabIndex={-1}
+            aria-label={`${isExpanded ? "折叠" : "展开"} ${node.name}`} aria-expanded={isExpanded} onClick={toggleNode}>
+            {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+          </button>
+          <button type="button" className="module-attribution-tree__label module-attribution-tree__select"
+            tabIndex={-1} aria-expanded={isExpanded} onClick={toggleNode}>{node.name}</button>
+        </div>
+        <div className="module-attribution-tree__meta"><span className="module-attribution-tree__count">{branch.count} 个主体</span></div>
+      </div>
+      {isExpanded ? <ul className="module-attribution-tree__group" role="group">
+        {branch.roots.map(subject => renderSubject(subject, depth + 1))}
+      </ul> : null}
+    </li>;
+  }
 
   return (
     <li
@@ -260,7 +306,7 @@ function ModuleAttributionTreeRow({
               className="module-attribution-tree__toggle"
               aria-label={isExpanded ? `折叠 ${module.name}` : `展开 ${module.name} 子模块`}
               aria-expanded={isExpanded}
-              onClick={(event) => { onToggle(module.id); event.currentTarget.closest<HTMLElement>('[role="treeitem"]')?.focus(); }}
+              onClick={toggleNode}
               tabIndex={-1}
             >
               {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
@@ -359,14 +405,13 @@ function ModuleAttributionTreeRow({
               focusedModuleId={focusedModuleId}
               onFocusModule={onFocusModule}
               onTreeKeyDown={onTreeKeyDown}
-              subjects={subjects}
+              subjectBranches={subjectBranches}
               selectedSubjectId={selectedSubjectId}
               onSelectSubject={onSelectSubject}
               onSubjectKeyDown={onSubjectKeyDown}
             />
           ))}
-          {subjectChildren.filter((subject) => !subject.ownerSubjectId || !subjectIds.has(subject.ownerSubjectId))
-            .map((subject) => renderSubject(subject, depth + 1))}
+          {branch?.roots.map((subject) => renderSubject(subject, depth + 1))}
         </ul>
       ) : null}
     </li>
@@ -472,14 +517,18 @@ export function ModuleAttributionTree({
     if (selectedModuleId) setFocusedModuleId(selectedModuleId);
   }, [modules, selectedModuleId]);
 
-  const tree = useMemo(
-    () => buildAttributionTree(modules, filters, driverCoverage),
-    [filters, modules, driverCoverage]
-  );
+  const subjectBranches = useMemo(() => groupSubjects(subjects), [subjects]);
+  const showUnregistered = subjectBranches.has(unregisteredGroup.id) && unregisteredGroup.name.includes(filters.search?.trim() ?? "");
+  const tree = useMemo(() => {
+    const roots = buildAttributionTree(modules, filters, driverCoverage);
+    return showUnregistered ? [...roots, unregisteredGroup] : roots;
+  }, [filters, modules, driverCoverage, showUnregistered]);
   const matchingModuleIds = useMemo(() => {
     const filtered = Boolean(filters.search?.trim());
-    return filtered ? matchingModulesForAttribution(modules, filters, driverCoverage).map((module) => module.id) : null;
-  }, [modules, filters, driverCoverage]);
+    if (!filtered) return null;
+    const ids = matchingModulesForAttribution(modules, filters, driverCoverage).map((module) => module.id);
+    return showUnregistered ? [...ids, unregisteredGroup.id] : ids;
+  }, [modules, filters, driverCoverage, showUnregistered]);
   useEffect(() => { onVisibleModuleIdsChange?.(matchingModuleIds); }, [matchingModuleIds, onVisibleModuleIdsChange]);
   const modulesById = useMemo(
     () => new Map(modules.map((module) => [module.id, module])),
@@ -493,17 +542,10 @@ export function ModuleAttributionTree({
       visibleIds.push(node.id);
       if (visibleExpandedIds.has(node.id)) {
         collectVisible(node.children);
-        const moduleSubjects = subjects.filter((subject) => subject.moduleId === node.id);
-        const moduleSubjectIds = new Set(moduleSubjects.map((subject) => subject.id));
-        const ownedBySubject = new Map<string, ModuleTreeSubject[]>();
-        for (const subject of moduleSubjects) if (subject.ownerSubjectId) {
-          const owned = ownedBySubject.get(subject.ownerSubjectId) ?? [];
-          owned.push(subject);
-          ownedBySubject.set(subject.ownerSubjectId, owned);
-        }
-        for (const subject of moduleSubjects.filter((item) => !item.ownerSubjectId || !moduleSubjectIds.has(item.ownerSubjectId))) {
+        const branch = subjectBranches.get(node.id);
+        for (const subject of branch?.roots ?? []) {
           visibleIds.push(`subject:${subject.id}`);
-          visibleIds.push(...(ownedBySubject.get(subject.id) ?? []).map((child) => `subject:${child.id}`));
+          visibleIds.push(...(branch?.owned.get(subject.id) ?? []).map((child) => `subject:${child.id}`));
         }
       }
     }
@@ -532,13 +574,16 @@ export function ModuleAttributionTree({
     else if (event.key === "ArrowUp") focusModule(visibleIds[Math.max(0, index - 1)]);
     else if (event.key === "Home") focusModule(visibleIds[0]);
     else if (event.key === "End") focusModule(visibleIds.at(-1));
-    else if (event.key === "ArrowRight" && (node.children.length || subjects.some(subject => subject.moduleId === node.id))) {
+    else if (event.key === "ArrowRight" && (node.children.length || subjectBranches.has(node.id))) {
       if (visibleExpandedIds.has(node.id)) focusModule(visibleIds[index + 1]);
       else toggleExpanded(node.id);
     } else if (event.key === "ArrowLeft") {
-      if ((node.children.length || subjects.some(subject => subject.moduleId === node.id)) && visibleExpandedIds.has(node.id) && !filters.search?.trim()) toggleExpanded(node.id);
+      if ((node.children.length || subjectBranches.has(node.id)) && visibleExpandedIds.has(node.id) && (!filters.search?.trim() || node === unregisteredGroup)) toggleExpanded(node.id);
       else focusModule(modulesById.get(node.id)?.parentId ?? undefined);
-    } else if (event.key === "Enter" || event.key === " ") onSelectModule?.(node.id);
+    } else if (event.key === "Enter" || event.key === " ") {
+      if (node === unregisteredGroup) toggleExpanded(node.id);
+      else onSelectModule?.(node.id);
+    }
     else if (event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey) {
       const ordered = [...visibleIds.slice(index + 1), ...visibleIds.slice(0, index + 1)];
       focusModule(ordered.find((id) => modulesById.get(id)?.name.toLocaleLowerCase().startsWith(event.key.toLocaleLowerCase())));
@@ -549,10 +594,13 @@ export function ModuleAttributionTree({
     if (["ArrowDown", "ArrowUp", "ArrowLeft", "ArrowRight", "Home", "End", "Enter", " "].includes(event.key)) event.preventDefault();
     if (event.key === "ArrowDown") focusModule(visibleIds[Math.min(index + 1, visibleIds.length - 1)]);
     else if (event.key === "ArrowUp") focusModule(visibleIds[Math.max(0, index - 1)]);
-    else if (event.key === "ArrowLeft") focusModule(subject.ownerSubjectId && visibleIds.includes(`subject:${subject.ownerSubjectId}`)
-      ? `subject:${subject.ownerSubjectId}` : subject.moduleId);
+    else if (event.key === "ArrowLeft") {
+      const parent = subject.moduleId ?? unregisteredGroup.id;
+      const nested = subject.ownerSubjectId && subjectBranches.get(parent)?.owned.get(subject.ownerSubjectId)?.includes(subject);
+      focusModule(nested ? `subject:${subject.ownerSubjectId}` : parent);
+    }
     else if (event.key === "ArrowRight") {
-      const child = subjects.find((item) => item.moduleId === subject.moduleId && item.ownerSubjectId === subject.id);
+      const child = subjectBranches.get(subject.moduleId ?? unregisteredGroup.id)?.owned.get(subject.id)?.[0];
       if (child) focusModule(`subject:${child.id}`);
     }
     else if (event.key === "Home") focusModule(visibleIds[0]);
@@ -731,7 +779,7 @@ export function ModuleAttributionTree({
               focusedModuleId={rovingModuleId}
               onFocusModule={setFocusedModuleId}
               onTreeKeyDown={handleTreeKeyDown}
-              subjects={subjects}
+              subjectBranches={subjectBranches}
               selectedSubjectId={selectedSubjectId}
               onSelectSubject={onSelectSubject}
               onSubjectKeyDown={handleSubjectKeyDown}

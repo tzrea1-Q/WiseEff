@@ -33,6 +33,10 @@ export const CATALOG_UNREGISTERED_GROUP_ID = "group:unregistered";
 /** Group node label for subjects that carry no usable placement yet. */
 export const CATALOG_UNREGISTERED_GROUP_LABEL = "待登记主体";
 
+export function belongsToUnregisteredGroup(registration: SubjectItem["registration"]): boolean {
+  return registration.status === "unregistered" || !registration.placement;
+}
+
 function subjectLeaf(subject: SubjectItem, describeSubject: (item: SubjectItem) => string): CatalogNavigatorNode {
   return {
     id: `subject:${subject.id}`,
@@ -121,7 +125,7 @@ export function buildCatalogModuleTree(
   const unregistered = sortSubjects(
     rootSubjects.filter((subject) => subject.registration.status === "unregistered")
   );
-  const unset = orphans.filter((subject) => subject.registration.status !== "unregistered" && subject.registration.placement);
+  const unset = orphans.filter((subject) => !belongsToUnregisteredGroup(subject.registration));
   if (unset.length > 0) {
     roots.push({
       id: "group:unset",
@@ -131,7 +135,7 @@ export function buildCatalogModuleTree(
       children: unset.map(subjectNode)
     });
   }
-  const loose = [...orphans.filter((subject) => !unset.includes(subject)), ...unregistered];
+  const loose = [...orphans.filter((subject) => belongsToUnregisteredGroup(subject.registration)), ...unregistered];
   if (loose.length > 0) {
     roots.push({
       id: CATALOG_UNREGISTERED_GROUP_ID,

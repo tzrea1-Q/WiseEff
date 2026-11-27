@@ -214,11 +214,12 @@ export function ParameterModuleMappingPanel({
     if (onNavigate) onNavigate(buildParameterAdminModulesPath("tree", params.toString()));
     else setLocalSubView({ location: pathname + search, value: "tree" });
   };
-  const selectSubject = (subjectId: string, moduleId: string) => {
+  const selectSubject = (subjectId: string, moduleId: string | null) => {
     setLocalSelection({ location: pathname + search, value: moduleId });
     setLocalSubjectSelection({ location: pathname + search, value: subjectId });
     const params = new URLSearchParams(search);
-    params.set("moduleId", moduleId);
+    if (moduleId) params.set("moduleId", moduleId);
+    else params.delete("moduleId");
     params.set("selectedSubject", subjectId);
     params.set("expandedSubject", subjectId);
     params.delete("subjectPage");
