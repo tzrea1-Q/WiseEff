@@ -88,7 +88,9 @@ export async function sharedDtsiPublicationSource(draft: SharedDtsiDraft) {
   }
   let declarations=0,expandedBytes=0;
   const compatibleSelectors=new Set<string>();
+  const hasSharedIncludes = graph.length > included.size;
   for (const root of roots) {
+    const labelledOrigins = new Set<string>();
     let expanded:{text:string;diagnostics:ReturnType<typeof expandDtsIncludes>["diagnostics"];originAt:(offset:number)=>{fileName:string;offset:number}|undefined};
     try {
       const prepared = preprocessing?.documents.get(root.sourceName);
@@ -116,6 +118,16 @@ export async function sharedDtsiPublicationSource(draft: SharedDtsiDraft) {
         const path=node.refTarget?dtsReferencePath(node.refTarget):node.isOverlayRoot?"/":parentPath===null?null
           :`${parentPath==="/"?"":parentPath}/${node.name}${node.unitAddress!==undefined?`@${node.unitAddress}`:""}`;
         if(path!==null && !node.refTarget)paths.add(path);
+        // One entry may reopen a node in different fragments, but must not replay the same labelled source.
+        if (hasSharedIncludes && node.labels.length) {
+          const origin = expanded.originAt(node.span.start);
+          if (origin) {
+            const key = JSON.stringify([origin.fileName, origin.offset]);
+            if (labelledOrigins.has(key))
+              reject(origin.fileName, origin.offset, `节点标签 ${node.labels[0]} 所在声明在同一入口被重复包含。`);
+            labelledOrigins.add(key);
+          }
+        }
         for (const label of node.labels) {
           const previous = labelBindings.get(label);
           if (previous) {

@@ -36,6 +36,29 @@ it("locates a real conflict in the included file and identifies both node paths"
   });
 });
 
+it("detects the same declaration expanded twice in one entry, even through different include chains", async () => {
+  const draft = draftWithFiles({
+    "board.dts": '/include/ "first.dtsi"\n/include/ "second.dtsi"',
+    "first.dtsi": '/include/ "common.dtsi"',
+    "second.dtsi": '/ { spmi: spmi {}; };\n/include/ "common.dtsi"',
+    "common.dtsi": "/ {\n  spmi: spmi {};\n};",
+  });
+  await expect(sharedDtsiPublicationSource(draft)).rejects.toMatchObject({
+    details: { diagnostics: [{ sourceName: "common.dtsi", line: 2, column: 3,
+      message: expect.stringContaining("重复") }] },
+  });
+});
+
+it("allows separate entries to include the same labelled source once each", async () => {
+  const draft = draftWithFiles({
+    "first.dts": '/include/ "common.dtsi"',
+    "second.dts": '/include/ "common.dtsi"',
+    "common.dtsi": '/ { spmi: spmi { clock = <&external>; }; };',
+  });
+  const { manifest } = await sharedDtsiPublicationSource(draft);
+  expect(manifest.externalReferences).toEqual(["external"]);
+});
+
 it.each([
   "/ { bus: bus {}; bus: bus {}; };",
   "&first { dev: device {}; }; &second { dev: device {}; };",
