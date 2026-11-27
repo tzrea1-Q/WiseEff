@@ -43,6 +43,7 @@ import { buildCatalogHref, EMPTY_CATALOG_URL_ANCHOR } from "@/application/parame
 import { collectSubtreeModuleIds } from "@/domain/modules/moduleTree";
 import { toAttributionFlatNodes } from "@/components/parameter-topology/moduleAttributionTreeUtils";
 import type { ModuleTreeSubject } from "@/components/parameter-topology/ModuleAttributionTree";
+import { belongsToUnregisteredGroup, CATALOG_UNREGISTERED_GROUP_ID } from "@/features/parameter-catalog/catalogModuleScope";
 import { modulePathSegments } from "@/components/admin/moduleManagementTreeUtils";
 import { SubjectRecognitionDialog } from "./SubjectRecognitionDialog";
 import { SubjectIdentityPublicationDialog } from "@/features/parameter-catalog-governance/SubjectIdentityPublicationDialog";
@@ -69,6 +70,13 @@ function placementEtag(response: CatalogPlacementResponseWithEtag): string | nul
 
 type SubjectRow = CatalogSubjectResponse["item"];
 type RegistrationRow = CatalogRegistrationListResponse["items"][number];
+
+function navigationParent(subject: SubjectRow, registration?: RegistrationRow): string | null {
+  const current = registration ?? subject.registration;
+  if (current.status === "retired") return null;
+  if (belongsToUnregisteredGroup(current) && subject.membership.status === "active") return CATALOG_UNREGISTERED_GROUP_ID;
+  return current.status === "active" ? current.placement?.moduleId ?? null : null;
+}
 type Inventory = { subjects: SubjectRow[]; registrations: RegistrationRow[]; releaseId: string };
 
 type DefinitionState =
@@ -371,8 +379,8 @@ export function CanonicalSubjectPlacementPanel({
     if (!onTreeSubjectsChange) return;
     onTreeSubjectsChange(subjects.flatMap((subject) => {
       const registration = registrationBySubjectId.get(subject.id);
-      const moduleId = registration?.status === "active" ? registration.placement.moduleId : undefined;
-      return moduleId ? [{ id: subject.id, moduleId, name: subject.canonicalName,
+      const parent = navigationParent(subject, registration);
+      return parent ? [{ id: subject.id, moduleId: parent === CATALOG_UNREGISTERED_GROUP_ID ? null : parent, name: subject.canonicalName,
         ...(registration?.displayAlias ? { displayAlias: registration.displayAlias } : {}),
         kind: subject.type, definitionCount: subject.definitionCounts.active, ...(subject.ownerSubjectId ? { ownerSubjectId: subject.ownerSubjectId } : {}) }] : [];
     }));
@@ -387,11 +395,10 @@ export function CanonicalSubjectPlacementPanel({
     return subjects.filter((subject) => {
       if (selectedSubjectId) return subject.id === selectedSubjectId;
       const registration = registrationBySubjectId.get(subject.id);
-      if (subject.ownerSubjectId && !registration && subject.registration.status === "unregistered") return false;
       const placement = registration?.status === "active" ? registration.placement
         : subject.registration.status !== "unregistered" ? subject.registration.placement : undefined;
       if (selectedModuleIds && (!placement?.moduleId || !selectedModuleIds.has(placement.moduleId))) return false;
-      if (visibleModuleIds && (!placement?.moduleId || !visibleModuleIds.includes(placement.moduleId))) return false;
+      if (visibleModuleIds && !visibleModuleIds.includes(navigationParent(subject, registration) ?? placement?.moduleId ?? "")) return false;
       if (typeFilter !== "all" && subject.type !== typeFilter) return false;
       const registered = (registration?.status ?? subject.registration.status) === "active";
       const retired = (registration?.status ?? subject.registration.status) === "retired";

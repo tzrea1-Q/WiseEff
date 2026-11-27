@@ -22,6 +22,8 @@ import { createMockCatalogPorts } from "@/application/parameter-catalog/mockAdap
 import { takeBatchRegistrationHandoff } from "@/features/parameter-catalog-governance/batchRegistrationHandoff";
 
 import { CanonicalSubjectPlacementPanel } from "./CanonicalSubjectPlacementPanel";
+import { ParameterModuleMappingPanel } from "@/components/parameter-topology/ParameterModuleMappingPanel";
+import { createTestModuleRegistryRepository } from "@/test/harness";
 
 const ready = deriveCatalogDomainState({ document: readyCatalogDocument });
 
@@ -268,6 +270,62 @@ async function openPlacementEditor(name: string, kind = "主体") {
 }
 
 describe("CanonicalSubjectPlacementPanel", () => {
+  it("includes pending child nodes but keeps retired subjects and registered subjects with an unset module out of the pending group", async () => {
+    const ports = createPorts();
+    const pendingChild = { ...unregisteredSubject, type: "node-type" as const, ownerSubjectId: "owner" };
+    const retiredRegistration = { ...registeredSubject, id: "stopped", registration: { status: "retired" as const, id: "reg-stopped" } };
+    const unset = { ...registeredSubject, id: "unset", registration: { status: "active" as const, id: "reg-unset",
+      placement: { id: "placement-unset", displayName: "unset", parentPlacementId: null } } };
+    const retiredSubject = { ...unregisteredSubject, id: "retired", membership: { ...unregisteredSubject.membership, status: "retired" as const } };
+    const items = [pendingChild, retiredRegistration, unset, retiredSubject];
+    ports.listSubjects.mockResolvedValue({ items, totalCount: items.length, hasMore: false, nextCursor: null, catalogReleaseId: CATALOG_RELEASE_ID });
+    const onTreeSubjectsChange = vi.fn();
+    render(<CanonicalSubjectPlacementPanel {...ports} organizationId={CATALOG_ORGANIZATION_ID} actor="org-admin" canAdmin
+      modules={ports.modules} onTreeSubjectsChange={onTreeSubjectsChange} />);
+    await waitFor(() => expect(onTreeSubjectsChange).toHaveBeenLastCalledWith([
+      expect.objectContaining({ id: pendingChild.id, moduleId: null, ownerSubjectId: "owner" })
+    ]));
+    const row = await screen.findByRole("listitem", { name: `${pendingChild.canonicalName}（节点类型）` });
+    expect(within(row).queryByRole("button", { name: /登记主体/ })).not.toBeInTheDocument();
+  });
+
+  it("navigates pending subjects from every page and moves a newly registered subject into its module on refresh", async () => {
+    const ports = createPorts();
+    const repository = createTestModuleRegistryRepository({
+      getRegistry: vi.fn().mockResolvedValue({ modules: ports.modules, mappings: [] })
+    });
+    const onNavigate = vi.fn();
+    render(<ParameterModuleMappingPanel canonicalEnabled canonicalCatalog={ports.catalog}
+      canonicalGovernance={ports.governance} canonicalOrganizationId={CATALOG_ORGANIZATION_ID}
+      repository={repository} search="?moduleId=issue897-driver-a&organizationId=org" onNavigate={onNavigate} />);
+    const tree = await screen.findByRole("tree", { name: "模块归属树" });
+    const toggle = await within(tree).findByRole("button", { name: "展开 待登记主体" });
+    const pending = toggle.closest<HTMLElement>('[role="treeitem"]')!;
+    await userEvent.click(toggle);
+    expect(within(pending).getByText("2 个主体")).toBeVisible();
+    expect(within(pending).queryByText("vendor,driver")).not.toBeInTheDocument();
+    const fromSecondPage = within(pending).getByRole("button", { name: "查看主体：vendor,configuration" });
+    await userEvent.click(fromSecondPage);
+    const url = new URL(onNavigate.mock.lastCall![0], "http://localhost");
+    expect(url.searchParams.has("moduleId")).toBe(false);
+    expect(url.searchParams.get("organizationId")).toBe("org");
+    expect(url.searchParams.get("selectedSubject")).toBe("subject-config");
+    expect(await screen.findByRole("listitem", { name: "vendor,configuration（配置规范）" })).toBeVisible();
+    expect(screen.queryByRole("button", { name: "登记主体：vendor,configuration" })).not.toBeInTheDocument();
+    await userEvent.keyboard("{ArrowLeft}");
+    expect(pending).toHaveFocus();
+
+    const registrations = await ports.listRegistrations(CATALOG_ORGANIZATION_ID);
+    ports.listRegistrations.mockResolvedValue({ ...registrations, totalCount: 2, items: [
+      ...registrations.items, { ...registrations.items[0]!, id: "reg-config", subjectId: "subject-config" }
+    ] });
+    await userEvent.click(screen.getByRole("button", { name: "刷新规范数据" }));
+    await waitFor(() => expect(within(pending).queryByText("vendor,configuration")).not.toBeInTheDocument());
+    const target = within(tree).getByRole("button", { name: "查看模块：Driver A" }).closest<HTMLElement>('[role="treeitem"]')!;
+    expect(within(target).getByRole("button", { name: "查看主体：vendor,configuration" })).toBeVisible();
+    expect(within(pending).getByText("1 个主体")).toBeVisible();
+  });
+
   it("shows a registration alias beside the canonical name and passes it to the module tree", async () => {
     const ports = createPorts();
     const registrations = await ports.listRegistrations(CATALOG_ORGANIZATION_ID);
