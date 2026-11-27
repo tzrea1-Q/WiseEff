@@ -74,7 +74,8 @@ export async function sharedDtsiPublicationSource(draft: SharedDtsiDraft) {
     depths.set(sourceName,depth);return depth;
   };
   for (const member of draft.members) visitGraph(member.sourceName,[member.sourceName]);
-  const labels=new Set<string>(),references=new Set<string>(),paths=new Set<string>();
+  const labelBindings = new Map<string, { path: string | null; block: number }>();
+  const references=new Set<string>(),paths=new Set<string>();
   const roots=draft.members.filter(member=>/\.dtsi?$/u.test(member.sourceName) && !included.has(member.sourceName));
   let preprocessing: Awaited<ReturnType<typeof prepareDtsSources>>;
   try { preprocessing = cpp ? await prepareDtsSources({ entryFile: roots[0]!.sourceName, overlayOrder: roots.slice(1).map(member => member.sourceName), files, includeSearchPaths, defines }) : null; }
@@ -87,7 +88,9 @@ export async function sharedDtsiPublicationSource(draft: SharedDtsiDraft) {
   }
   let declarations=0,expandedBytes=0;
   const compatibleSelectors=new Set<string>();
+  const hasSharedIncludes = graph.length > included.size;
   for (const root of roots) {
+    const labelledOrigins = new Set<string>();
     let expanded:{text:string;diagnostics:ReturnType<typeof expandDtsIncludes>["diagnostics"];originAt:(offset:number)=>{fileName:string;offset:number}|undefined};
     try {
       const prepared = preprocessing?.documents.get(root.sourceName);
@@ -111,12 +114,31 @@ export async function sharedDtsiPublicationSource(draft: SharedDtsiDraft) {
         }
       }
       const document=parseDts(expanded.text);
-      declarations+=document.topLevel.length;
       const visit=(node:DtsNodeCst,parentPath:string|null="")=>{
         const path=node.refTarget?dtsReferencePath(node.refTarget):node.isOverlayRoot?"/":parentPath===null?null
           :`${parentPath==="/"?"":parentPath}/${node.name}${node.unitAddress!==undefined?`@${node.unitAddress}`:""}`;
         if(path!==null && !node.refTarget)paths.add(path);
-        for (const label of node.labels) {if(labels.has(label))fail(node.span.start,`节点标签 ${label} 重复。`);labels.add(label);}
+        // One entry may reopen a node in different fragments, but must not replay the same labelled source.
+        if (hasSharedIncludes && node.labels.length) {
+          const origin = expanded.originAt(node.span.start);
+          if (origin) {
+            const key = JSON.stringify([origin.fileName, origin.offset]);
+            if (labelledOrigins.has(key))
+              reject(origin.fileName, origin.offset, `节点标签 ${node.labels[0]} 所在声明在同一入口被重复包含。`);
+            labelledOrigins.add(key);
+          }
+        }
+        for (const label of node.labels) {
+          const previous = labelBindings.get(label);
+          if (previous) {
+            if (path !== null && previous.path !== null && previous.path !== path)
+              fail(node.span.start, `节点标签 ${label} 重复，分别指向 ${previous.path} 和 ${path}。`);
+            // Separate top-level blocks can reopen a known path. Siblings in one block cannot.
+            if (path === null || previous.path === null || previous.block === declarations)
+              fail(node.span.start, `节点标签 ${label} 重复。`);
+          }
+          labelBindings.set(label, { path, block: declarations });
+        }
         for (const child of node.children) {
           if (child.kind==="node")visit(child,path);
           else if(child.kind==="property") {
@@ -129,7 +151,10 @@ export async function sharedDtsiPublicationSource(draft: SharedDtsiDraft) {
           }
         }
       };
-      document.topLevel.forEach(node=>visit(node));
+      for (const node of document.topLevel) {
+        declarations++;
+        visit(node);
+      }
     } catch(error) {
       if(error instanceof ApiError)throw error;
       const message=error instanceof Error?error.message:"设备树语法无效。";
@@ -142,6 +167,6 @@ export async function sharedDtsiPublicationSource(draft: SharedDtsiDraft) {
   const members=draft.members.map(member=>({...member,checksum:`sha256:${createHash("sha256").update(member.content).digest("hex")}`,sizeBytes:Buffer.byteLength(member.content)}));
   const manifest:SharedDtsiManifest={schemaVersion:"shared-dtsi/v1",...(draft.sourceEvidence ? {sourceEvidence:draft.sourceEvidence}:{}),members:members.map(({content:_,...member})=>({...member,role:/\.dtsi?$/u.test(member.sourceName)?"include":"header"})),
     compatibleSelectors:[...compatibleSelectors].sort(),includeGraph:graph,buildInputs:{includeSearchPaths, ...(preprocessing?.receipt.defines ? { defines: preprocessing.receipt.defines } : {}), ...(preprocessing ? { preprocessing: preprocessing.receipt } : {})},externalReferences:[...references].filter(reference=>reference.startsWith("&{")
-      ?!paths.has(dtsReferencePath(reference.slice(1))!):!labels.has(reference)).sort()};
+      ?!paths.has(dtsReferencePath(reference.slice(1))!):!labelBindings.has(reference)).sort()};
   return {members,manifest,preprocessing,digest:`sha256:${createHash("sha256").update(JSON.stringify({name:draft.name,manifest,changeDescription:draft.changeDescription})).digest("hex")}`};
 }
