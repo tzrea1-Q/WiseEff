@@ -1,5 +1,5 @@
 import { ChevronDown, ChevronRight } from "lucide-react";
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
 
 import { PARAMETER_ADMIN_UI } from "@/application/parameters/parameterAdminUiCopy";
 import { CATALOG_UNREGISTERED_GROUP_ID, CATALOG_UNREGISTERED_GROUP_LABEL } from "@/features/parameter-catalog/catalogModuleScope";
@@ -222,6 +222,10 @@ function ModuleAttributionTreeRow({
   const branch = subjectBranches.get(node.id);
   const hasChildren = node.children.length > 0 || Boolean(branch?.count);
   const isExpanded = expandedIds.has(node.id);
+  const toggleNode = (event: MouseEvent<HTMLButtonElement>) => {
+    onToggle(node.id);
+    event.currentTarget.closest<HTMLElement>('[role="treeitem"]')?.focus();
+  };
   const compatibleCount = mappingsForModule(mappings, node.id).filter(
     (mapping) => mapping.matchKind === "compatible"
   ).length;
@@ -258,12 +262,14 @@ function ModuleAttributionTreeRow({
       onFocus={event => { if (event.target === event.currentTarget) onFocusModule(node.id); }}
       onKeyDown={event => { if (event.target === event.currentTarget) onTreeKeyDown(event, node); }}>
       <div className="module-attribution-tree__row">
-        <button type="button" className="module-attribution-tree__identity module-attribution-tree__select"
-          tabIndex={-1} aria-label={`${isExpanded ? "折叠" : "展开"} ${node.name}`} aria-expanded={isExpanded}
-          onClick={event => { event.currentTarget.closest<HTMLElement>('[role="treeitem"]')?.focus(); onToggle(node.id); }}>
-          {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-          <span className="module-attribution-tree__label">{node.name}</span>
-        </button>
+        <div className="module-attribution-tree__identity">
+          <button type="button" className="module-attribution-tree__toggle" tabIndex={-1}
+            aria-label={`${isExpanded ? "折叠" : "展开"} ${node.name}`} aria-expanded={isExpanded} onClick={toggleNode}>
+            {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+          </button>
+          <button type="button" className="module-attribution-tree__label module-attribution-tree__select"
+            tabIndex={-1} aria-expanded={isExpanded} onClick={toggleNode}>{node.name}</button>
+        </div>
         <div className="module-attribution-tree__meta"><span className="module-attribution-tree__count">{branch.count} 个主体</span></div>
       </div>
       {isExpanded ? <ul className="module-attribution-tree__group" role="group">
@@ -300,7 +306,7 @@ function ModuleAttributionTreeRow({
               className="module-attribution-tree__toggle"
               aria-label={isExpanded ? `折叠 ${module.name}` : `展开 ${module.name} 子模块`}
               aria-expanded={isExpanded}
-              onClick={(event) => { onToggle(module.id); event.currentTarget.closest<HTMLElement>('[role="treeitem"]')?.focus(); }}
+              onClick={toggleNode}
               tabIndex={-1}
             >
               {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
