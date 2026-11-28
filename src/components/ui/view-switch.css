@@ -114,7 +114,7 @@
   --view-switch-font-size: var(--text-md);
   --view-switch-leading: var(--leading-md);
   --view-switch-selected-fill: transparent;
-  --view-switch-selected-text: var(--text);
+  --view-switch-selected-text: var(--accent);
   --view-switch-rest-fill: transparent;
   display: flex;
   gap: var(--space-3);
@@ -142,8 +142,8 @@
 
 .view-switch--page .view-switch__item {
   border: 0;
+  border-block-end: calc(2 * var(--stroke-hairline)) solid transparent;
   border-radius: 0;
-  font-weight: normal;
 }
 
 .view-switch--page .view-switch__item:is(:hover, :active):not(:disabled) {
@@ -152,8 +152,7 @@
 }
 
 .view-switch--page .view-switch__item[aria-current="page"] {
-  font-weight: var(--view-switch-font-weight);
-  box-shadow: inset 0 calc(-2 * var(--stroke-hairline)) var(--primary);
+  border-block-end-color: var(--accent);
 }
 
 .view-switch__item:focus-visible {

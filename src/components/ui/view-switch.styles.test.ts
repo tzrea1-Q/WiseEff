@@ -19,11 +19,10 @@ describe("ViewSwitch page navigation", () => {
     expect(nav["border-bottom"]).toBe("var(--stroke-hairline) solid var(--border)");
     expect(nav["--view-switch-rest-fill"]).toBe("transparent");
     expect(nav["--view-switch-selected-fill"]).toBe("transparent");
-    expect(nav["--view-switch-selected-text"]).toBe("var(--text)");
+    expect(nav["--view-switch-selected-text"]).toBe("var(--accent)");
     const separatedGroup = declarationsFor(styles, ".view-switch__group ~ .view-switch__group");
     expect(separatedGroup["border-inline-start"]).toBe("var(--stroke-hairline) solid var(--border)");
     const selected = declarationsFor(styles, '.view-switch--page .view-switch__item[aria-current="page"]');
-    expect(selected["box-shadow"]).toBe("inset 0 calc(-2 * var(--stroke-hairline)) var(--primary)");
-    expect(selected["font-weight"]).toBe("var(--view-switch-font-weight)");
+    expect(selected["border-block-end-color"]).toBe("var(--accent)");
   });
 });
