@@ -13,7 +13,7 @@ const adminListPaths = ["/parameter-admin/projects", "/organization/members", "/
   "/debugging-admin/nodes", "/feedback-admin", "/audit", "/knowledge"];
 export const collectionPaths = ["/knowledge-admin", "/log-admin"];
 const collectionListPaths = ["/knowledge-admin", "/log-admin?tab=records", "/log-admin?tab=skills", "/log-admin?tab=quality"];
-export const viewSwitchStyleExpectations: Readonly<Record<string, readonly ("section" | "tabs" | "toggle")[]>> = {
+export const viewSwitchStyleExpectations: Readonly<Record<string, readonly ("section" | "tabs" | "toggle" | "toggle-outline")[]>> = {
   "/knowledge-admin": ["tabs"],
   "/log-admin": ["tabs"],
   "/log-admin?tab=records": ["tabs", "toggle"],
@@ -38,8 +38,8 @@ export const viewSwitchStyleExpectations: Readonly<Record<string, readonly ("sec
   "/parameter-admin/spec-review": ["section"],
   "/parameter-admin/projects": ["section"],
   "/parameter-admin/projects/aurora/review-roles": ["section"],
-  "/parameter-changes?scope=review": ["tabs", "toggle"],
-  "/parameter-changes?scope=mine": ["tabs", "toggle"],
+  "/parameter-changes?scope=review": ["tabs", "toggle-outline"],
+  "/parameter-changes?scope=mine": ["tabs", "toggle-outline"],
   "/user-permissions": ["section", "tabs"]
 };
 export const viewSwitchStylePaths = Object.keys(viewSwitchStyleExpectations);
