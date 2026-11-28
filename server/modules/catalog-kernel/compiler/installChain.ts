@@ -6,7 +6,7 @@ import {
 } from "./contract";
 import { freezeCatalogJson, ownerBundleContractArtifactDigest, s1BundleContractArtifactDigest } from "./contractArtifacts";
 import { subjectRulesProvenance } from "./subjectIdentity";
-import type { CatalogModelReceipt, CompiledCatalogRelease, CompiledCatalogReleaseModel } from "./types";
+import type { CatalogModelReceipt, CatalogReleaseDocument, CompiledCatalogRelease, CompiledCatalogReleaseModel } from "./types";
 
 type NormalizedRelease = CompiledCatalogReleaseModel["releases"][number];
 
@@ -17,6 +17,8 @@ interface ChainState {
   readonly hasOwners: boolean;
   readonly hasDtsExamples: boolean;
   readonly versionedSubjectIds: readonly string[];
+  /** Absent in older installation proofs. Both selector and canonical key are permanent. */
+  readonly driverSpellings?: readonly string[];
 }
 
 /** Store only with a verified installation and the checksum of its exact target node. */
@@ -36,6 +38,16 @@ export const sourceCompilerContract = (hasOwners: boolean, hasDtsExamples: boole
     compilerFingerprint: hasOwners ? catalogCompilerOwnerContractFingerprint : catalogCompilerContractFingerprint,
     schemaDigest: hasOwners ? ownerBundleContractArtifactDigest : s1BundleContractArtifactDigest,
   };
+
+export function collectDriverSpellings(documents: readonly CatalogReleaseDocument[], prior?: readonly string[]): string[] {
+  const spellings = new Set(prior);
+  for (const document of documents) {
+    if (document.kind !== "subject" || document.content.kind !== "driver") continue;
+    spellings.add(document.content.selector.value);
+    if (document.content.canonicalKey.startsWith("driver:")) spellings.add(document.content.canonicalKey.slice("driver:".length));
+  }
+  return [...spellings].sort();
+}
 
 export function extendInstallChain(previous: ChainState | undefined, node: NormalizedRelease): ChainState {
   const subjects = new Set(previous?.versionedSubjectIds);
@@ -63,6 +75,7 @@ export function extendInstallChain(previous: ChainState | undefined, node: Norma
   return {
     releaseCount: (previous?.releaseCount ?? 0) + 1,
     modelChainDigest, toolchainChainDigest, hasOwners, hasDtsExamples, versionedSubjectIds: [...subjects].sort(),
+    ...(!previous || previous.driverSpellings ? { driverSpellings: collectDriverSpellings(node.documents, previous?.driverSpellings) } : {}),
   };
 }
 
@@ -104,6 +117,8 @@ export function isCatalogInstallProof(value: unknown): value is CatalogInstallPr
     proof.sourceCompilerFingerprint === sourceCompilerContract(proof.hasOwners, proof.hasDtsExamples).compilerFingerprint &&
     digest(proof.releaseDigest) && digest(proof.compiledReleaseDigest) && digest(proof.toolchainDigest) &&
     digest(proof.materializationFingerprint) && digest(proof.modelChainDigest) && digest(proof.toolchainChainDigest) &&
+    (proof.driverSpellings === undefined || (Array.isArray(proof.driverSpellings) && proof.driverSpellings.every((value, i, values) =>
+      typeof value === "string" && (i === 0 || values[i - 1] < value)))) &&
     Array.isArray(proof.versionedSubjectIds) && proof.versionedSubjectIds.every((id, i, ids) =>
       typeof id === "string" && id.length > 0 && (i === 0 || ids[i - 1] < id));
 }
@@ -116,6 +131,7 @@ export function proofForInstall(state: ChainState, target: NormalizedRelease, pi
     // Copy only the chain state. A previous proof also has the previous install's pins.
     releaseCount: state.releaseCount, modelChainDigest: state.modelChainDigest, toolchainChainDigest: state.toolchainChainDigest,
     hasOwners: state.hasOwners, hasDtsExamples: state.hasDtsExamples, versionedSubjectIds: state.versionedSubjectIds,
+    ...(state.driverSpellings && { driverSpellings: state.driverSpellings }),
     sourceCompilerFingerprint: sourceCompilerContract(state.hasOwners, state.hasDtsExamples).compilerFingerprint,
     releaseId: target.release.id, releaseDigest: target.release.digest, sequence: target.release.sequence,
     compiledReleaseDigest: pins.compiledReleaseDigest, toolchainDigest: pins.toolchainDigest,

@@ -28,6 +28,8 @@ cd /srv/wiseeff/ops/self-hosted
 
 热路径下，常规定义预览记录 `snapshot-read`，发布记录 `activation-checkpoint-read` 和 `compile-append`。管理器仍需读取新候选及完整前驱目标。复杂变更或缺少兼容检查点时，管理器执行完整编译。
 
+模块导入发布新增驱动时，使用请求 ID 在 API 日志中查看 `module-driver-publication`、`candidate-build` 和 `artifact-write`。写入开始时的 `byteCount` 是本次后继版本的编码大小，包含当前目录内容。若缺少兼容的校验证明，系统可能需要读取历史基线。已完成迁移的数据库仍只保存本次后继版本。请求提交后，使用任务 ID 在管理器日志中跟踪激活和回执，分别核对点击到任务入队、任务入队到驱动可用的耗时。
+
 使用 `./scripts/compose`，不要直接调 `docker compose`。配置来源：
 
 | 文件 | 使用者 | 内容 |

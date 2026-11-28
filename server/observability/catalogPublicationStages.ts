@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { performance } from "node:perf_hooks";
 
 type Stage =
-  | "preview" | "enqueue-publication" | "activation" | "artifact-read" | "lineage-verify-decode"
+  | "preview" | "enqueue-publication" | "module-driver-publication" | "activation" | "artifact-read" | "artifact-write" | "lineage-verify-decode"
   | "activation-checkpoint-read" | "snapshot-read" | "snapshot-verify-decode" | "predecessor-decode"
   | "import-rules-read" | "markdown-plan" | "candidate-build" | "candidate-persist"
   | "compile" | "compile-append" | "pointer-lock" | "publication-lock" | "materialize" | "verify-projection" | "restore-heads" | "verify-constraints" | "commit";
@@ -33,8 +33,30 @@ export function linkCatalogStageToPublication(candidateId?: string, jobId?: stri
 
 type StageCounts = { artifactCount?: number; byteCount?: number };
 
+/** Storage errors can carry SQL and parameter values. Only emit standard error codes. */
+export function logCatalogPersistenceFailure(operation: "artifact" | "candidate" | "transaction", error: unknown): void {
+  const trace = traces.getStore();
+  if (!trace) return;
+  try {
+    const fields: Record<string, string> = {};
+    let cause = error;
+    const seen = new Set<object>();
+    while (cause && typeof cause === "object" && !seen.has(cause)) {
+      seen.add(cause);
+      const code = "sqlstate" in cause ? cause.sqlstate : "code" in cause ? cause.code : undefined;
+      if (typeof code === "string" && ["ECONNRESET", "EPIPE", "ETIMEDOUT", "ECONNREFUSED"].includes(code)) fields.transportCode = code;
+      else if (typeof code === "string" && /^[0-9A-Z]{5}$/.test(code)) fields.sqlstate = code;
+      if ("reason" in cause && cause.reason === "artifact-too-large") fields.reason = cause.reason;
+      cause = "cause" in cause ? cause.cause : undefined;
+    }
+    trace.log({ event: "catalog-stage", stage: "candidate-persist", state: "failed", operation, ...trace.correlation, ...fields });
+  } catch {
+    // The original failure belongs to the caller even if the log sink fails.
+  }
+}
+
 export async function timeCatalogStage<T>(
-  stage: Stage, work: () => Promise<T> | T, counts?: (result: T) => StageCounts,
+  stage: Stage, work: () => Promise<T> | T, counts?: StageCounts | ((result: T) => StageCounts),
 ): Promise<T> {
   const trace = traces.getStore();
   if (!trace) return work();
@@ -52,13 +74,14 @@ export async function timeCatalogStage<T>(
       // Diagnostics must not affect execution or transaction outcomes.
     }
   };
-  emit("started");
+  const knownCounts = typeof counts === "object" ? () => counts : undefined;
+  emit("started", knownCounts);
   try {
     const result = await work();
-    emit("finished", counts ? () => counts(result) : undefined);
+    emit("finished", typeof counts === "function" ? () => counts(result) : knownCounts);
     return result;
   } catch (error) {
-    emit("threw");
+    emit("threw", knownCounts);
     throw error;
   }
 }

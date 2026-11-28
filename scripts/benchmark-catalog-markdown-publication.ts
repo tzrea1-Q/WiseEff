@@ -8,11 +8,11 @@
 // --check-no-op measures an unchanged revision separately after all successful publications.
 import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
-import { Socket } from "node:net";
 import { parseArgs } from "node:util";
 import pg from "pg";
 
 import { createPostgresDatabase, getRootPostgresPool, type Database } from "../server/shared/database/client";
+import { observePublicationWire } from "../server/testing/parameterCatalog/publicationWire";
 import { withTempDatabase } from "../server/testing/tempDatabase";
 import { makeTestAuthContext } from "../server/testing/authContext";
 import { createUserInvocation } from "../server/modules/auth/trustedInvocation";
@@ -88,50 +88,7 @@ function syntheticBundle(): CatalogReleaseBundle {
   return { schemaVersion: "1.0.0", targetReleaseId: release.manifest.release.id, releases: [release] };
 }
 
-// Socket bytes include PostgreSQL protocol overhead, snapshots and BYTEA text encoding.
-// ReadyForQuery is one completed client/server exchange, including transaction control.
-function observeWire(pool: pg.Pool) {
-  let exchanges = 0;
-  let historyReadBytes = 0;
-  let snapshotReadBytes = 0;
-  let checkpointReadBytes = 0;
-  let artifactRecordsRead = 0;
-  const sockets = new Set<Socket>();
-  pool.on("connect", client => {
-    assert(client instanceof pg.Client && client.connection.stream instanceof Socket);
-    sockets.add(client.connection.stream);
-    client.connection.on("readyForQuery", () => { exchanges++; });
-    let artifactColumn = -1;
-    let byteSource: "history" | "snapshot" | "checkpoint" = "history";
-    let chunkOffsetColumn = -1;
-    client.connection.on("rowDescription", (message: { fields: { name: string }[] }) => {
-      const columns = message.fields.map(field => field.name);
-      byteSource = columns.includes("target_checksum") ? "snapshot" : columns.includes("artifact_digest") ? "history" : "checkpoint";
-      chunkOffsetColumn = columns.indexOf("artifact_byte_start");
-      artifactColumn = columns.indexOf("artifact_byte_chunk");
-    });
-    client.connection.on("dataRow", (message: { fields: (string | null)[] }) => {
-      const value = message.fields[artifactColumn];
-      if (value != null) {
-        assert(value.startsWith("\\x"), "Expected PostgreSQL hex BYTEA output");
-        const bytes = (value.length - 2) / 2;
-        if (byteSource === "snapshot") snapshotReadBytes += bytes;
-        else if (byteSource === "checkpoint") checkpointReadBytes += bytes;
-        else {
-          historyReadBytes += bytes;
-          if (message.fields[chunkOffsetColumn] === "1") artifactRecordsRead++;
-        }
-      }
-    });
-  });
-  return () => ({
-    exchanges, historyReadBytes, snapshotReadBytes, checkpointReadBytes, artifactRecordsRead,
-    receivedBytes: [...sockets].reduce((sum, socket) => sum + socket.bytesRead, 0),
-    sentBytes: [...sockets].reduce((sum, socket) => sum + socket.bytesWritten, 0),
-  });
-}
-
-async function measure<T>(depth: number, currentDefinitions: number, stage: string, wire: ReturnType<typeof observeWire>, action: () => Promise<T>) {
+async function measure<T>(depth: number, currentDefinitions: number, stage: string, wire: ReturnType<typeof observePublicationWire>, action: () => Promise<T>) {
   const before = wire();
   const cpu = process.cpuUsage();
   const start = performance.now();
@@ -177,8 +134,8 @@ async function main() {
     try {
       const apiPool = getRootPostgresPool(api)!;
       const managerPool = getRootPostgresPool(manager)!;
-      const apiWire = observeWire(apiPool);
-      const managerWire = observeWire(managerPool);
+      const apiWire = observePublicationWire(apiPool);
+      const managerWire = observePublicationWire(managerPool);
       const commands = bindCatalogPublicationCommands({ db: api, pool: apiPool });
       const permissions = ["catalog:publish", "catalog:author", "parameter:view"] as const;
       const scope = { principalId: "benchmark-publisher", organizationId: "org-bench", actorKind: "org-admin" as const,

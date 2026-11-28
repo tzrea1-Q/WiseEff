@@ -1,10 +1,11 @@
 import { randomUUID } from "node:crypto";
 import pg from "pg";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { z } from "zod";
 import { createWiseEffServer } from "../../app";
 import { createPostgresDatabase, getRootPostgresPool } from "../../shared/database/client";
 import { requestJson } from "../../test/testClient";
+import { observePublicationWire } from "../../testing/parameterCatalog/publicationWire";
 import { makeTestAuthContext } from "../../testing/authContext";
 import { createDisposableParameterCatalogDatabase, type ParameterCatalogDatabase } from "../../testing/parameterCatalog";
 import { getAuthContext } from "../auth/repository";
@@ -12,6 +13,9 @@ import { createUserInvocation } from "../auth/trustedInvocation";
 import { createCatalogInstaller } from "../catalog-kernel/install/installer";
 import { bootstrapFirstAcme, persistPredecessorArtifact } from "../catalog-kernel/install/publicationTestHarness";
 import { enablePublicationPolicy } from "../catalog-publication/authorization/testHarness";
+import { ACTIVATION_CHECKPOINT_VERSION, LEGACY_ACTIVATION_CHECKPOINT_VERSION } from "../catalog-publication/builder/capabilities";
+import * as publicationPreview from "../catalog-publication/preview";
+import { lockOrganizationModuleStructure } from "../parameter-modules/recognitionLock";
 import { runPublicationManagerOnce } from "../catalog-publication/jobs/manager";
 import { provisionPublicationRuntimeLogins, dropLabRuntimeLogins } from "../catalog-publication/runtime/provisionRuntimeLogins";
 import { moduleStructureExportSchema, moduleStructurePreviewResponseSchema, moduleStructureUpdateDocumentSchema } from "../contracts/dtoSchemas/moduleStructure";
@@ -116,6 +120,58 @@ describe("module structure creates drivers through publication before atomic org
     expect(response.status, response.bodyText).toBe(200);
     return moduleStructurePreviewResponseSchema.parse(response.body);
   }
+
+  it("publishes each new driver without rereading older releases once the base is certified", async () => {
+    const source = await organization("module-driver-history");
+    const readApi = observePublicationWire(getRootPostgresPool(api)!);
+    const readManager = observePublicationWire(getRootPostgresPool(manager)!);
+    for (let round = 1; round <= 3; round++) {
+      const document = await source.exported();
+      document.newDrivers = [{
+        ref: `driver-${round}`, compatible: `example,driver-${round}`, driverNature: "physical-device",
+        instanceCardinality: "multiple", displayAlias: null, placement: { kind: "module", moduleRef: document.modules[0]!.ref },
+      }];
+      const pending = await checkedPreview(source, document);
+      const beforeApi = readApi();
+      const confirmation = await source.confirm("driver-publications", document, pending.token, `history-${round}`);
+      expect(confirmation.status, confirmation.bodyText).toBe(200);
+      const published = moduleStructurePreviewResponseSchema.parse(confirmation.body).driverCreation!;
+      const afterApi = readApi();
+      const beforeManager = readManager();
+      await activate();
+      const afterManager = readManager();
+      const receipt = await db.query<{ storage_format: string; bytes: number }>(`
+        select a.storage_format, octet_length(a.artifact_bytes) as bytes
+        from parameter_catalog.catalog_activation_receipts r
+        join catalog_publication.release_artifacts a on a.artifact_digest=r.release_digest
+        join parameter_catalog.catalog_state s on s.current_catalog_release_id=r.release_id
+        where r.publication_job_id=$1 and r.candidate_id=$2 and r.kind='online-publication'`,
+      [published.jobId, published.candidateId]);
+      expect(receipt.rows).toHaveLength(1);
+      const artifact = receipt.rows[0]!;
+      expect(artifact.storage_format).toBe("successor-v1");
+      if (round === 1) {
+        // Exercise an upgrade in place. A v1 proof predates the driver spelling set.
+        const oldCheckpoint = await db.query(`with legacy as (
+          select c.artifact_id, convert_to((convert_from(c.proof_bytes,'UTF8')::jsonb - 'driverSpellings')::text,'UTF8') as proof
+          from catalog_publication.activation_checkpoints c
+          join parameter_catalog.catalog_activation_receipts r on r.release_digest=c.artifact_digest
+          where r.publication_job_id=$1 and c.version=$2)
+          update catalog_publication.activation_checkpoints c set version=$3, proof_bytes=l.proof,
+            proof_checksum='sha256:' || encode(sha256(l.proof),'hex')
+          from legacy l where c.artifact_id=l.artifact_id and c.version=$2`,
+        [published.jobId, ACTIVATION_CHECKPOINT_VERSION, LEGACY_ACTIVATION_CHECKPOINT_VERSION]);
+        expect(oldCheckpoint.rowCount).toBe(1);
+      }
+      if (round > 1) {
+        expect(afterApi.historyReadBytes - beforeApi.historyReadBytes).toBe(0);
+        expect(afterApi.snapshotReadBytes - beforeApi.snapshotReadBytes).toBeGreaterThan(0);
+        expect(afterManager.checkpointReadBytes - beforeManager.checkpointReadBytes).toBeGreaterThan(0);
+        expect(afterManager.artifactRecordsRead - beforeManager.artifactRecordsRead).toBe(1);
+        expect(afterManager.historyReadBytes - beforeManager.historyReadBytes).toBe(artifact.bytes);
+      }
+    }
+  }, 120_000);
 
   it("publishes multiple empty drivers, then creates modules and registrations without duplicates or rewriting later edits", async () => {
     const id = "new-driver-success", source = await organization(id);
@@ -236,6 +292,110 @@ describe("module structure creates drivers through publication before atomic org
     const invalid = structuredClone(document);
     invalid.modules[1]!.parentRef = invalid.modules[2]!.ref;
     expect((await source.confirm("driver-publications", invalid, updated.token, "invalid-hierarchy")).status).toBe(409);
+    expect(await snapshot(id)).toEqual(before);
+  });
+
+  it("releases the writer locks during preparation and discards a stale prepared candidate without reserving the key", async () => {
+    const id = "new-driver-prepare", source = await organization(id);
+    const document = withDrivers(await source.exported(), "prepare");
+    const initial = await checkedPreview(source, document);
+    const before = await snapshot(id);
+    const artifacts = () => db.query("select id from catalog_publication.release_artifacts");
+    const beforeArtifacts = (await artifacts()).rowCount;
+    const prepare = publicationPreview.preparePublicationCandidate;
+    const spy = vi.spyOn(publicationPreview, "preparePublicationCandidate").mockImplementationOnce(async input => {
+      const result = await prepare(input);
+      expect(result.ok).toBe(true);
+      // A separate session can acquire the same locks while the candidate exists only in memory.
+      await db.transaction(async tx => {
+        await tx.query("set local lock_timeout='500ms'");
+        await lockOrganizationModuleStructure(tx, id);
+        await tx.query("update parameter_modules set description='Changed during prepare' where organization_id=$1", [id]);
+      });
+      return result;
+    });
+    try {
+      const response = await source.confirm("driver-publications", document, initial.token, "interrupted-approval");
+      expect(response.status, response.bodyText).toBe(409);
+      expect(spy).toHaveBeenCalledOnce();
+    } finally { spy.mockRestore(); }
+    expect(await snapshot(id)).toEqual(before);
+    expect((await artifacts()).rowCount).toBe(beforeArtifacts);
+    expect((await db.query("select state from parameter_catalog.governance_command_idempotency where organization_id=$1", [id])).rowCount).toBe(0);
+    const reviewed = await checkedPreview(source, document);
+    expect((await source.confirm("driver-publications", document, reviewed.token, "interrupted-approval")).status).toBe(200);
+  }, 120_000);
+
+  it.each(["revoked administrator", "maintenance freeze", "invalidated checkpoint"])("rechecks %s after candidate preparation", async change => {
+    const id = "new-driver-admin-check", source = await organization(id);
+    const document = withDrivers(await source.exported(), "recheck");
+    const initial = await checkedPreview(source, document), before = await snapshot(id);
+    const countArtifacts = () => db.query("select id from catalog_publication.release_artifacts");
+    const beforeArtifacts = (await countArtifacts()).rowCount;
+    const prepare = publicationPreview.preparePublicationCandidate;
+    const spy = vi.spyOn(publicationPreview, "preparePublicationCandidate").mockImplementationOnce(async input => {
+      const prepared = await prepare(input);
+      expect(prepared.ok).toBe(true);
+      if (change === "revoked administrator") await db.query("delete from user_role_bindings where organization_id=$1", [id]);
+      else if (change === "maintenance freeze") await db.query("select catalog_publication.set_publication_freeze(true, 'module-test')");
+      else await db.query("update catalog_publication.checkpoint_epoch set generation=generation+1 where singleton");
+      return prepared;
+    });
+    try {
+      const response = await source.confirm("driver-publications", document, initial.token, "recheck-approval");
+      expect(response.status, response.bodyText).toBe(change === "invalidated checkpoint" ? 409 : 403);
+      expect(spy).toHaveBeenCalledOnce();
+    } finally { spy.mockRestore(); }
+    expect(await snapshot(id)).toEqual(before);
+    expect((await countArtifacts()).rowCount).toBe(beforeArtifacts);
+    expect((await db.query("select state from parameter_catalog.governance_command_idempotency where organization_id=$1", [id])).rowCount).toBe(0);
+  }, 120_000);
+
+  it("serializes candidate persistence with the freeze guard and replays an already committed confirmation under freeze", async () => {
+    const id = "new-driver-guard", source = await organization(id);
+    const document = withDrivers(await source.exported(), "guard");
+    const initial = await checkedPreview(source, document);
+    const originalPrepare = publicationPreview.preparePublicationCandidate;
+    const spy = vi.spyOn(publicationPreview, "preparePublicationCandidate").mockImplementationOnce(async input => {
+      const prepared = await originalPrepare(input);
+      if (!prepared.ok) throw new Error("Fixture candidate did not prepare.");
+      return { ok: true, value: { persist: async writer => {
+        // set_publication_freeze() uses exactly this row lock. Even a second DB
+        // session cannot change the policy between the final check and commit.
+        await expect(admin.query("select singleton from catalog_publication.publication_guard where singleton for update nowait"))
+          .rejects.toMatchObject({ code: "55P03" });
+        return prepared.value.persist(writer);
+      } } };
+    });
+    try {
+      const published = await source.confirm("driver-publications", document, initial.token, "guarded-write");
+      expect(published.status, published.bodyText).toBe(200);
+      await db.query("select catalog_publication.set_publication_freeze(true, 'module-test')");
+      const replay = await source.confirm("driver-publications", document, initial.token, "guarded-write");
+      expect(replay.status, replay.bodyText).toBe(200);
+      expect(replay.body).toEqual(published.body);
+      expect(spy).toHaveBeenCalledOnce();
+    } finally { spy.mockRestore(); }
+  }, 120_000);
+
+  it("distinguishes an oversized artifact from a storage failure without exposing database error text", async () => {
+    const id = "new-driver-storage", source = await organization(id);
+    const document = withDrivers(await source.exported(), "storage");
+    const initial = await checkedPreview(source, document), before = await snapshot(id);
+    const prepare = vi.spyOn(publicationPreview, "preparePublicationCandidate");
+    try {
+      for (const [detail, status, reason] of [
+        ["artifact-too-large", 413, "artifact-too-large"], ["sensitive-storage-detail", 500, "persist-failed"],
+      ] as const) {
+        prepare.mockResolvedValueOnce({ ok: true, value: {
+          persist: async () => ({ ok: false, error: { kind: "persist-failed", detail } }),
+        } });
+        const response = await source.confirm("driver-publications", document, initial.token, "failed-storage");
+        expect(response.status, response.bodyText).toBe(status);
+        expect(response.body).toMatchObject({ error: { details: { reason } } });
+        expect(response.bodyText).not.toContain("sensitive-storage-detail");
+      }
+    } finally { prepare.mockRestore(); }
     expect(await snapshot(id)).toEqual(before);
   });
 

@@ -5,6 +5,10 @@ import { CATALOG_BASELINE_READER_ROLE, quoteIdent } from "../../catalog-kernel/s
 import type { SubjectIdentityChange } from "../../contracts/dtoSchemas/catalogSubjectIdentity";
 import type { CatalogChange, FrozenPublicationIdentity } from "./types";
 import type { PreviewSnapshot } from "../persistence/types";
+import { isCatalogInstallProof } from "../../catalog-kernel/compiler/installChain";
+import { CorruptActivationCheckpoint, readActivationCheckpointProof, readCheckpointEpoch } from "../persistence/activationCheckpoint";
+import { hasUnrenamedDriverHistory } from "../persistence/driverIdentityHistory";
+import { ACTIVATION_CHECKPOINT_VERSION, LEGACY_ACTIVATION_CHECKPOINT_VERSION } from "./capabilities";
 
 export type SpellingChange = Extract<SubjectIdentityChange, { op: "rename-subject" | "set-subject-alias" }>;
 
@@ -34,6 +38,37 @@ export function publicationHistoryCapabilities(bundle: CatalogReleaseBundle) {
 
 export const onlyDefinitionEdits = (changes: readonly CatalogChange[]) => changes.length > 0 &&
   changes.every(change => change.op === "create-definition" || change.op === "revise-definition");
+
+/** The standalone driver declaration used by module import. */
+export const onlyDriverCreations = (changes: readonly CatalogChange[]) => changes.length > 0 &&
+  changes.every(change => change.op === "create-subject" && change.kind === "driver" &&
+    change.ownerSubjectId === undefined && change.selector.kind === "driver-compatible" &&
+    change.canonicalKey === `driver:${change.selector.value}`);
+
+/** The builder has already excluded collisions in the current target. Check prior driver names. */
+export async function checkDriverSpellingHistory(db: Database, target: CatalogReleaseNode,
+  allocations: NonNullable<FrozenPublicationIdentity["subjects"]>): Promise<"available" | "occupied" | "unknown"> {
+  const release = target.manifest.release;
+  const access = await db.query<{ readable: boolean }>(`select
+    has_table_privilege(current_user, to_regclass('catalog_publication.activation_checkpoints'), 'select')
+    and has_table_privilege(current_user, to_regclass('catalog_publication.checkpoint_epoch'), 'select') as readable`);
+  const epoch = access.rows[0]?.readable && await readCheckpointEpoch(db);
+  const checked = epoch && (await readActivationCheckpointProof(db, release.digest, ACTIVATION_CHECKPOINT_VERSION, epoch) ??
+    await readActivationCheckpointProof(db, release.digest, LEGACY_ACTIVATION_CHECKPOINT_VERSION, epoch));
+  if (!checked) return release.predecessor === null ? "available" : "unknown";
+  const { proof, pin } = checked;
+  if (!isCatalogInstallProof(proof) || proof.releaseDigest !== release.digest || proof.releaseId !== release.id ||
+      proof.sequence !== release.sequence || proof.compiledReleaseDigest !== pin.compiled_model_digest ||
+      proof.toolchainDigest !== pin.toolchain_digest || proof.materializationFingerprint !== pin.materialization_fingerprint) {
+    throw new CorruptActivationCheckpoint();
+  }
+  if (proof.driverSpellings) {
+    const claimed = new Set(proof.driverSpellings);
+    return allocations.some(subject => claimed.has(subject.canonicalKey.slice("driver:".length))) ? "occupied" : "available";
+  }
+  const unchanged = await withPreviewBaseline(db, tx => hasUnrenamedDriverHistory(tx, release.id, proof.releaseCount));
+  return unchanged ? "available" : "unknown";
+}
 
 export function appendPreviewSnapshot(base: PreviewSnapshot, target: CatalogReleaseNode): PreviewSnapshot {
   return {
@@ -71,6 +106,7 @@ export async function canAppendPreviewSnapshot(db: Database, snapshot: PreviewSn
         where r.id=$1 and r.release_digest=$2)
       and not exists (select from parameter_catalog.catalog_releases where id=$3 or release_version=$4 or release_digest=$7)
       and not exists (select from parameter_catalog.definition_revisions where id = any($8::text[]))
+      and not exists (select from parameter_catalog.catalog_subjects where id = any($9::text[]))
       and ($5::text is null or (
         not exists (select from parameter_catalog.catalog_release_subjects
           where md5(coalesce(selector_snapshot->'values'->>0, selector_snapshot->>'value'))=md5($5)
@@ -80,7 +116,8 @@ export async function canAppendPreviewSnapshot(db: Database, snapshot: PreviewSn
           and subject_id > $6))) as usable`,
     [target.manifest.release.id, target.manifest.release.digest, frozen.releaseId, frozen.releaseVersion,
       spelling?.op === "rename-subject" ? spelling.selector : null, spelling?.subjectId ?? null, successorDigest,
-      frozen.definitions.map(definition => definition.revisionId)]);
+      frozen.definitions.map(definition => definition.revisionId),
+      (frozen.subjects ?? []).map(subject => subject.subjectId)]);
     return rows[0]?.usable === true;
   });
 }

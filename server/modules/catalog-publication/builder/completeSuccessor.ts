@@ -1,3 +1,4 @@
+import { logCatalogPersistenceFailure } from "../../../observability/catalogPublicationStages";
 import {
   CatalogReleaseDigest,
   CatalogReleaseId,
@@ -73,7 +74,7 @@ import type {
 } from "./types";
 import { preparedPredecessorBundle } from "./preparedPredecessor";
 import { subjectIdentityProvenance } from "../../catalog-kernel/compiler/subjectIdentity";
-import { appendPreviewSnapshot, onlyDefinitionEdits, publicationHistoryCapabilities } from "./identitySnapshot";
+import { appendPreviewSnapshot, onlyDefinitionEdits, onlyDriverCreations, publicationHistoryCapabilities } from "./identitySnapshot";
 import { applySubjectIdentityChange } from "./subjectIdentity";
 import { applySubjectRulesChange } from "./subjectRules";
 
@@ -805,6 +806,7 @@ export const persistSuccessorBuild = async (
       };
     });
   } catch (error) {
+    logCatalogPersistenceFailure(error instanceof PersistRollback ? error.stage : "transaction", error);
     if (error instanceof PersistRollback) {
       return {
         ok: false,
@@ -832,7 +834,8 @@ export async function buildSuccessorFromSnapshot(input: BuildCompleteSuccessorIn
   const [change] = input.changeSet;
   const spelling = snapshot.coversSubjectSpellings && input.changeSet.length === 1 &&
     (change.op === "rename-subject" || change.op === "set-subject-alias");
-  if ((!spelling && !onlyDefinitionEdits(input.changeSet)) ||
+  const drivers = onlyDriverCreations(input.changeSet);
+  if ((!spelling && !drivers && !onlyDefinitionEdits(input.changeSet)) ||
       snapshot.target.manifest.release.digest !== input.predecessorArtifact.digest || input.persist) {
     return fail({ kind: "invalid-input", reason: "invalid preview snapshot build" });
   }
