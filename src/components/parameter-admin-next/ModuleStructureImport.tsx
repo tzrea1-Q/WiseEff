@@ -260,7 +260,7 @@ export function ModuleStructureImport({ apiClient, organizationId, organizationN
             </fieldset>
             <FileDropZone label="选择 JSON 文件" accept="application/json,.json" disabled={busy || publishing}
               files={file ? [file] : []} onSelect={([next]) => void selectFile(next ?? null)} onRemove={() => void selectFile(null)}
-              renderFileDetails={() => <div className="import-dialog__secondary px-2 text-sm">
+              renderFileDetails={() => <div className="import-dialog__secondary text-sm">
                 <p>来源组织：{typeof source === "string" ? <span title={source}>{organizationLabel(source)}</span> : "未提供"}；
                   目标组织：{organizationId ? <span title={organizationId}>{organizationLabel(organizationId)}</span> : "未提供"}</p>
                 {document ? <p>模块 {modules.length} · 主体 {subjects.length}</p> : null}

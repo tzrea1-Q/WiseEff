@@ -125,8 +125,23 @@
 }
 
 .import-dialog__table th {
-  background: var(--surface-sunken);
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
   font-weight: 600;
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+.import-dialog__table :is(thead th, th[scope="rowgroup"]) {
+  background: var(--surface-sunken);
+}
+
+.import-dialog__table th[scope="rowgroup"] {
+  color: var(--text);
+}
+
+.import-dialog .form-error {
+  color: var(--danger);
 }
 
 .import-dialog__modes {
