@@ -74,7 +74,9 @@ async function expectLocalizedVisualReviewFixture(page: Page) {
   await expect.poll(() => review.evaluate(element => element.clientHeight)).toBeGreaterThan(detailHeight);
   expect(await queuePanel.evaluate(element => element.clientHeight)).toBe(queueHeight);
   await review.getByText("查看完整源文件", { exact: true }).click();
-  await review.getByRole("heading", { name: "cccv_0", exact: true }).scrollIntoViewIfNeeded();
+  const main = page.locator("main, .main-content").first();
+  await main.evaluate(element => element.scrollTo({ top: 0, behavior: "instant" }));
+  await expect(page.getByRole("tab", { name: "待处理", exact: true })).toBeInViewport();
   const provenance = review.locator("details").filter({ has: page.getByText("溯源信息", { exact: true }) });
   await expect(provenance).toHaveCount(1);
   await expect(provenance).toHaveJSProperty("open", false);
