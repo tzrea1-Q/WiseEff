@@ -743,7 +743,7 @@ for (const route of consistencyReadOnlyRoutes) {
           await expect(files.getByRole("table", { name: "配置文件", exact: true })).toBeVisible();
           await expect(files).toBeInViewport({ ratio: 1 });
           await files.getByRole("button", { name: "关闭配置组成", exact: true }).click();
-          await expect(page.getByRole("navigation", { name: "参数管理后台配置范围", exact: true })).toHaveCount(0);
+          await expect(page.getByRole("navigation", { name: "参数管理后台导航", exact: true })).toHaveCount(0);
           if (new URLSearchParams(route.path.split("?")[1]).get("tab") === "conflicts") {
             await page.goto(legacyConflictsUrl.toString());
             await settleQualityRoute(page, legacyConflictsUrl.pathname, { readOnly: true });

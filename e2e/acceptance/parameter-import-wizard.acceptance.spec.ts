@@ -122,7 +122,7 @@ test.describe("PARAM-ADMIN-002 parameter import wizard browser acceptance", () =
       }
     ]);
 
-    await signInBrowserAsRole(page, "admin", disposablePageUrl(disposableRuntime, "/parameter-admin"));
+    await signInBrowserAsRole(page, "admin", disposablePageUrl(disposableRuntime, "/parameter-admin/projects"));
     const openImport = page.getByRole("button", { name: "打开项目值批量导入" });
     await expect(openImport).toBeVisible({ timeout: 30_000 });
     await dismissXiaozeHint(page);
@@ -325,7 +325,7 @@ test.describe("PARAM-ADMIN-002 parameter import wizard browser acceptance", () =
     ]);
 
     await assertPostCutoverIdentity();
-    await signInBrowserAsRole(page, "admin", disposablePageUrl(disposableRuntime, "/parameter-admin"));
+    await signInBrowserAsRole(page, "admin", disposablePageUrl(disposableRuntime, "/parameter-admin/projects"));
     const openImport = page.getByRole("button", { name: "打开项目值批量导入" });
     await expect(openImport).toBeVisible({ timeout: 30_000 });
     await dismissXiaozeHint(page);

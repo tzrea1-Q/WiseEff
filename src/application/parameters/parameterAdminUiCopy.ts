@@ -4,13 +4,13 @@
  */
 
 export const PARAMETER_ADMIN_UI = {
-  orgScope: "组织配置",
-  projectScope: "项目运营",
-  orgSubnavAria: "组织配置子视图",
-  scopeNavAria: "参数管理后台配置范围",
+  pageNavAria: "参数管理后台导航",
+  organizationGroup: "组织级",
+  projectGroup: "项目级",
+  projects: "项目",
 
   /** Organization peer nav label (ADR-0015). In-page library title stays `specLibrary`. */
-  specDefinitionManagement: "参数定义管理",
+  specDefinitionManagement: "参数定义",
   specLibrary: "参数定义库",
   specCatalogViewAria: "参数定义视图",
   specEffectiveView: "有效定义",
@@ -54,8 +54,8 @@ export const PARAMETER_ADMIN_UI = {
   matchAmbiguous: "匹配冲突",
   matchHasCandidates: "有多项匹配",
 
-  /** Organization peer nav label (ADR-0015). In-page tree title stays `moduleMappingManage`. */
-  moduleManagement: "模块管理",
+  moduleManagement: "模块",
+  sharedDtsi: "共享 DTSI",
   moduleMapping: "模块归属",
   moduleMappingBlurb: "业务分类 → 驱动组 / 节点类型。在树里维护已归属模块；器件实例由工作台器件层浏览。",
   moduleTreeTitle: "模块树",
@@ -113,7 +113,7 @@ export const PARAMETER_ADMIN_UI = {
 
   changeReview: "变更审阅",
   adminSubtitle:
-    "组织配置与项目运营；子路由涵盖参数定义管理、模块管理与批量导入",
+    "维护组织级参数资产与项目配置",
 
   xiaozeSpecReview: "正在关注定义匹配审核队列与类型定义确认。",
   xiaozeIdentityMapping: "正在关注迁移期节点对应任务与无损确认。",

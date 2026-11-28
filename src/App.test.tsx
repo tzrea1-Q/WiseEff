@@ -3940,8 +3940,8 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
       },
       {
         path: "/parameter-admin",
-        present: ["参数管理后台", "组织配置", "项目运营", "项目值批量导入", "参数定义管理", "模块导航"],
-        absent: ["项目参数 Admin", "items", "events", "建设中", "目录发布"]
+        present: ["参数管理后台", "组织级", "项目级", "参数定义", "模块导航", "共享 DTSI"],
+        absent: ["项目参数 Admin", "items", "events", "建设中", "目录发布", "项目值批量导入"]
       },
       {
         path: "/logs?logId=log-auth",
@@ -4325,9 +4325,10 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     renderApp({ initialAppState: adminState });
 
     const topbar = document.querySelector(".topbar") as HTMLElement;
-    const scopeNav = screen.getByRole("navigation", { name: "参数管理后台配置范围" });
+    const pageNav = screen.getByRole("navigation", { name: "参数管理后台导航" });
 
-    expect(within(scopeNav).getByRole("button", { name: "项目运营" })).toHaveAttribute("aria-current", "page");
+    expect(within(pageNav).getByRole("button", { name: "项目" })).toHaveAttribute("aria-current", "page");
+    expect(within(topbar).getByRole("button", { name: "打开项目值批量导入" })).toBeInTheDocument();
     expect(
       within(parameterAdminNavGroup(screen.getByRole("complementary", { name: "主导航侧边栏" }))).getByRole("link", {
         name: /^参数后台$/
@@ -4345,10 +4346,10 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
 
     renderApp({ initialAppState: adminState });
 
-    const scopeNav = screen.getByRole("navigation", { name: "参数管理后台配置范围" });
-    expect(within(scopeNav).getByRole("button", { name: "组织配置" })).toHaveAttribute("aria-current", "page");
+    const pageNav = screen.getByRole("navigation", { name: "参数管理后台导航" });
+    expect(within(pageNav).getByRole("button", { name: "参数定义" })).toHaveAttribute("aria-current", "page");
     const topbar = document.querySelector(".topbar") as HTMLElement;
-    expect(within(topbar).getByRole("button", { name: "打开项目值批量导入" })).toBeInTheDocument();
+    expect(within(topbar).queryByRole("button", { name: "打开项目值批量导入" })).not.toBeInTheDocument();
     expect(await screen.findByRole("region", { name: "参数定义目录" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "参数定义目录" })).toHaveAttribute("data-catalog-page", "true");
     expect(screen.queryByRole("region", { name: "参数定义库" })).not.toBeInTheDocument();
@@ -4360,7 +4361,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     renderApp({ initialAppState: adminState });
 
     expect(await screen.findByRole("region", { name: "参数定义目录" })).toHaveAttribute("data-catalog-page", "true");
-    expect(screen.getByRole("navigation", { name: "参数管理后台配置范围" })).toBeInTheDocument();
+    expect(screen.getByRole("navigation", { name: "参数管理后台导航" })).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "参数定义库" })).not.toBeInTheDocument();
     cleanup();
 
@@ -4399,7 +4400,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     expect(within(sidebar).getByRole("link", { name: "节点调试" })).toBeInTheDocument();
   });
 
-  it("exposes a single parameter admin sidebar entry with in-page scope switching", () => {
+  it("exposes a single parameter admin sidebar entry for the four page destinations", () => {
     window.history.replaceState(null, "", "/parameter-home");
 
     renderApp({ initialAppState: adminState });
@@ -4407,8 +4408,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     const sidebar = screen.getByRole("complementary", { name: "主导航侧边栏" });
     const parameterGroup = parameterAdminNavGroup(sidebar);
     expect(within(parameterGroup).getByRole("link", { name: /^参数后台$/ })).toBeInTheDocument();
-    expect(within(parameterGroup).queryByRole("link", { name: /组织配置/ })).not.toBeInTheDocument();
-    expect(within(parameterGroup).queryByRole("link", { name: /项目运营/ })).not.toBeInTheDocument();
+    expect(within(parameterGroup).queryByRole("link", { name: /^(参数定义|模块|共享 DTSI|项目)$/ })).not.toBeInTheDocument();
   });
 
   it("keeps the sidebar admin entry active on project-scoped deep links", () => {
@@ -4421,8 +4421,8 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
       "aria-current",
       "page"
     );
-    const scopeNav = screen.getByRole("navigation", { name: "参数管理后台配置范围" });
-    expect(within(scopeNav).getByRole("button", { name: "项目运营" })).toHaveAttribute("aria-current", "page");
+    const pageNav = screen.getByRole("navigation", { name: "参数管理后台导航" });
+    expect(within(pageNav).getByRole("button", { name: "项目" })).toHaveAttribute("aria-current", "page");
   });
 
   it("keeps the project shared parameter library list breathable and scannable", () => {

@@ -1,13 +1,4 @@
-.param-admin-navigation {
+.param-admin-project-actions {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-3);
-  padding-bottom: var(--space-3);
-  border-bottom: var(--stroke-hairline) solid var(--border);
-}
-
-.param-admin-navigation > :first-child:not(:last-child) {
-  padding-right: var(--space-3);
-  border-right: var(--stroke-hairline) solid var(--border);
+  justify-content: flex-end;
 }

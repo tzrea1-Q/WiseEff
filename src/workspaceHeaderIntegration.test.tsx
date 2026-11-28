@@ -1,4 +1,4 @@
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import App from "./App";
 import { initialState } from "./mockData";
@@ -27,18 +27,23 @@ describe("normalized workspace headers", () => {
     expect(screen.getByTestId("log-admin-overview")).toHaveAccessibleName("日志概览");
   });
 
-  it("keeps parameter admin bulk import in the topbar without a duplicate page title", async () => {
-    window.history.replaceState(null, "", "/parameter-admin");
+  it("keeps project-value bulk import in the project list topbar without a duplicate page title", async () => {
+    window.history.replaceState(null, "", "/parameter-admin/projects");
 
     render(<App initialAppState={adminState} runtimeMode="mock" />);
 
     const topbar = document.querySelector(".topbar") as HTMLElement;
 
     expect(topbar.querySelector(".topbar-title")).toHaveTextContent("参数管理后台");
-    expect(topbar.querySelector(".topbar-subtitle")).toHaveTextContent("参数定义管理");
+    expect(topbar.querySelector(".topbar-subtitle")).toHaveTextContent("维护组织级参数资产与项目配置");
     expect(await within(topbar).findByRole("button", { name: "打开项目值批量导入" }, { timeout: 4_000 })).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "项目值批量导入" })).not.toBeInTheDocument();
     expect(document.querySelector(".workspace-header")).not.toBeInTheDocument();
+
+    const nav = screen.getByRole("navigation", { name: "参数管理后台导航" });
+    fireEvent.click(within(nav).getByRole("button", { name: "参数定义" }));
+    await waitFor(() => expect(within(topbar).queryByRole("button", { name: "打开项目值批量导入" })).not.toBeInTheDocument());
+    expect(window.location.pathname).toBe("/parameter-admin/specs");
   });
 
   it("keeps the node summary in the directory without duplicating topbar metrics", async () => {

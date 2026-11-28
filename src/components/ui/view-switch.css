@@ -109,6 +109,52 @@
   background: var(--accent-soft);
 }
 
+.view-switch--page {
+  --view-switch-height: var(--space-10);
+  --view-switch-font-size: var(--text-md);
+  --view-switch-leading: var(--leading-md);
+  --view-switch-selected-fill: transparent;
+  --view-switch-selected-text: var(--accent);
+  --view-switch-rest-fill: transparent;
+  display: flex;
+  gap: var(--space-3);
+  border-bottom: var(--stroke-hairline) solid var(--border);
+}
+
+.view-switch__group {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.view-switch__group ~ .view-switch__group {
+  border-inline-start: var(--stroke-hairline) solid var(--border);
+  padding-inline-start: var(--space-3);
+}
+
+.view-switch__caption {
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+}
+
+.view-switch--page .view-switch__item {
+  border: 0;
+  border-block-end: calc(2 * var(--stroke-hairline)) solid transparent;
+  border-radius: 0;
+}
+
+.view-switch--page .view-switch__item:is(:hover, :active):not(:disabled) {
+  background: transparent;
+  color: var(--text);
+}
+
+.view-switch--page .view-switch__item[aria-current="page"] {
+  border-block-end-color: var(--accent);
+}
+
 .view-switch__item:focus-visible {
   outline: var(--view-switch-focus-width) solid var(--accent);
   outline-offset: var(--view-switch-focus-width);

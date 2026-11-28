@@ -1,10 +1,11 @@
 import type { ConsistencyCategory } from "./consistency-collector";
 import { parseParameterAdminModulesSubView } from "../../src/application/parameters/parameterAdminOrganizationPath";
 
-const catalogPaths = [
+export const parameterAdminDefinitionPaths = [
   "/parameter-admin", "/parameter-admin/specs", "/parameter-admin/identity-mapping",
-  "/parameter-admin/spec-review", "/parameter-admin/specs/identity-mapping", "/parameters/definitions"
+  "/parameter-admin/spec-review", "/parameter-admin/specs/identity-mapping"
 ];
+const catalogPaths = [...parameterAdminDefinitionPaths, "/parameters/definitions"];
 const projectConfigurationPaths = ["/configuration", "/files", "/config-sets", "/structure", "/conflicts"]
   .map((suffix) => `/parameter-admin/projects/aurora${suffix}`);
 const moduleGovernancePaths = ["/parameter-admin/modules"];
@@ -13,7 +14,7 @@ const adminListPaths = ["/parameter-admin/projects", "/organization/members", "/
   "/debugging-admin/nodes", "/feedback-admin", "/audit", "/knowledge"];
 export const collectionPaths = ["/knowledge-admin", "/log-admin"];
 const collectionListPaths = ["/knowledge-admin", "/log-admin?tab=records", "/log-admin?tab=skills", "/log-admin?tab=quality"];
-export const viewSwitchStyleExpectations: Readonly<Record<string, readonly ("section" | "tabs" | "toggle" | "toggle-outline")[]>> = {
+export const viewSwitchStyleExpectations: Readonly<Record<string, readonly ("page" | "section" | "tabs" | "toggle" | "toggle-outline")[]>> = {
   "/knowledge-admin": ["tabs"],
   "/log-admin": ["tabs"],
   "/log-admin?tab=records": ["tabs", "toggle"],
@@ -28,16 +29,16 @@ export const viewSwitchStyleExpectations: Readonly<Record<string, readonly ("sec
   "/parameters": ["tabs"],
   "/debugging-admin": ["section"],
   "/debugging-admin/nodes": ["section"],
-  "/parameter-admin": ["section"],
-  "/parameter-admin/specs": ["section"],
-  "/parameter-admin/specs/identity-mapping": ["section"],
-  "/parameter-admin/modules": ["section", "tabs"],
-  "/parameter-admin/modules/queue": ["section", "tabs"],
-  "/parameter-admin/modules/registry": ["section", "tabs"],
-  "/parameter-admin/identity-mapping": ["section"],
-  "/parameter-admin/spec-review": ["section"],
-  "/parameter-admin/projects": ["section"],
-  "/parameter-admin/projects/aurora/review-roles": ["section"],
+  "/parameter-admin": ["page"],
+  "/parameter-admin/specs": ["page"],
+  "/parameter-admin/specs/identity-mapping": ["page"],
+  "/parameter-admin/modules": ["page", "tabs"],
+  "/parameter-admin/modules/queue": ["page", "tabs"],
+  "/parameter-admin/modules/registry": ["page", "tabs"],
+  "/parameter-admin/identity-mapping": ["page"],
+  "/parameter-admin/spec-review": ["page"],
+  "/parameter-admin/projects": ["page"],
+  "/parameter-admin/projects/aurora/review-roles": ["page"],
   "/parameter-changes?scope=review": ["tabs", "toggle-outline"],
   "/parameter-changes?scope=mine": ["tabs", "toggle-outline"],
   "/user-permissions": ["section", "tabs"]
@@ -46,7 +47,7 @@ export const viewSwitchStylePaths = Object.keys(viewSwitchStyleExpectations);
 const applicablePaths: Omit<Record<ConsistencyCategory, readonly string[]>, "xiaozeLaunchers" | "xiaozeHints" | "stickyActionAreas" | "unmarkedCompactControls" | "titles" | "buttons" | "typeScale" | "pageEdges" | "workbenchTables"> = {
   viewSwitches: viewSwitchStylePaths,
   viewSwitchSignatures: viewSwitchStylePaths,
-  primaryActions: ["/dts-reload", "/knowledge", "/log-admin", "/log-admin?tab=records", "/logs", "/node-debugging", "/organization/members", "/parameter-admin", "/parameter-admin/specs", "/user-permissions", "/parameter-admin/projects", "/parameter-comparison", "/debugging"],
+  primaryActions: ["/dts-reload", "/knowledge", "/log-admin", "/log-admin?tab=records", "/logs", "/node-debugging", "/organization/members", "/user-permissions", "/parameter-admin/projects", "/parameter-comparison", "/debugging"],
   rowActions: [...catalogPaths, "/parameters", ...adminListPaths],
   tableScrollports: [...catalogPaths, "/parameters", "/node-debugging", "/audit", "/logs", "/user-permissions", "/organization/members",
     // /debugging-admin defaults to the DTS reload settings form, which renders no table.

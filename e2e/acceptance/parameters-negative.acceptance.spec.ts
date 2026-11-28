@@ -135,8 +135,9 @@ test.describe("M5.5 parameter negative-path browser acceptance", () => {
     // @acceptance PARAM-REASON-001
     // @operation PARAM-REASON-001
     await signInBrowserAsRole(page, "admin", disposablePageUrl(disposableRuntime, "/parameter-admin"));
-    await expect(page.getByRole("button", { name: "打开项目值批量导入" })).toBeVisible({ timeout: 30_000 });
     const library = page.getByRole("region", { name: /参数定义库|参数定义目录/ });
+    await expect(library).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByRole("button", { name: "打开项目值批量导入" })).toHaveCount(0);
 
     const draftFilter = library.getByRole("button", { name: /draft/i }).first();
     if (await draftFilter.isVisible().catch(() => false)) {

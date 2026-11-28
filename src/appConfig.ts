@@ -29,13 +29,7 @@ import {
   isOrganizationAdminPath,
   parseOrganizationAdminArea
 } from "@/application/organization/organizationAdminPath";
-import {
-  isParameterAdminOrganizationEntryPath,
-  parseParameterAdminModulesSubView,
-  parseParameterAdminOrganizationPath,
-  parseParameterAdminSpecsSubView,
-  PARAMETER_ADMIN_ORGANIZATION_VIEW_LABELS
-} from "@/application/parameters/parameterAdminOrganizationPath";
+import { isParameterAdminOrganizationEntryPath } from "@/application/parameters/parameterAdminOrganizationPath";
 import { PARAMETER_ADMIN_UI } from "@/application/parameters/parameterAdminUiCopy";
 import type { NavGroup } from "@/domain/workflowDiscovery";
 import { CATALOG_READ_PAGE_PATH } from "@/application/parameter-catalog/urlAnchor";
@@ -277,31 +271,20 @@ export function getPageByPath(path: string): PageConfig {
     return { ...navigationItems.find((item) => item.key === "log-admin")!, path, title: "分析技能工作区", subtitle: "编辑草稿、发布与查看版本" };
   }
 
-  // Project-scoped views share the single sidebar entry; keep deep-link path for in-page area switching.
+  // Project-scoped views share the sidebar entry and preserve their deep-link path.
   if (path === "/parameter-admin/projects" || path.startsWith("/parameter-admin/projects/")) {
-    const adminNav = navigationItems.find((item) => item.key === "parameter-admin");
-    const viewMatch = path.match(
-      /^\/parameter-admin\/projects\/[^/]+(?:\/(files|config-sets|structure|conflicts|configuration))?\/?$/
-    );
-    const projectViewLabels: Record<string, string> = {
-      files: "配置工作台",
-      "config-sets": "配置工作台",
-      structure: "配置工作台",
-      conflicts: "配置工作台",
-      configuration: "配置工作台"
-    };
-    const subtitle = viewMatch
-      ? projectViewLabels[viewMatch[1] ?? "configuration"] ?? "配置工作台"
-      : "项目清单";
+    const adminNav = navigationItems.find((item) => item.key === "parameter-admin")!;
+    const workbench = /^\/parameter-admin\/projects\/[^/]+(?:\/(files|config-sets|structure|conflicts|configuration))?\/?$/.test(path);
     return {
-      ...(adminNav as PageConfig),
+      ...adminNav,
       path,
-      subtitle
+      subtitle: workbench ? "配置工作台" : adminNav.subtitle
     };
   }
 
   // Organization-scoped sub-views share the same sidebar entry.
   if (
+    isParameterAdminOrganizationEntryPath(path) ||
     path === "/parameter-admin/specs" ||
     path === "/parameter-admin/spec-review" ||
     path === "/parameter-admin/modules" ||
@@ -312,36 +295,7 @@ export function getPageByPath(path: string): PageConfig {
     path.startsWith("/parameter-admin/modules/") ||
     path.startsWith("/parameter-admin/identity-mapping/")
   ) {
-    const adminNav = navigationItems.find((item) => item.key === "parameter-admin");
-    const view = parseParameterAdminOrganizationPath(path);
-    const modulesSub = parseParameterAdminModulesSubView(path);
-    const specsSub = parseParameterAdminSpecsSubView(path);
-    const subtitle =
-      modulesSub === "queue"
-        ? PARAMETER_ADMIN_UI.moduleDiscoveryCompatible
-        : specsSub === "identity-mapping"
-          ? PARAMETER_ADMIN_UI.identityMapping
-          : view
-            ? PARAMETER_ADMIN_ORGANIZATION_VIEW_LABELS[view]
-            : path.includes("identity-mapping")
-              ? PARAMETER_ADMIN_UI.identityMapping
-              : path.includes("spec-review")
-                ? PARAMETER_ADMIN_UI.specDefinitionManagement
-                : (adminNav?.subtitle ?? PARAMETER_ADMIN_UI.specDefinitionManagement);
-    return {
-      ...(adminNav as PageConfig),
-      path,
-      subtitle
-    };
-  }
-
-  if (isParameterAdminOrganizationEntryPath(path)) {
-    const adminNav = navigationItems.find((item) => item.key === "parameter-admin");
-    return {
-      ...(adminNav as PageConfig),
-      path,
-      subtitle: PARAMETER_ADMIN_ORGANIZATION_VIEW_LABELS.specs
-    };
+    return { ...navigationItems.find((item) => item.key === "parameter-admin")!, path };
   }
 
   if (path === "/parameter-comparison") {

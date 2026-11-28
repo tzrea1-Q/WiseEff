@@ -39,6 +39,7 @@ import {
   type ParamAdminProjectsSearch
 } from "@/hooks/useParamAdminProjectsSearch";
 import { useParameterAdmin } from "./ParameterAdminProvider";
+import { PARAMETER_ADMIN_UI } from "@/application/parameters/parameterAdminUiCopy";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { useRefreshParameterAdminRecentAudits } from "./useRefreshParameterAdminRecentAudits";
@@ -323,7 +324,7 @@ export function ProjectsOperationsPanel({
           ? "param-admin-main project-admin-layout project-admin-layout--configuration-workbench"
           : "param-admin-main project-admin-layout"
       }
-      aria-label="项目运营"
+      aria-label={PARAMETER_ADMIN_UI.projects}
     >
       {error ? (
         <div className="project-admin-error" role="alert">

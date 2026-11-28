@@ -559,7 +559,7 @@ try {
     name: "iin_max", module: "Driver", currentValue: "3000", configFormat: "DTS", risk: "Low"
   }]);
   const imported = browserJson(browserCode(`async page => {
-    await page.goto('http://127.0.0.1:18080/parameter-admin/specs');
+    await page.goto('http://127.0.0.1:18080/parameter-admin/projects');
     await page.getByRole('button', {name:'打开项目值批量导入'}).click();
     const dialog = page.getByRole('dialog', {name:'项目值批量导入'});
     await dialog.waitFor();

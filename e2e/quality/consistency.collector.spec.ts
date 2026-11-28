@@ -103,7 +103,7 @@ test("resolves root switch signatures and catches scoped geometry or semantic dr
   `));
   const measurements = await test.step("quality:capture", () => page.evaluate(collectConsistencyMeasurements));
   expect(measurements.viewSwitches).toHaveLength(6);
-  expect(measurements.viewSwitchSignatures.map((style) => [style.variant, style.height])).toEqual([["section", 40], ["tabs", 32], ["toggle", 28], ["toggle-outline", 28]]);
+  expect(measurements.viewSwitchSignatures.map((style) => [style.variant, style.height])).toEqual([["section", 40], ["tabs", 32], ["toggle", 28], ["toggle-outline", 28], ["page", 40]]);
   expect(() => requireViewSwitchStyles({ ...measurements, viewSwitches: measurements.viewSwitches.filter((control) => control.role !== "radio") }, "/organization/members")).not.toThrow();
   expect(() => requireViewSwitchStyles({ ...measurements, viewSwitches: measurements.viewSwitches.filter((control) => control.role === "radio") }, "/parameter-home")).not.toThrow();
   await page.getByRole("radiogroup").evaluate((element) => element.classList.add("view-switch--toggle-outline"));

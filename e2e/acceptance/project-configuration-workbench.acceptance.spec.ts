@@ -2708,7 +2708,7 @@ test.describe("project configuration workbench read-only browser acceptance", ()
           } else await expect(page.getByRole("tabpanel")).toHaveCount(0);
         }
         await expect(page.getByRole("region", { name: "配置导航", exact: true })).toBeVisible();
-        await expect(page.getByRole("navigation", { name: "项目运营视图" })).toHaveCount(0);
+        await expect(page.getByRole("navigation", { name: "参数管理后台导航" })).toHaveCount(0);
       }
 
       await page.setViewportSize({ width: 1440, height: 900 });
@@ -3838,7 +3838,7 @@ test.describe("project configuration workbench post-cutover semantic identity", 
       await expect(page.getByRole("textbox",{name:"已发布 DTSI 源码",exact:true})).toContainText("SharedDefault");
       await expect(page.getByRole("textbox",{name:"已发布 DTSI 源码",exact:true})).toHaveAttribute("aria-readonly","true");
       await expect(page.getByRole("button",{name:"保存草稿",exact:true})).toHaveCount(0);
-      await expect(page.getByRole("navigation",{name:"组织配置子视图"})).toHaveCount(0);
+      await expect(page.getByRole("navigation",{name:"参数管理后台导航"})).toHaveCount(0);
       for(const viewport of [{width:1440,height:900},{width:1280,height:800}]) {
         await page.setViewportSize(viewport);const path=testInfo.outputPath(`reader-source-${viewport.width}.png`);await page.screenshot({path});
         await testInfo.attach(`Reader source ${viewport.width}`,{path,contentType:"image/png"});

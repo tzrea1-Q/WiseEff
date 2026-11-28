@@ -1,16 +1,18 @@
 import { requireMeasuredCategories } from "./consistency-assertions";
-import { viewSwitchStyleExpectations } from "./consistency-routes";
+import { parameterAdminDefinitionPaths, viewSwitchStyleExpectations } from "./consistency-routes";
 import { type ConsistencyMeasurements } from "./consistency-collector";
 
 export function requireViewSwitchStyles(measurements: Pick<ConsistencyMeasurements, "viewSwitches" | "viewSwitchSignatures">, path: string) {
-  const variants = viewSwitchStyleExpectations[path] ?? viewSwitchStyleExpectations[path.split("?")[0]];
+  const pathname = path.split("?")[0];
+  const variants = viewSwitchStyleExpectations[path] ?? viewSwitchStyleExpectations[pathname];
   if (!variants) return;
+  const allowed = parameterAdminDefinitionPaths.includes(pathname) ? [...variants, "section"] : variants;
   requireMeasuredCategories(measurements, ["viewSwitches", "viewSwitchSignatures"], path);
   const observed = new Set<string>();
   for (const control of measurements.viewSwitches) {
     if (control.role === "listitem" && control.group.includes(".local-device-bridge-wizard__steps")) continue;
     const matches = measurements.viewSwitchSignatures.filter((style) =>
-      variants.some((variant) => variant === style.variant)
+      allowed.some((variant) => variant === style.variant)
       && control.role === style.role && control.groupRole === style.groupRole
       && control.height === style.height && control.radius === style.radius
       && control.fontSize === style.fontSize && control.lineHeight === style.lineHeight && control.fontWeight === style.fontWeight
