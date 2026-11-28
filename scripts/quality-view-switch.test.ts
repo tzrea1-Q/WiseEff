@@ -8,11 +8,14 @@ const signatures = [
   { variant: "section", role: "button", groupRole: "navigation", height: 40, radius: "999px 999px 999px 999px", fontSize: "14px", lineHeight: "22px", fontWeight: "600", background: "rgb(255, 255, 255)", selectedBackground: "rgb(0, 61, 155)" },
   { variant: "tabs", role: "tab", groupRole: "tablist", height: 32, radius: "8px 8px 8px 8px", fontSize: "13px", lineHeight: "20px", fontWeight: "600", background: "rgb(255, 255, 255)", selectedBackground: "rgb(218, 226, 255)" },
   { variant: "toggle", role: "radio", groupRole: "radiogroup", height: 28, radius: "6px 6px 6px 6px", fontSize: "12px", lineHeight: "18px", fontWeight: "600", background: "rgb(247, 249, 252)", selectedBackground: "rgb(255, 255, 255)" },
-  { variant: "toggle-outline", role: "radio", groupRole: "radiogroup", height: 28, radius: "6px 6px 6px 6px", fontSize: "12px", lineHeight: "18px", fontWeight: "600", background: "rgb(255, 255, 255)", selectedBackground: "rgb(218, 226, 255)" }
+  { variant: "toggle-outline", role: "radio", groupRole: "radiogroup", height: 28, radius: "6px 6px 6px 6px", fontSize: "12px", lineHeight: "18px", fontWeight: "600", background: "rgb(255, 255, 255)", selectedBackground: "rgb(218, 226, 255)" },
+  { variant: "page", role: "button", groupRole: "navigation", height: 40, radius: "0px 0px 0px 0px", fontSize: "14px", lineHeight: "22px", fontWeight: "400", selectedFontWeight: "600", background: "rgba(0, 0, 0, 0)", selectedBackground: "rgba(0, 0, 0, 0)" }
 ];
+const pageSignature = signatures[4];
 
 function measurement(style = signatures[0], selected = true) {
   return { ...style, dom: "button.organization-switch", group: "nav.organization", selected,
+    fontWeight: selected ? style.selectedFontWeight ?? style.fontWeight : style.fontWeight,
     background: selected ? style.selectedBackground : style.background };
 }
 
@@ -69,9 +72,10 @@ describe("view-switch consistency", () => {
     ...["/logs", "/parameters",
       "/parameter-admin/projects/aurora/configuration?tab=conflicts"]
       .map((path) => [path, "tabs"]),
-    ...["/debugging-admin", "/debugging-admin/nodes", "/parameter-admin", "/parameter-admin/specs",
+    ...["/debugging-admin", "/debugging-admin/nodes"].map((path) => [path, "section"]),
+    ...["/parameter-admin", "/parameter-admin/specs",
       "/parameter-admin/specs/identity-mapping", "/parameter-admin/identity-mapping", "/parameter-admin/spec-review",
-      "/parameter-admin/projects", "/parameter-admin/projects/aurora/review-roles"].map((path) => [path, "section"])
+      "/parameter-admin/projects", "/parameter-admin/projects/aurora/review-roles"].map((path) => [path, "page"])
   ])("enforces the migrated tier on %s: %s", (path, variant) => {
     expect(consistencyRoutes.find((route) => route.path === path)?.required).toContain("viewSwitchSignatures");
     for (const style of signatures) {
@@ -79,8 +83,14 @@ describe("view-switch consistency", () => {
         viewSwitches: [measurement(style), measurement(style, false)], viewSwitchSignatures: signatures
       }, path);
       if (style.variant === variant) expect(assertStyles).not.toThrow();
-      else expect(assertStyles).toThrow("matched 0");
+      else expect(assertStyles).toThrow(/matched 0|missing view-switch tiers: page/);
     }
+  });
+
+  it("allows the conditional identity mapping switch while requiring the page navigation", () => {
+    expect(() => requireViewSwitchStyles({
+      viewSwitches: [measurement(pageSignature), measurement(signatures[0])], viewSwitchSignatures: signatures
+    }, "/parameter-admin/specs/identity-mapping")).not.toThrow();
   });
 
   it.each(["/parameter-changes?scope=mine", "/parameter-changes?scope=review"])("requires both view and status switches on %s", (path) => {
@@ -107,9 +117,9 @@ describe("view-switch consistency", () => {
     "/parameter-admin/modules", "/parameter-admin/modules/queue", "/parameter-admin/modules/registry",
     "/parameter-admin/modules?tab=queue", "/parameter-admin/modules?tab=registry"
   ])(
-    "requires both organization sections and governance content tabs on %s", (path) => {
+    "requires both page navigation and governance content tabs on %s", (path) => {
       expect(() => requireViewSwitchStyles({
-        viewSwitches: [measurement(signatures[0]), measurement(signatures[1])], viewSwitchSignatures: signatures
+        viewSwitches: [measurement(pageSignature), measurement(signatures[1])], viewSwitchSignatures: signatures
       }, path)).not.toThrow();
       for (const style of signatures) {
         expect(() => requireViewSwitchStyles({ viewSwitches: [measurement(style)], viewSwitchSignatures: signatures }, path)).toThrow(/matched 0|missing view-switch tiers/);
@@ -117,7 +127,7 @@ describe("view-switch consistency", () => {
       expect(() => requireViewSwitchStyles({ viewSwitches: [], viewSwitchSignatures: signatures }, path))
         .toThrow("missing consistency measurements: viewSwitches");
       expect(() => requireViewSwitchStyles({
-        viewSwitches: [measurement(signatures[0]), { ...measurement(signatures[1]), height: 43 }], viewSwitchSignatures: signatures
+        viewSwitches: [measurement(pageSignature), { ...measurement(signatures[1]), height: 43 }], viewSwitchSignatures: signatures
       }, path)).toThrow("matched 0");
     }
   );

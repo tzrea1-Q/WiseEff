@@ -58,7 +58,10 @@ test.describe("canonical parameter catalog page", () => {
     );
     await expect(page.getByRole("button", { name: /有效定义|治理历史|Effective|Governance/ })).toHaveCount(0);
     await expect(page.getByText(/生效目录|治理视图|catalogView/)).toHaveCount(0);
-    await expect(page.getByRole("navigation", { name: "组织配置子视图" }).getByRole("button", { name: /参数定义管理/ })).toBeVisible();
+    const navigation = page.getByRole("navigation", { name: "参数管理后台导航" });
+    const destination = navigation.getByRole("button", { name: /^参数定义/ });
+    await expect(destination).toBeVisible();
+    await expect(destination).toHaveAttribute("aria-current", "page");
     await catalogScreenshot(page, testInfo, "pcat-ui-01-entry");
   });
 

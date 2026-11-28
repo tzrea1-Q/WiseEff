@@ -92,13 +92,14 @@ export function collectConsistencyMeasurements() {
     { variant: "section", role: "button", groupRole: "navigation", height: "var(--space-10)", radius: "var(--radius-full)", fontSize: "var(--text-md)", lineHeight: "var(--leading-md)", background: "var(--surface)", selectedBackground: "var(--nav-selected)" },
     { variant: "tabs", role: "tab", groupRole: "tablist", height: "var(--space-8)", radius: "var(--radius-md)", fontSize: "var(--text-base)", lineHeight: "var(--leading-base)", background: "var(--surface)", selectedBackground: "var(--accent-soft)" },
     { variant: "toggle", role: "radio", groupRole: "radiogroup", height: "calc(var(--space-6) + var(--space-1))", radius: "var(--radius-sm)", fontSize: "var(--text-sm)", lineHeight: "var(--leading-sm)", background: "var(--surface-sunken)", selectedBackground: "var(--surface)" },
-    { variant: "toggle-outline", role: "radio", groupRole: "radiogroup", height: "calc(var(--space-6) + var(--space-1))", radius: "var(--radius-sm)", fontSize: "var(--text-sm)", lineHeight: "var(--leading-sm)", background: "var(--surface)", selectedBackground: "var(--accent-soft)" }
+    { variant: "toggle-outline", role: "radio", groupRole: "radiogroup", height: "calc(var(--space-6) + var(--space-1))", radius: "var(--radius-sm)", fontSize: "var(--text-sm)", lineHeight: "var(--leading-sm)", background: "var(--surface)", selectedBackground: "var(--accent-soft)" },
+    { variant: "page", role: "button", groupRole: "navigation", height: "var(--space-10)", radius: "0", fontSize: "var(--text-md)", lineHeight: "var(--leading-md)", background: "transparent", selectedBackground: "transparent" }
   ].map((tier) => {
     switchProbe.style.height = tier.height;
     switchProbe.style.borderRadius = tier.radius;
     switchProbe.style.fontSize = tier.fontSize;
     switchProbe.style.lineHeight = tier.lineHeight;
-    switchProbe.style.fontWeight = "var(--view-switch-font-weight)";
+    switchProbe.style.fontWeight = tier.variant === "page" ? "normal" : "var(--view-switch-font-weight)";
     switchProbe.style.backgroundColor = tier.background;
     const style = getComputedStyle(switchProbe);
     const resolved = {
@@ -107,7 +108,9 @@ export function collectConsistencyMeasurements() {
       fontSize: style.fontSize, lineHeight: style.lineHeight, fontWeight: style.fontWeight, background: style.backgroundColor
     };
     switchProbe.style.backgroundColor = tier.selectedBackground;
-    return { ...resolved, selectedBackground: getComputedStyle(switchProbe).backgroundColor };
+    switchProbe.style.fontWeight = "var(--view-switch-font-weight)";
+    return { ...resolved, selectedBackground: style.backgroundColor,
+      ...(tier.variant === "page" ? { selectedFontWeight: style.fontWeight } : {}) };
   });
   switchProbe.remove();
   const primaryToken = getComputedStyle(document.documentElement).getPropertyValue("--primary").trim();

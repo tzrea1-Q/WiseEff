@@ -9,7 +9,7 @@ import { TopBarActionsContext, useTopBarActions } from "@/components/layout";
 import { useRefreshParameterAdminRecentAudits } from "./useRefreshParameterAdminRecentAudits";
 import type { ApiClient } from "@/infrastructure/http/apiClient";
 
-export type OrganizationBulkImportPanelProps = {
+type ProjectValueBulkImportActionProps = {
   apiClient?: ApiClient;
   projects: Project[];
   parameters: ParameterRecord[];
@@ -20,10 +20,7 @@ export type OrganizationBulkImportPanelProps = {
   runtimeMode?: WiseEffRuntimeMode;
 };
 
-/**
- * Organization-scoped bulk import entry shown as a TopBar action on every org sub-route.
- */
-export function OrganizationBulkImportPanel({
+export function ProjectValueBulkImportAction({
   apiClient,
   projects,
   parameters,
@@ -32,7 +29,7 @@ export function OrganizationBulkImportPanel({
   onNavigate,
   parameterActions,
   runtimeMode = "mock"
-}: OrganizationBulkImportPanelProps) {
+}: ProjectValueBulkImportActionProps) {
   const refreshRecentAudits = useRefreshParameterAdminRecentAudits(apiClient);
   const topBarContext = useContext(TopBarActionsContext);
   const [open, setOpen] = useState(false);
@@ -68,7 +65,7 @@ export function OrganizationBulkImportPanel({
   return (
     <>
       {!topBarContext ? (
-        <div className="param-admin-org-actions" role="region" aria-label="项目值批量导入">
+        <div className="param-admin-project-actions" role="region" aria-label="项目值批量导入">
           {importButton}
         </div>
       ) : null}

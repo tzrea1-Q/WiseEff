@@ -19,6 +19,7 @@ import {
   resolveParameterAdminOrganizationRedirect,
   type ParameterAdminOrganizationView
 } from "@/application/parameters/parameterAdminOrganizationPath";
+import { PARAMETER_ADMIN_UI } from "@/application/parameters/parameterAdminUiCopy";
 import { resolveParameterModuleRegistryRepository } from "@/application/parameters/parameterModuleRegistryResolve";
 import { resolveParameterTopologyRepository } from "@/application/parameters/parameterTopologyResolve";
 import { migrateLegacyRoleId } from "@/domain/users/types";
@@ -27,11 +28,10 @@ import {
   type WiseEffRuntimeMode
 } from "@/infrastructure/http/runtimeMode";
 import type { ParameterRecord, Project, PrototypeState } from "@/domain/prototype/types";
-import { OrganizationBulkImportPanel } from "@/components/parameter-admin-next/OrganizationBulkImportPanel";
+import { ProjectValueBulkImportAction } from "@/components/parameter-admin-next/ProjectValueBulkImportAction";
 import { OrganizationModuleGovernancePanel } from "@/components/parameter-admin-next/OrganizationModuleGovernancePanel";
 import { OrganizationSpecsArea } from "@/components/parameter-admin-next/OrganizationSpecsArea";
-import { ParameterAdminNextScopeNav } from "@/components/parameter-admin-next/ParameterAdminNextScopeNav";
-import { ParameterAdminOrganizationSubNav } from "@/components/parameter-admin-next/ParameterAdminOrganizationSubNav";
+import { ParameterAdminNav } from "@/components/parameter-admin-next/ParameterAdminNav";
 import { ParameterAdminProvider } from "@/components/parameter-admin-next/ParameterAdminProvider";
 import { ProjectsOperationsPanel } from "@/components/parameter-admin-next/ProjectsOperationsPanel";
 import type { SpecRelatedKnowledgeSource } from "@/components/parameter-topology/ParameterSpecDetail";
@@ -83,9 +83,7 @@ export type ParameterAdminNextPageProps = {
 };
 
 /**
- * Redesigned parameter admin organized by governance scope (ADR-0001).
- * Organization peers (ADR-0015): specs (definition management) and modules.
- * Project routes: `/parameter-admin/projects` and deep views.
+ * Parameter admin with organization and project destinations (ADR-0001, ADR-0015).
  */
 export function ParameterAdminNextPage({
   area,
@@ -231,10 +229,19 @@ export function ParameterAdminNextPage({
         }
       >
         {!isConfigurationWorkbenchRoute && (runtimeMode !== "api" || sessionPermissions === undefined || sessionPermissions?.includes("admin:access")) ? (
-          <div className="param-admin-navigation">
-            <ParameterAdminNextScopeNav active={area} onNavigate={onNavigate} />
-            {organizationView ? <ParameterAdminOrganizationSubNav active={organizationView} onNavigate={onNavigate} /> : null}
-          </div>
+          <ParameterAdminNav active={area === "projects" ? "projects" : organizationView ?? "specs"} onNavigate={onNavigate} />
+        ) : null}
+        {area === "projects" && /^\/parameter-admin\/projects\/?$/.test(pathname) ? (
+          <ProjectValueBulkImportAction
+            apiClient={runtime?.parameterApiClient}
+            projects={projects}
+            parameters={parameters}
+            activeProjectId={activeProjectId || projects[0]?.id || ""}
+            dispatch={dispatch ?? (() => undefined)}
+            onNavigate={onNavigate}
+            parameterActions={parameterActions}
+            runtimeMode={runtimeMode}
+          />
         ) : null}
         {area === "projects" ? (
           state && dispatch ? (
@@ -256,9 +263,9 @@ export function ParameterAdminNextPage({
               projectMemberships={projectMemberships}
             />
           ) : (
-            <section className="param-admin-main" aria-label="项目运营">
+            <section className="param-admin-main" aria-label={PARAMETER_ADMIN_UI.projects}>
               <p className="project-admin-error" role="alert">
-                项目运营需要完整的应用状态。请从主导航进入参数后台。
+                项目列表需要完整的应用状态。请从主导航进入参数后台。
               </p>
             </section>
           )
@@ -269,16 +276,6 @@ export function ParameterAdminNextPage({
               canReviewSource={Boolean(sessionRoles?.some(role=>role.roleId==="platform-admin"&&role.projectId===null))}
               canProposeSource={Boolean(sessionRoles?.some(role=>role.roleId==="admin"&&role.projectId===null) && !sessionRoles?.some(role=>role.roleId==="platform-admin"&&role.projectId===null))}
               canWrite={Boolean(sessionPermissions?.includes("admin:access"))} organizationId={catalogOrganizationId} currentUserId={state?.currentUserId} search={search} onNavigate={onNavigate} /> : null}
-            {organizationView === "specs" ? <OrganizationBulkImportPanel
-              apiClient={runtime?.parameterApiClient}
-              projects={projects}
-              parameters={parameters}
-              activeProjectId={activeProjectId || projects[0]?.id || ""}
-              dispatch={dispatch ?? (() => undefined)}
-              onNavigate={onNavigate}
-              parameterActions={parameterActions}
-              runtimeMode={runtimeMode}
-            /> : null}
             {organizationView === "specs" && runtimeMode === "api" ? (
               <OrganizationSpecsArea
                 pathname={pathname}

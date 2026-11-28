@@ -70,7 +70,7 @@ test.describe("PARAM-IMPORT-DTS-FULL / REVIEW-META parameter import DTS alignmen
     expect(includeBody.format).toBe("dts-full");
     expect(Array.isArray(includeBody.rows)).toBe(true);
 
-    await page.goto("/parameter-admin");
+    await page.goto("/parameter-admin/projects");
     await dismissXiaozeHint(page);
     await prepareInteractionSurface(page);
     // Bulk import lives in the TopBar action slot; clear cpk-web-inspector first.

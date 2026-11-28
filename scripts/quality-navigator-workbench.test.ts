@@ -45,7 +45,7 @@ describe("navigator-workbench geometry", () => {
     const path = "/parameter-admin/modules";
     expect(consistencyRoutes.find((route) => route.path === path)?.required)
       .toEqual(expect.arrayContaining(["navigatorWorkbenches", "moduleTreeLabels"]));
-    expect(viewSwitchStyleExpectations[path.split("?")[0]]).toEqual(["section", "tabs"]);
+    expect(viewSwitchStyleExpectations[path.split("?")[0]]).toEqual(["page", "tabs"]);
     for (const theme of ["light", "dark"]) {
       expect(() => requireNavigatorWorkbenchGeometry([{ ...measurement(), pageKey: "module-governance" }], `${path} (${theme})`)).not.toThrow();
       expect(() => requireNavigatorWorkbenchGeometry([{ ...measurement(), pageOverflow: 2 }], `${path} (${theme})`)).toThrow("horizontal");
@@ -65,7 +65,7 @@ describe("navigator-workbench geometry", () => {
     expect(required.includes("tableScrollports")).toBe(view === "registry");
     expect(consistencyRoutes.find((route) => route.path === `/parameter-admin/modules?tab=${view}`)?.required)
       .toEqual(required);
-    expect(viewSwitchStyleExpectations[path]).toEqual(["section", "tabs"]);
+    expect(viewSwitchStyleExpectations[path]).toEqual(["page", "tabs"]);
   });
   it("rejects count text clipped by its own box or the navigator edge", () => {
     const count = measurement().navigatorCounts[0];

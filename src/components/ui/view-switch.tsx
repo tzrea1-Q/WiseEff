@@ -1,4 +1,4 @@
-import type { KeyboardEvent, ReactNode } from "react";
+import { Fragment, useId, type KeyboardEvent, type ReactNode } from "react";
 import { RadioGroup, Tabs } from "radix-ui";
 
 import "./view-switch.css";
@@ -10,19 +10,22 @@ type ViewSwitchItem = {
   title?: string;
 };
 
+type PageSwitchItem = ViewSwitchItem & { group?: string };
+
 type ViewSwitchProps = {
   ariaLabel: string;
   value: string;
   onValueChange: (value: string) => void;
 } & (
   | { variant: "section" | "toggle" | "toggle-outline"; items: ViewSwitchItem[] }
+  | { variant: "page"; items: PageSwitchItem[] }
   | { variant: "tabs"; items: (ViewSwitchItem & { id: string; panelId: string })[] }
 );
 
-function handleSectionRovingFocus(event: KeyboardEvent<HTMLButtonElement>) {
-  const parent = event.currentTarget.parentElement;
-  if (!parent) return;
-  const buttons = [...parent.querySelectorAll<HTMLButtonElement>("button:not(:disabled)")];
+function handleNavigationRovingFocus(event: KeyboardEvent<HTMLButtonElement>) {
+  const nav = event.currentTarget.closest("nav");
+  if (!nav) return;
+  const buttons = [...nav.querySelectorAll<HTMLButtonElement>("button.view-switch__item:not(:disabled)")];
   const current = buttons.indexOf(event.currentTarget);
   if (current < 0) return;
   let next: number;
@@ -47,6 +50,7 @@ function handleSectionRovingFocus(event: KeyboardEvent<HTMLButtonElement>) {
 }
 
 export function ViewSwitch({ variant, ariaLabel, value, onValueChange, items }: ViewSwitchProps) {
+  const captionId = useId();
   if (variant === "toggle" || variant === "toggle-outline") {
     return (
       <RadioGroup.Root className={`view-switch view-switch--toggle${variant === "toggle-outline" ? " view-switch--toggle-outline" : ""}`} aria-label={ariaLabel}
@@ -74,22 +78,46 @@ export function ViewSwitch({ variant, ariaLabel, value, onValueChange, items }: 
       </Tabs.Root>
     );
   }
+  const renderDestination = (item: ViewSwitchItem) => (
+    <button
+      key={item.value}
+      type="button"
+      className="view-switch__item"
+      disabled={item.disabled}
+      title={item.title}
+      aria-current={item.value === value ? "page" : undefined}
+      onClick={() => onValueChange(item.value)}
+      onKeyDown={handleNavigationRovingFocus}
+    >
+      {item.label}
+    </button>
+  );
+
+  const groups: { caption?: string; items: PageSwitchItem[] }[] = [];
+  if (variant === "page") {
+    for (const item of items) {
+      const previous = groups.at(-1);
+      if (previous && previous.caption === item.group) {
+        previous.items.push(item);
+      } else {
+        groups.push({ caption: item.group, items: [item] });
+      }
+    }
+  }
+
   return (
     <nav className={`view-switch view-switch--${variant}`} aria-label={ariaLabel}>
-      {items.map((item) => (
-        <button
-          key={item.value}
-          type="button"
-          className="view-switch__item"
-          disabled={item.disabled}
-          title={item.title}
-          aria-current={item.value === value ? "page" : undefined}
-          onClick={() => onValueChange(item.value)}
-          onKeyDown={handleSectionRovingFocus}
-        >
-          {item.label}
-        </button>
-      ))}
+      {variant === "page" ? groups.map(({ caption, items: groupItems }, index) => {
+        const id = `${captionId}-${index}`;
+        const key = groupItems[0].value;
+        const buttons = groupItems.map(renderDestination);
+        return caption ? (
+          <div className="view-switch__group" key={key} role="group" aria-labelledby={id}>
+            <span className="view-switch__caption" id={id}>{caption}</span>
+            {buttons}
+          </div>
+        ) : <Fragment key={key}>{buttons}</Fragment>;
+      }) : items.map(renderDestination)}
     </nav>
   );
 }

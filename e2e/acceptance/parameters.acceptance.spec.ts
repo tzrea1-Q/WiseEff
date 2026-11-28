@@ -183,9 +183,12 @@ test.describe("M5.4 manual flow B/C - parameter management browser acceptance", 
     await expect(page.getByLabel("搜索审计记录")).toBeVisible();
     await page.goto(disposablePageUrl(disposableRuntime, "/parameter-admin"));
     await prepareInteractionSurface(page);
+    await expect(page.getByRole("region", { name: "参数定义目录" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "打开项目值批量导入" })).toHaveCount(0);
+    await page.getByRole("navigation", { name: "参数管理后台导航" })
+      .getByRole("button", { name: "项目", exact: true }).click();
 
-    // #847 replaced the spec-library region with CatalogPage; bulk import stays a TopBar action.
-    const openImport = page.getByRole("button", { name: "打开项目值批量导入" });
+    const openImport = page.locator(".topbar").getByRole("button", { name: "打开项目值批量导入" });
     await expect(openImport).toBeVisible({ timeout: 15_000 });
     await openImport.click();
     // The wizard dialog is named by its eyebrow title "项目值批量导入" (stable across steps).

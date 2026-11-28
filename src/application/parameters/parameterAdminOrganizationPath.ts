@@ -21,7 +21,7 @@ export const PARAMETER_ADMIN_ORGANIZATION_VIEW_LABELS: Record<
 > = {
   specs: PARAMETER_ADMIN_UI.specDefinitionManagement,
   modules: PARAMETER_ADMIN_UI.moduleManagement,
-  sources: "共享 DTSI"
+  sources: PARAMETER_ADMIN_UI.sharedDtsi
 };
 
 /**

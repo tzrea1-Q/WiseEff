@@ -27,7 +27,7 @@ function createRepository(
 
 describe("ParameterAdminNextPage · a11y", () => {
 
-  it("项目运营目的地有可访问的区域标题", () => {
+  it("项目目的地有可访问的区域标题", () => {
     render(
       <ToastProvider>
         <ParameterAdminNextPage
@@ -50,8 +50,8 @@ describe("ParameterAdminNextPage · a11y", () => {
       </ToastProvider>
     );
 
-    expect(screen.getByRole("navigation", { name: "参数管理后台配置范围" })).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "项目运营" })).toBeInTheDocument();
+    expect(screen.getByRole("navigation", { name: "参数管理后台导航" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "项目", exact: true })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "项目清单", exact: true })).toBeInTheDocument();
   });
 });

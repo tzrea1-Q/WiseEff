@@ -25,3 +25,12 @@ We decided that the organization area subdivides by **governance object**, not b
 - Removing two top-level entries removes two places a pending count was implicitly visible. Queue counts already tracked in `ParameterAdminState.queueCounts` must surface on the surviving navigation instead, or the consolidation trades clarity for missed work.
 - A conditionally rendered queue can hide unresolved work if its count fails to load. The count load failure path must not render as "no tasks"; it renders the entry with an error state.
 - ADR-0001 is unchanged. Scope remains the primary axis; this ADR only states how the organization side of that axis subdivides.
+
+## Navigation presentation (2026-11-27)
+
+The organization area now has three object entries: "参数定义", "模块", and
+"共享 DTSI". Shared DTSI resources were added after this ADR.
+The scope from ADR-0001 appears in group captions on a single page-level tab bar,
+with exactly one current destination. Page navigation uses the underline `page`
+variant. In-page view switches retain their pill and toggle styles.
+Project-value bulk import lives on the project list.

@@ -74,6 +74,13 @@ describe("WiseEff prototype configuration", () => {
     expect(projectConfiguration.subtitle).toBe("配置工作台");
   });
 
+  it.each(["specs", "specs/identity-mapping", "modules", "modules/queue", "sources", "projects"])(
+    "uses the parameter admin default subtitle on %s", (route) => {
+      const adminNavigation = navigationItems.find((item) => item.key === "parameter-admin");
+      expect(getPageByPath(`/parameter-admin/${route}`).subtitle).toBe(adminNavigation?.subtitle);
+    }
+  );
+
   it("does not resolve the retired construction routes", () => {
     expect(getPageByPath("/parameter-admin-next").path).toBe("/");
     expect(getPageByPath("/parameter-admin-next/projects").path).toBe("/");

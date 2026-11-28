@@ -9,6 +9,9 @@ import { fillPasteImportContent } from "./components/ParameterImportWizard/testH
 import { createMockParameterModuleRegistryRepository } from "@/infrastructure/mock/mockParameterModuleRegistryRepository";
 import { initialState } from "@/mockData";
 import { ParameterAdminNextPage, type ParameterAdminNextPageProps } from "./ParameterAdminNextPage";
+import { ParameterAdminNav } from "@/components/parameter-admin-next/ParameterAdminNav";
+import { ParameterAdminProvider } from "@/components/parameter-admin-next/ParameterAdminProvider";
+import { initialParameterAdminState } from "@/application/parameters/parameterAdminState";
 import { createMockCatalogPorts } from "@/application/parameter-catalog";
 import { CATALOG_ORGANIZATION_ID, catalogPlacement, catalogRegistration } from "@/application/parameter-catalog/fixtures";
 import { createTestParameterTopologyRepository, withPortSpies } from "./test/harness";
@@ -84,6 +87,7 @@ function renderPage(options: {
   runtime?: AppRuntime;
   catalogOrganizationId?: string;
   sessionRoles?: ParameterAdminNextPageProps["sessionRoles"];
+  sessionPermissions?: ParameterAdminNextPageProps["sessionPermissions"];
 } = {}) {
   const path = options.path ?? "/parameter-admin/specs";
   window.history.replaceState(null, "", path);
@@ -120,6 +124,7 @@ function renderPage(options: {
         runtime={options.runtime}
         catalogOrganizationId={options.catalogOrganizationId}
         sessionRoles={options.sessionRoles}
+        sessionPermissions={options.sessionPermissions}
       />
     </ToastProvider>
   );
@@ -142,8 +147,8 @@ function renderPage(options: {
 
 describe("ParameterAdminNextPage · shell", () => {
   it.each([
-    { nav: "组织配置子视图", first: "参数定义管理", second: "模块管理", key: "{ArrowRight}", path: "/parameter-admin/modules" },
-    { nav: "组织配置子视图", first: "参数定义管理", second: "共享 DTSI", key: "{End}", path: "/parameter-admin/sources" },
+    { nav: "参数管理后台导航", first: "参数定义", second: "模块", key: "{ArrowRight}", path: "/parameter-admin/modules" },
+    { nav: "参数管理后台导航", first: "参数定义", second: "共享 DTSI", key: "{End}{ArrowLeft}", path: "/parameter-admin/sources" },
     { nav: "参数定义管理子视图", first: "定义库", second: "节点对应", key: "{End}", path: "/parameter-admin/specs/identity-mapping?project=aurora" }
   ])("preserves the destination and query contract of $nav by keyboard", async ({ nav, first, second, key, path }) => {
     const user = userEvent.setup();
@@ -161,15 +166,42 @@ describe("ParameterAdminNextPage · shell", () => {
     }
   });
 
-  it("presents organization and project areas as peer destinations", () => {
-    const { onNavigate } = renderPage({ path: "/parameter-admin/specs" });
+  it.each([
+    ["/parameter-admin", "参数定义"],
+    ["/parameter-admin/specs", "参数定义"],
+    ["/parameter-admin/specs/identity-mapping", "参数定义"],
+    ["/parameter-admin/modules?tab=queue", "模块"],
+    ["/parameter-admin/modules?tab=registry", "模块"],
+    ["/parameter-admin/sources", "共享 DTSI"],
+    ["/parameter-admin/projects", "项目"],
+    ["/parameter-admin/projects/aurora/review-roles", "项目"]
+  ])("keeps all four destinations with one current page on %s", (path, currentLabel) => {
+    renderPage({ path });
+    const nav = within(screen.getByRole("navigation", { name: "参数管理后台导航" }));
+    expect(nav.getAllByRole("button").map((button) => button.textContent)).toEqual(["参数定义", "模块", "共享 DTSI", "项目"]);
+    expect(nav.getAllByRole("button", { current: "page" })).toEqual([nav.getByRole("button", { name: currentLabel })]);
+  });
 
-    const nav = screen.getByRole("navigation", { name: "参数管理后台配置范围" });
-    expect(within(nav).getByRole("button", { name: "组织配置" })).toHaveAttribute("aria-current", "page");
-    expect(within(nav).getByRole("button", { name: "项目运营" })).not.toHaveAttribute("aria-current");
+  it("shows the combined queue count and opens each canonical destination", () => {
+    const onNavigate = vi.fn();
+    render(
+      <ParameterAdminProvider topology={createRepository()} moduleRegistry={createModuleRegistry()}
+        initialState={{ ...initialParameterAdminState, queueCounts: { ...initialParameterAdminState.queueCounts, specReview: 2, identityMapping: 3 } }}>
+        <ParameterAdminNav active="modules" onNavigate={onNavigate} />
+      </ParameterAdminProvider>
+    );
+    const nav = within(screen.getByRole("navigation", { name: "参数管理后台导航" }));
+    expect(within(nav.getByRole("group", { name: "组织级" })).getByRole("button", { name: "参数定义 待处理 5" })).toHaveTextContent("5");
+    expect(within(nav.getByRole("group", { name: "项目级" })).getByRole("button", { name: "项目" })).toBeInTheDocument();
+    nav.getAllByRole("button").forEach((button) => fireEvent.click(button));
+    expect(onNavigate.mock.calls).toEqual([
+      ["/parameter-admin/specs"], ["/parameter-admin/modules"], ["/parameter-admin/sources"], ["/parameter-admin/projects"]
+    ]);
+  });
 
-    fireEvent.click(within(nav).getByRole("button", { name: "项目运营" }));
-    expect(onNavigate).toHaveBeenCalledWith("/parameter-admin/projects");
+  it("hides the page navigation in API mode without admin access", () => {
+    renderPage({ path: "/parameter-admin/sources", runtimeMode: "api", sessionPermissions: ["parameter:view"] });
+    expect(screen.queryByRole("navigation", { name: "参数管理后台导航" })).not.toBeInTheDocument();
   });
 
   it("opens the project area as its own destination", async () => {
@@ -179,9 +211,9 @@ describe("ParameterAdminNextPage · shell", () => {
       state: initialState
     });
 
-    const nav = screen.getByRole("navigation", { name: "参数管理后台配置范围" });
-    expect(within(nav).getByRole("button", { name: "项目运营" })).toHaveAttribute("aria-current", "page");
-    expect(screen.getByRole("region", { name: "项目运营" })).toBeInTheDocument();
+    const nav = screen.getByRole("navigation", { name: "参数管理后台导航" });
+    expect(within(nav).getByRole("button", { name: "项目" })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("region", { name: "项目", exact: true })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "项目清单" })).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "参数定义库" })).not.toBeInTheDocument();
   });
@@ -215,8 +247,8 @@ describe("ParameterAdminNextPage · organization sub-routes", () => {
     expect(await screen.findByRole("region", { name: "参数定义目录" })).toBeVisible();
     expect(screen.queryByRole("button", { name: /节点对应确认/ })).not.toBeInTheDocument();
     expect(repository.listMappingTasks).not.toHaveBeenCalled();
-    expect(screen.getByRole("button", { name: "模块管理" })).toBeEnabled();
-    fireEvent.click(screen.getByRole("button", { name: "模块管理" }));
+    expect(screen.getByRole("button", { name: "模块", exact: true })).toBeEnabled();
+    fireEvent.click(screen.getByRole("button", { name: "模块", exact: true }));
     expect(onNavigate).toHaveBeenCalledWith("/parameter-admin/modules");
   });
 
@@ -468,16 +500,16 @@ describe("ParameterAdminNextPage · organization sub-routes", () => {
   it("marks the active organization sub-view and navigates between peers", async () => {
     const { onNavigate } = renderPage({ path: "/parameter-admin/modules" });
 
-    const orgNav = await screen.findByRole("navigation", { name: "组织配置子视图" });
-    expect(within(orgNav).getByRole("button", { name: /模块管理/ })).toHaveAttribute(
+    const orgNav = await screen.findByRole("group", { name: "组织级" });
+    expect(within(orgNav).getByRole("button", { name: "模块" })).toHaveAttribute(
       "aria-current",
       "page"
     );
-    expect(within(orgNav).getByRole("button", { name: /参数定义管理/ })).not.toHaveAttribute(
+    expect(within(orgNav).getByRole("button", { name: /参数定义/ })).not.toHaveAttribute(
       "aria-current"
     );
 
-    fireEvent.click(within(orgNav).getByRole("button", { name: /参数定义管理/ }));
+    fireEvent.click(within(orgNav).getByRole("button", { name: /参数定义/ }));
     expect(onNavigate).toHaveBeenCalledWith("/parameter-admin/specs");
   });
 });
@@ -642,13 +674,18 @@ describe("ParameterAdminNextPage · organization module tree and driver mapping"
   });
 });
 
-describe("ParameterAdminNextPage · organization bulk import", () => {
+describe("ParameterAdminNextPage · project-value bulk import", () => {
   afterEach(() => {
     vi.restoreAllMocks();
   });
 
-  it("opens the import wizard from the organization area", async () => {
-    renderPage({ parameterActions: createParameterActions() });
+  it.each(["specs", "modules", "sources", "projects/aurora/configuration"])("omits the import action on %s", (route) => {
+    renderPage({ path: `/parameter-admin/${route}`, parameterActions: createParameterActions() });
+    expect(screen.queryByRole("button", { name: "打开项目值批量导入" })).not.toBeInTheDocument();
+  });
+
+  it("opens the import wizard from the project list", async () => {
+    renderPage({ path: "/parameter-admin/projects", parameterActions: createParameterActions() });
 
     const importRegion = await screen.findByRole("region", { name: "项目值批量导入" });
     fireEvent.click(within(importRegion).getByRole("button", { name: "打开项目值批量导入" }));
@@ -677,7 +714,7 @@ describe("ParameterAdminNextPage · organization bulk import", () => {
       ])
     } as never);
     const parameterActions = createParameterActions();
-    renderPage({ parameterActions, runtimeMode: "api" });
+    renderPage({ path: "/parameter-admin/projects", parameterActions, runtimeMode: "api" });
 
     fireEvent.click(await screen.findByRole("button", { name: "打开项目值批量导入" }));
     const dialog = screen.getByRole("dialog", { name: "项目值批量导入" });
@@ -723,7 +760,7 @@ describe("ParameterAdminNextPage · organization bulk import", () => {
   });
 
   it("parses CSV paste into the review step", async () => {
-    renderPage({ parameterActions: createParameterActions() });
+    renderPage({ path: "/parameter-admin/projects", parameterActions: createParameterActions() });
 
     fireEvent.click(await screen.findByRole("button", { name: "打开项目值批量导入" }));
     const dialog = screen.getByRole("dialog", { name: "项目值批量导入" });
@@ -751,7 +788,7 @@ describe("ParameterAdminNextPage · organization bulk import", () => {
           details: { maxBytes: 2097152, sizeBytes: 3000000 }
         })
       );
-    renderPage({ parameterActions: createParameterActions({ parseDtsImport }) });
+    renderPage({ path: "/parameter-admin/projects", parameterActions: createParameterActions({ parseDtsImport }) });
 
     fireEvent.click(await screen.findByRole("button", { name: "打开项目值批量导入" }));
     let dialog = screen.getByRole("dialog", { name: "项目值批量导入" });
@@ -983,7 +1020,7 @@ describe("ParameterAdminNextPage · project-scoped routes and parameter files", 
     });
 
     expect(await screen.findByRole("region", { name: "项目配置工作台" })).toBeInTheDocument();
-    expect(screen.queryByRole("navigation", { name: "参数后台范围" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("navigation", { name: "参数管理后台导航" })).not.toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: /\.dts$/ })).toBeInTheDocument();
     expect(screen.getByRole("tree", { name: /配置文件$/ })).toBeInTheDocument();
   });
@@ -1000,7 +1037,8 @@ describe("ParameterAdminNextPage · project-scoped routes and parameter files", 
         `/parameter-admin/projects/${projectId}/configuration?file=file-1&node=soc%2Fgpio&q=gpio&inspector=file`
       )
     );
-    expect(screen.queryByRole("navigation", { name: "项目运营视图" })).not.toBeInTheDocument();
+    expect(within(screen.getByRole("navigation", { name: "参数管理后台导航" })).getByRole("button", { name: "项目" }))
+      .toHaveAttribute("aria-current", "page");
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 

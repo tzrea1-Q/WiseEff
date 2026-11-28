@@ -4,7 +4,7 @@ import { readdirSync } from "node:fs";
 import { join } from "node:path";
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ViewSwitch } from "./view-switch";
 import { declarationsFor, parseCssRules, readStylesheet } from "@/test/cssAssertions";
@@ -135,6 +135,42 @@ describe("ViewSwitch", () => {
     expect(screen.getByRole("button", { name: "下一步" })).toHaveFocus();
     await user.tab({ shift: true });
     expect(members).toHaveFocus();
+  });
+
+  it("names page groups and moves focus across them without activating a page", async () => {
+    const user = userEvent.setup();
+    const onValueChange = vi.fn();
+    render(<ViewSwitch variant="page" ariaLabel="页面导航" value="specs" onValueChange={onValueChange} items={[
+      { value: "specs", label: "参数定义", group: "组织级" },
+      { value: "modules", label: "模块", group: "组织级", disabled: true },
+      { value: "sources", label: "共享 DTSI", group: "组织级" },
+      { value: "projects", label: "项目", group: "项目级" }
+    ]} />);
+    const nav = screen.getByRole("navigation", { name: "页面导航" });
+    const organization = within(nav).getByRole("group", { name: "组织级" });
+    const project = within(nav).getByRole("group", { name: "项目级" });
+    expect(organization.firstElementChild).toHaveTextContent("组织级");
+    expect(project.firstElementChild).toHaveTextContent("项目级");
+    expect(within(organization).getAllByRole("button")).toHaveLength(3);
+    const specs = within(organization).getByRole("button", { current: "page" });
+    const sources = within(organization).getByRole("button", { name: "共享 DTSI" });
+    const projects = within(project).getByRole("button", { name: "项目" });
+    expect(within(nav).getAllByRole("button", { current: "page" })).toEqual([specs]);
+    specs.focus();
+    await user.keyboard("{ArrowRight}");
+    expect(sources).toHaveFocus();
+    await user.keyboard("{ArrowRight}");
+    expect(projects).toHaveFocus();
+    await user.keyboard("{ArrowLeft}");
+    expect(sources).toHaveFocus();
+    await user.keyboard("{End}");
+    expect(projects).toHaveFocus();
+    await user.keyboard("{Home}");
+    expect(specs).toHaveFocus();
+    expect(onValueChange).not.toHaveBeenCalled();
+    await user.keyboard("{ArrowLeft}{Enter}");
+    expect(projects).toHaveFocus();
+    expect(onValueChange).toHaveBeenCalledExactlyOnceWith("projects");
   });
 
   it("links content tabs to panels, roves past disabled tabs, and requires activation to change content", async () => {

@@ -813,8 +813,9 @@ describe("consistency measurement coverage", () => {
       "viewSwitches", "rowActions", "tableScrollports", "xiaozeLaunchers", "moduleTreeLabels"
     ]));
     expect(consistencyRoutes.find((route) => route.path === "/parameter-admin/specs")?.required).toEqual(expect.arrayContaining([
-      "primaryActions", "paginationControls", "moduleTreeLabels", "rowActions"
+      "paginationControls", "moduleTreeLabels", "rowActions"
     ]));
+    expect(consistencyRoutes.find((route) => route.path === "/parameter-admin/projects")?.required).toContain("primaryActions");
     expect(consistencyRoutes.find((route) => route.path === "/debugging-admin/nodes")?.required).toContain("filterControls");
     expect(consistencyRoutes.find((route) => route.path === "/parameter-home")?.required).toContain("filterControls");
     expect(consistencyRoutes.find((route) => route.path === "/parameters")?.required).not.toContain("filterControls");
