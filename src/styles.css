@@ -12706,27 +12706,6 @@ body:has([data-xiaoze-launcher-anchor]) .main-content {
   padding-bottom: var(--space-6);
 }
 
-.main-content:has(.review-inbox),
-body:has([data-xiaoze-launcher-anchor]) .main-content:has(.review-inbox) {
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  margin-bottom: 0;
-  padding-bottom: var(--space-3);
-}
-
-body:has([data-xiaoze-launcher-anchor]) .main-content:has(.review-inbox) {
-  margin-bottom: calc(var(--space-16) + var(--space-2));
-}
-
-.main-content:has(.review-inbox) > .page-content,
-.workbench-page:has(.review-inbox) {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  min-height: 0;
-}
-
 .xiaoze-chat-toggle-anchor {
   position: fixed;
   right: 1.5rem;

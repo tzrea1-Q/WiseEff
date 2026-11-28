@@ -36,7 +36,7 @@ export function ParameterChangesPage(props: PageProps) {
   }
 
   return <div className="parameter-changes-page">
-    {canReview ? <div className="parameter-changes-page__scope"><ViewSwitch variant="toggle" ariaLabel="变更中心视图" value={scope} onValueChange={(value) => {
+    {canReview ? <div className="parameter-changes-page__scope"><ViewSwitch variant="toggle-outline" ariaLabel="变更中心视图" value={scope} onValueChange={(value) => {
       const params = new URLSearchParams(window.location.search);
       params.set("scope", value);
       params.delete("request"); params.delete("legacyRequest"); params.delete("memberRequest");

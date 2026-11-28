@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ParameterFileRepository, SourceRevisionRequest } from "@/application/ports/ParameterFileRepository";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { SelectControl } from "@/components/common/SelectControl";
 import { SectionError, SectionSkeleton } from "@/components/common/SectionState";
@@ -71,14 +72,18 @@ export function SourceRevisionReviewPanel({ projectId, requestId, repository, cu
   const pending = request.status === "pending";
   const reviewer = canReview && request.assignedToUserId === currentUserId && request.submitterUserId !== currentUserId;
   const hasSource = request.before !== undefined && request.after !== undefined;
-  return <section className="review-inspector" aria-label="DTS 整文件审核" aria-busy={busy}>
-    <header><h2>{request.fileName}</h2><p>{request.cancellation ? "已取消" : canonicalStatusLabels[request.status]} · DTS 来源修改</p></header>
-    <p>{request.reason}</p>
-    {canViewOrganization && request.organizationName !== undefined ? <p>发生组织：{request.organizationName ?? "历史组织名称未记录"}</p> : null}
-    <p>{request.impact.parameterChanges} 项参数变化 · 新增 {request.impact.nodeAdditions} 个节点 · 删除 {request.impact.nodeRemovals} 个节点</p>
-    {request.applicationMode === "administrator_direct" ? <>
-      <p>管理员本人直接应用 · 未经过独立审核</p><p>操作人：{request.submitterName ?? "管理员"}</p>
-    </> : <p>提交人：{request.submitterName ?? "历史署名未记录"} · 审核人：{pending ? request.assignedToName ?? "指定软件审核人" : request.reviewerName ?? "历史署名未记录"}</p>}
+  return <section className="review-inspector__detail" aria-label="DTS 整文件审核" aria-busy={busy}>
+    <header className="review-inspector__header">
+      <p className="review-inspector__eyebrow">DTS 来源修改</p>
+      <div className="review-inspector__title"><h3>{request.fileName}</h3><Badge variant="secondary">{request.cancellation ? "已取消" : canonicalStatusLabels[request.status]}</Badge></div>
+      <p className="review-inspector__reason">修改原因：{request.reason}</p>
+      {canViewOrganization && request.organizationName !== undefined ? <p>发生组织：{request.organizationName ?? "历史组织名称未记录"}</p> : null}
+      {request.applicationMode === "administrator_direct" ? <>
+        <p>操作人：{request.submitterName ?? "管理员"}</p>
+        <p className="review-inspector__notice">管理员本人直接应用 · 未经过独立审核</p>
+      </> : <p>提交人：{request.submitterName ?? "历史署名未记录"} · 审核人：{pending ? request.assignedToName ?? "指定软件审核人" : request.reviewerName ?? "历史署名未记录"}</p>}
+    </header>
+    <section aria-label="影响范围"><h4>影响范围</h4><p>{request.impact.parameterChanges} 项参数变化 · 新增 {request.impact.nodeAdditions} 个节点 · 删除 {request.impact.nodeRemovals} 个节点</p></section>
     {hasSource ? <ReviewSourceDiff before={request.before!} after={request.after!} label="DTS 来源" virtualized /> : <p role="alert">固定来源差异不可用，不能批准。</p>}
     {error ? <p role="alert">{error}</p> : null}
     {pending && reviewer ? <label>审核说明<textarea aria-label="DTS 审核说明" value={note} maxLength={2000} rows={3} disabled={busy} onChange={(event) => setNote({ scope, text: event.target.value })} /></label> : null}

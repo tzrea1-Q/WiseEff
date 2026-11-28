@@ -71,7 +71,7 @@ test("measures only the active governance task and keeps historical counts and e
   }
 });
 
-test("resolves all three root switch signatures and catches scoped geometry or semantic drift", async ({ page }) => {
+test("resolves root switch signatures and catches scoped geometry or semantic drift", async ({ page }) => {
   await test.step("quality:navigation", () => page.setContent(`
     <style>
       :root {
@@ -90,6 +90,8 @@ test("resolves all three root switch signatures and catches scoped geometry or s
       [aria-current="page"] { background: var(--nav-selected); }
       [aria-selected="true"] { background: var(--accent-soft); }
       [aria-checked="true"] { background: var(--surface); }
+      .view-switch--toggle-outline [role="radio"] { background: var(--surface); }
+      .view-switch--toggle-outline [aria-checked="true"] { background: var(--accent-soft); }
       .scoped { --space-10: 43px; }
     </style>
     <main>
@@ -101,9 +103,12 @@ test("resolves all three root switch signatures and catches scoped geometry or s
   `));
   const measurements = await test.step("quality:capture", () => page.evaluate(collectConsistencyMeasurements));
   expect(measurements.viewSwitches).toHaveLength(6);
-  expect(measurements.viewSwitchSignatures.map((style) => [style.variant, style.height])).toEqual([["section", 40], ["tabs", 32], ["toggle", 28]]);
+  expect(measurements.viewSwitchSignatures.map((style) => [style.variant, style.height])).toEqual([["section", 40], ["tabs", 32], ["toggle", 28], ["toggle-outline", 28]]);
   expect(() => requireViewSwitchStyles({ ...measurements, viewSwitches: measurements.viewSwitches.filter((control) => control.role !== "radio") }, "/organization/members")).not.toThrow();
   expect(() => requireViewSwitchStyles({ ...measurements, viewSwitches: measurements.viewSwitches.filter((control) => control.role === "radio") }, "/parameter-home")).not.toThrow();
+  await page.getByRole("radiogroup").evaluate((element) => element.classList.add("view-switch--toggle-outline"));
+  const outlined = await test.step("quality:capture", () => page.evaluate(collectConsistencyMeasurements));
+  expect(() => requireViewSwitchStyles({ ...outlined, viewSwitches: outlined.viewSwitches.filter((control) => control.role === "radio" || control.role === "tab") }, "/parameter-changes?scope=review")).not.toThrow();
   await page.locator("nav").evaluate((element) => element.classList.add("scoped"));
   const overridden = await test.step("quality:capture", () => page.evaluate(collectConsistencyMeasurements));
   expect(overridden.viewSwitchSignatures[0].height).toBe(40);

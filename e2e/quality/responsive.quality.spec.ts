@@ -84,6 +84,23 @@ test.describe("M5.11 responsive quality gate", () => {
     seedQualityRuntime();
   });
 
+  test("/parameter-changes history panels grow independently with their content", async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto("/parameter-changes?project=aurora&scope=review&view=history");
+    const queue = page.getByRole("region", { name: "审阅队列", exact: true });
+    await page.getByRole("searchbox", { name: "搜索审阅请求" }).fill("watchdog_time");
+    await queue.getByRole("button", { name: /watchdog_time.*查看/ }).first().click();
+    const detail = page.getByRole("complementary", { name: "审阅详情" });
+    await expect(detail.getByRole("region", { name: "固定源修改片段" })).toBeVisible();
+    const queueHeight = await queue.evaluate(element => element.clientHeight);
+    const detailHeight = await detail.evaluate(element => element.clientHeight);
+    expect(queueHeight).toBeLessThan(detailHeight);
+    await detail.getByText("处理记录", { exact: true }).click();
+    await expect.poll(() => detail.evaluate(element => element.clientHeight)).toBeGreaterThan(detailHeight);
+    expect(await queue.evaluate(element => element.clientHeight)).toBe(queueHeight);
+    await expectNoHorizontalOverflow(page);
+  });
+
   test("/log-admin overview has one empty state without quantitative marks at desktop", async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.clock.setFixedTime(new Date("2099-10-10T12:00:00"));

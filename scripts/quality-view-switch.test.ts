@@ -7,7 +7,8 @@ import { requireCompactControlHeights } from "../e2e/quality/consistency-asserti
 const signatures = [
   { variant: "section", role: "button", groupRole: "navigation", height: 40, radius: "999px 999px 999px 999px", fontSize: "14px", lineHeight: "22px", fontWeight: "600", background: "rgb(255, 255, 255)", selectedBackground: "rgb(0, 61, 155)" },
   { variant: "tabs", role: "tab", groupRole: "tablist", height: 32, radius: "8px 8px 8px 8px", fontSize: "13px", lineHeight: "20px", fontWeight: "600", background: "rgb(255, 255, 255)", selectedBackground: "rgb(218, 226, 255)" },
-  { variant: "toggle", role: "radio", groupRole: "radiogroup", height: 28, radius: "6px 6px 6px 6px", fontSize: "12px", lineHeight: "18px", fontWeight: "600", background: "rgb(247, 249, 252)", selectedBackground: "rgb(255, 255, 255)" }
+  { variant: "toggle", role: "radio", groupRole: "radiogroup", height: 28, radius: "6px 6px 6px 6px", fontSize: "12px", lineHeight: "18px", fontWeight: "600", background: "rgb(247, 249, 252)", selectedBackground: "rgb(255, 255, 255)" },
+  { variant: "toggle-outline", role: "radio", groupRole: "radiogroup", height: 28, radius: "6px 6px 6px 6px", fontSize: "12px", lineHeight: "18px", fontWeight: "600", background: "rgb(255, 255, 255)", selectedBackground: "rgb(218, 226, 255)" }
 ];
 
 function measurement(style = signatures[0], selected = true) {
@@ -83,8 +84,9 @@ describe("view-switch consistency", () => {
   });
 
   it.each(["/parameter-changes?scope=mine", "/parameter-changes?scope=review"])("requires both view and status switches on %s", (path) => {
-    expect(() => requireViewSwitchStyles({ viewSwitches: [measurement(signatures[1]), measurement(signatures[2])], viewSwitchSignatures: signatures }, path)).not.toThrow();
-    for (const style of [signatures[1], signatures[2]]) {
+    expect(() => requireViewSwitchStyles({ viewSwitches: [measurement(signatures[1]), measurement(signatures[3])], viewSwitchSignatures: signatures }, path)).not.toThrow();
+    expect(() => requireViewSwitchStyles({ viewSwitches: [measurement(signatures[1]), measurement(signatures[2])], viewSwitchSignatures: signatures }, path)).toThrow("matched 0");
+    for (const style of [signatures[1], signatures[3]]) {
       expect(() => requireViewSwitchStyles({ viewSwitches: [measurement(style)], viewSwitchSignatures: signatures }, path)).toThrow("missing view-switch tiers");
     }
   });

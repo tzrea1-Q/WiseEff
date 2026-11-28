@@ -73,7 +73,7 @@ describe("unified review inbox", () => {
     const summary = within(rows[0]).getByRole("button", { name: `查看 ${title} 提交详情` });
     expect(summary).toHaveAttribute("title", title);
     expect(summary).toHaveAttribute("data-size", "sm");
-    expect(summary).toHaveAttribute("data-variant", "outline");
+    expect(summary).toHaveAttribute("data-variant", "link");
     expect(within(summary).getByText(title).closest(".review-inbox__summary")).not.toBeNull();
     fireEvent.click(summary);
     const inspector = screen.getByRole("complementary", { name: "审阅详情" });
@@ -91,17 +91,17 @@ describe("unified review inbox", () => {
     expect(screen.getByText(/24 行/).closest(".review-inbox__summary")).toContainElement(button);
   });
 
-  it("includes the visible object label in the detail button's accessible name", () => {
+  it("shows the reason as the link and includes its parameter in the accessible name", () => {
     inbox([{ ...older, objectLabel: "cccv_0" }]);
     const button = screen.getByRole("button", { name: "cccv_0，查看 调整电压 提交详情" });
-    expect(button).toHaveTextContent("cccv_0");
-    expect(button).not.toHaveTextContent("调整电压");
-    expect(screen.getByText("调整电压")).toBeInTheDocument();
+    expect(button).toHaveTextContent("调整电压");
+    expect(within(screen.getByRole("table")).getByText("cccv_0")).toBeVisible();
   });
 
   it("shows one pending empty state with a history action", () => {
     inbox([history]);
     expect(screen.getAllByText("暂无待审核请求")).toHaveLength(1);
+    expect(screen.getByRole("table", { name: "审阅队列" }).querySelectorAll("svg")).toHaveLength(1);
     expect(screen.getAllByRole("tablist")).toHaveLength(1);
     expect(screen.queryByRole("combobox", { name: "变更类型" })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "查看已处理记录" }));
