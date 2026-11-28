@@ -23,6 +23,7 @@ import "@/node-debugging-refinement.css";
 import "@/components/parameter-admin-next/parameter-admin.css";
 import "@/features/parameter-catalog/parameter-catalog.css";
 import "@/components/layout/settings-form-page.css";
+import "@/components/common/import-dialog.css";
 import "@/features/parameter-catalog-governance/batch-registration.css";
 import "@/features/parameter-catalog-governance/review-resolution.css";
 import "@/features/parameter-catalog-governance/review-queue.css";
