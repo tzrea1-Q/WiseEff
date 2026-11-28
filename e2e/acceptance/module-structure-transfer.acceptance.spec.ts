@@ -263,7 +263,10 @@ test("MODULE-STRUCTURE-LIFECYCLE-001: register, retire and restore roots", async
     await expect(dialog.getByRole("row").filter({ has: page.getByRole("rowheader", { name: "登记状态" }) })).toHaveCount(2);
     if (operation !== "register") {
       await expect(dialog.getByRole("heading", { name: "受影响项目" })).toBeVisible();
-      await expect(dialog.getByText(`项目 structure-life-project-${suffix}`, { exact: false })).toContainText("绑定 1");
+      const impactRow = dialog.getByRole("table", { name: "受影响项目" }).getByRole("row")
+        .filter({ hasText: new RegExp(`Lifecycle project|structure-life-project-${suffix}`) });
+      await expect(impactRow).toHaveCount(1);
+      await expect(impactRow.getByRole("cell").nth(2)).toHaveText("1");
     }
     await dialog.getByLabel("变更原因").fill(`Review ${operation}`);
     if (operation === "retire") await page.screenshot({ path: info.outputPath("module-structure-lifecycle-1440x900.png"), animations: "disabled" });

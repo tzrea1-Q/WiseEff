@@ -184,7 +184,7 @@ test.describe("PARAM-ADMIN-002 parameter import wizard browser acceptance", () =
     await confirmApply.getByRole("button", { name: /确认应用|暂存待提交/ }).click();
     const receipt = wizard.getByRole("region", { name: "导入处理回执" });
     await expect(receipt).toBeVisible({ timeout: 30_000 });
-    await expect(wizard.getByRole("heading", { name: "导入处理完成", exact: true })).toBeVisible();
+    await expect(wizard.getByText("导入处理完成", { exact: true })).toBeVisible();
     await expect(receipt.getByRole("heading", { name: "草稿已暂存", exact: true })).toBeVisible();
     await expect(receipt).toContainText("已暂存 1 条待提交草稿。当前值和源文件尚未改变");
     await expect(receipt).toContainText(seeded!.propertyKey);
