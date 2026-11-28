@@ -213,7 +213,7 @@ describe("ParameterAdminNextPage · shell", () => {
 
     const nav = screen.getByRole("navigation", { name: "参数管理后台导航" });
     expect(within(nav).getByRole("button", { name: "项目" })).toHaveAttribute("aria-current", "page");
-    expect(screen.getByRole("region", { name: "项目", exact: true })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "项目" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "项目清单" })).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "参数定义库" })).not.toBeInTheDocument();
   });
@@ -247,8 +247,8 @@ describe("ParameterAdminNextPage · organization sub-routes", () => {
     expect(await screen.findByRole("region", { name: "参数定义目录" })).toBeVisible();
     expect(screen.queryByRole("button", { name: /节点对应确认/ })).not.toBeInTheDocument();
     expect(repository.listMappingTasks).not.toHaveBeenCalled();
-    expect(screen.getByRole("button", { name: "模块", exact: true })).toBeEnabled();
-    fireEvent.click(screen.getByRole("button", { name: "模块", exact: true }));
+    expect(screen.getByRole("button", { name: "模块" })).toBeEnabled();
+    fireEvent.click(screen.getByRole("button", { name: "模块" }));
     expect(onNavigate).toHaveBeenCalledWith("/parameter-admin/modules");
   });
 

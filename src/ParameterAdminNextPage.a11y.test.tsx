@@ -51,7 +51,7 @@ describe("ParameterAdminNextPage · a11y", () => {
     );
 
     expect(screen.getByRole("navigation", { name: "参数管理后台导航" })).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "项目", exact: true })).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "项目清单", exact: true })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "项目" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "项目清单" })).toBeInTheDocument();
   });
 });
