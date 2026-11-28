@@ -51,6 +51,7 @@ import {
   artifactByteChunkJoin,
   artifactByteColumns,
   assembleArtifactBytes,
+  canBindArtifact,
   type ArtifactByteChunkRow,
 } from "./artifactByteTransport";
 import type {
@@ -584,6 +585,13 @@ export async function persistArtifact(
   db: Queryable,
   input: PersistArtifactInput,
 ): Promise<CatalogPublicationStoreResult<ReleaseArtifactRecord>> {
+  return timeCatalogStage("artifact-write", () => persistArtifactBytes(db, input), { byteCount: input.artifactBytes.byteLength });
+}
+
+async function persistArtifactBytes(
+  db: Queryable,
+  input: PersistArtifactInput,
+): Promise<CatalogPublicationStoreResult<ReleaseArtifactRecord>> {
   if (!SOURCE_KINDS.has(input.sourceKind)) {
     return fail({ kind: "invalid-input", reason: "unsupported sourceKind" });
   }
@@ -593,6 +601,14 @@ export async function persistArtifact(
   }
   if (input.artifactBytes.byteLength === 0) {
     return fail({ kind: "invalid-input", reason: "artifactBytes must be non-empty" });
+  }
+  const fields = [
+    input.sourceKind, input.targetReleaseId, input.targetReleaseDigest,
+    input.predecessorReleaseId, input.predecessorReleaseDigest, JSON.stringify(input.toolchain),
+    ...(input.storageFormat ? [input.storageFormat] : []),
+  ];
+  if (!canBindArtifact(input.artifactBytes.byteLength, [input.id, input.artifactDigest, ...fields])) {
+    return fail({ kind: "invalid-input", reason: "artifact-too-large" });
   }
   // Own the bytes before awaiting the lookup: the checksum, insert, and
   // returned record must refer to the same snapshot.
@@ -633,19 +649,7 @@ export async function persistArtifact(
          id, artifact_digest, bytes_checksum, source_kind,
          target_release_id, target_release_digest, predecessor_release_id,
          predecessor_release_digest, toolchain, created_at, ${input.storageFormat ? "storage_format" : "'full' as storage_format"}`,
-      [
-        input.id,
-        input.artifactDigest,
-        bytesChecksum,
-        bytes,
-        input.sourceKind,
-        input.targetReleaseId,
-        input.targetReleaseDigest,
-        input.predecessorReleaseId,
-        input.predecessorReleaseDigest,
-        JSON.stringify(input.toolchain),
-        ...(input.storageFormat ? [input.storageFormat] : []),
-      ],
+      [input.id, input.artifactDigest, bytesChecksum, bytes, ...fields],
     );
     const row = inserted.rows[0];
     if (!row) {

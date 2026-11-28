@@ -29,6 +29,34 @@ import {
 } from "./predecessorHarness";
 
 describe("buildCompleteSuccessor", () => {
+  it("encodes the same single-release driver candidate with a certified target or a complete legacy base", async () => {
+    const first = firstAcmePredecessor().first;
+    const base = refreshSuccessorSource({ ...first, documents: first.documents.map(doc => doc.kind === "subject"
+      ? { ...doc, content: { ...doc.content, canonicalKey: "driver:example,legacy-key" } } : doc) });
+    const bundle = { schemaVersion: "1.0.0" as const, targetReleaseId: base.manifest.release.id, releases: [base] };
+    const snapshot = identitySnapshotOf(bundle, base);
+    expect(snapshot.coversSubjectSpellings).toBe(false);
+    const input = {
+      productPath: "m2-core" as const, storageFormat: "successor-v1" as const,
+      predecessorArtifact: { digest: base.manifest.release.digest, bytes: encodeBundleBytes(bundle) },
+      changeSet: [{ op: "create-subject" as const, kind: "driver" as const, canonicalKey: "driver:example,standalone",
+        selector: { kind: "driver-compatible" as const, value: "example,standalone" },
+        nature: "physical-device" as const, cardinality: "multiple" as const }],
+      frozenIdentity: { ...frozenPageIdentity([], "newdriver"), subjects: [
+        { canonicalKey: "driver:example,standalone", subjectId: "csub_newdriver" },
+      ] },
+    };
+    const cold = await buildCompleteSuccessor(input);
+    const warm = await buildSuccessorFromSnapshot(input, snapshot);
+    if (!cold.ok || cold.value.kind !== "successor" || !warm.ok || warm.value.kind !== "successor") {
+      throw new Error(JSON.stringify([cold.ok ? null : cold.error, warm.ok ? null : warm.error]));
+    }
+    expect(cold.value.artifact.bundle.releases).toHaveLength(2);
+    expect(warm.value.artifact.bundle.releases).toHaveLength(1);
+    expect(cold.value.artifact.artifactBytes).toEqual(warm.value.artifact.artifactBytes);
+    expect(cold.value.candidate).toEqual(warm.value.candidate);
+  });
+
   it("certifies the same candidate as full history after a historical cross-kind retirement", async () => {
     const initial = firstAcmePredecessor();
     const converted = await buildCompleteSuccessor({

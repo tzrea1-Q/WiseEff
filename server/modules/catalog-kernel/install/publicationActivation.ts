@@ -7,6 +7,7 @@ import {
   ACTIVATION_CHECKPOINT_VERSION,
   admitCompiledReleaseSchemas,
   CATALOG_CAPABILITY_ALLOW_LIST,
+  LEGACY_ACTIVATION_CHECKPOINT_VERSION,
 } from "../../catalog-publication/builder/capabilities";
 import { CATALOG_INSTALL_CHAIN_CAPABILITY_REVISION, type CapabilityAllowListIdentity } from "../../catalog-publication/builder/types";
 import {
@@ -30,6 +31,7 @@ import {
 } from "../../catalog-publication/persistence/activationCheckpoint";
 import type { CatalogActivationReceiptRecord, ReleaseArtifactRecord } from "../../catalog-publication/persistence/types";
 import { artifactReadFailure } from "../../catalog-publication/persistence/artifactReadFailure";
+import { hasUnrenamedDriverHistory } from "../../catalog-publication/persistence/driverIdentityHistory";
 import {
   CatalogActivationReceiptId,
   CatalogMaterializationFingerprint,
@@ -42,7 +44,8 @@ import {
 import type { Queryable } from "../../../shared/database/client";
 import {
   buildCatalogInstallProof,
-  compileCatalogDefinitionAppend,
+  collectDriverSpellings,
+  compileCatalogInstallAppend,
   compileCatalogRelease,
   isInstallChainToolchain,
   isCatalogInstallProof,
@@ -183,6 +186,7 @@ type PreparedCheckpoint = {
   readonly proof: CatalogInstallProof;
   /** The warm compiler validates the current pair. The database checks earlier identities. */
   readonly newRevisionIds?: readonly string[];
+  readonly newDriverIds?: readonly string[];
 };
 type OnlinePublicationPreparation =
   | { readonly kind: "prepared"; readonly artifact: ArtifactIdentity; readonly compiled: CatalogInstallationRelease;
@@ -255,7 +259,12 @@ const readOnlineArtifact = async (
     const marked = candidate.value.capabilityContract.revision === CATALOG_INSTALL_CHAIN_CAPABILITY_REVISION;
     const base = epoch !== null && tryAppend && marked
       ? await readActivationCheckpoint(db, candidate.value.expectedBaseReleaseDigest, ACTIVATION_CHECKPOINT_VERSION, epoch)
+        ?? await readActivationCheckpoint(db, candidate.value.expectedBaseReleaseDigest, LEGACY_ACTIVATION_CHECKPOINT_VERSION, epoch)
       : null;
+    if (base && isCatalogInstallProof(base.proof) && !base.proof.driverSpellings &&
+        await hasUnrenamedDriverHistory(db, base.target.manifest.release.id, base.proof.releaseCount)) {
+      base.proof = { ...base.proof, driverSpellings: collectDriverSpellings(base.target.documents) };
+    }
     const artifact = await readArtifactLineage(db, candidate.value.artifactDigest, base === null);
     if (!artifact.ok) {
       throw new PublicationActivationFailure(artifactReadFailure(artifact.error));
@@ -320,10 +329,10 @@ async function compileOnlineInput(input: OnlineBundle): Promise<CompiledInput | 
         proof.materializationFingerprint !== base.materializationFingerprint) {
       throw new PublicationActivationFailure({ kind: "artifact-unreadable" });
     }
-    const appended = await timeCatalogStage("compile-append", () => compileCatalogDefinitionAppend(proof, base.target, target));
+    const appended = await timeCatalogStage("compile-append", () => compileCatalogInstallAppend(proof, base.target, target));
     return appended && {
       compiled: appended.compiled,
-      checkpoint: { epoch: base.epoch, target, proof: appended.proof, newRevisionIds: appended.newRevisionIds },
+      checkpoint: { epoch: base.epoch, target, proof: appended.proof, newRevisionIds: appended.newRevisionIds, newDriverIds: appended.newDriverIds },
     };
   }
   const { bundle, epoch } = input;
@@ -754,7 +763,7 @@ export const activateOnlinePublication = async (
 
   const checkpoint = preparation.checkpoint;
   if (checkpoint && (!await lockCheckpointEpoch(db, checkpoint.epoch) ||
-      (checkpoint.newRevisionIds && !await hasAvailableAppendIdentities(db, checkpoint.target, checkpoint.newRevisionIds)))) {
+      (checkpoint.newRevisionIds && !await hasAvailableAppendIdentities(db, checkpoint.target, checkpoint.newRevisionIds, checkpoint.newDriverIds)))) {
     throw new PublicationActivationFailure({ kind: "needs-rebase", installed: pointer.current,
       target: identityFromCompiled(compiled), expectedCurrent });
   }
@@ -835,7 +844,8 @@ export const activateOnlinePublication = async (
   maybeFailStage(options, "pointer");
   await advanceCurrentPointer(client, compiled.release.id);
   if (checkpoint && !await putActivationCheckpoint(db, {
-    epoch: checkpoint.epoch, version: ACTIVATION_CHECKPOINT_VERSION, target: checkpoint.target, proof: checkpoint.proof,
+    epoch: checkpoint.epoch, version: checkpoint.proof.driverSpellings ? ACTIVATION_CHECKPOINT_VERSION : LEGACY_ACTIVATION_CHECKPOINT_VERSION,
+    target: checkpoint.target, proof: checkpoint.proof,
     artifactChecksum: artifact.bytesChecksum, compiledReleaseDigest: compiled.compiledReleaseDigest,
     toolchainDigest: compiled.toolchainDigest, materializationFingerprint: compiled.materializationFingerprint,
   })) {

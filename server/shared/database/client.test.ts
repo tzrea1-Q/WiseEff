@@ -72,6 +72,19 @@ describe("createDatabase", () => {
     ]);
   });
 
+  it("preserves the initiating error when a broken connection cannot roll back a savepoint", async () => {
+    const writeError = Object.assign(new Error("write failed"), { code: "08006" });
+    const cleanup = "Client has encountered a connection error and is not queryable";
+    const session = createSavepointDatabase({ query: async text => {
+      if (text.startsWith("savepoint ")) return { rows: [], rowCount: null };
+      if (text.startsWith("rollback to ")) throw new Error(cleanup);
+      throw writeError;
+    } });
+    await expect(session.transaction(tx => tx.query("insert into example values (1)"))).rejects.toMatchObject({
+      message: cleanup, cause: writeError,
+    });
+  });
+
   it("maps nested transactions to savepoints on the same session", async () => {
     const calls: string[] = [];
     const queryable: Queryable = {
@@ -292,7 +305,8 @@ describe("transaction error preservation", () => {
       },
       release
     };
-    const connect = vi.spyOn(pg.Pool.prototype, "connect").mockResolvedValue(client as unknown as pg.PoolClient);
+    const pool: { connect(): Promise<pg.PoolClient> } = pg.Pool.prototype;
+    const connect = vi.spyOn(pool, "connect").mockResolvedValue(client as unknown as pg.PoolClient);
     const end = vi.spyOn(pg.Pool.prototype, "end").mockResolvedValue(undefined);
     const db = owner === "root" ? createPostgresDatabase("postgres://unused/unused") : createDatabase(client);
 

@@ -38,8 +38,8 @@ export async function lockCheckpointEpoch(db: Queryable, epoch: string): Promise
   return result.rows[0]?.matches === true;
 }
 
-/** Use the same repeatable-read transaction that pins the candidate artifact. */
-export async function readActivationCheckpoint(db: Queryable, digest: string, version: string, knownEpoch?: string): Promise<ActivationCheckpoint | null> {
+/** Read the small proof independently; preview already holds a checksum-verified target. */
+export async function readActivationCheckpointProof(db: Queryable, digest: string, version: string, knownEpoch?: string) {
   const epoch = knownEpoch ?? await readCheckpointEpoch(db);
   if (!epoch) return null;
   const pins = await db.query<{
@@ -59,10 +59,25 @@ export async function readActivationCheckpoint(db: Queryable, digest: string, ve
         join catalog_publication.release_artifacts a on a.artifact_digest = r.release_digest
         join catalog_publication.activation_checkpoints c on c.artifact_id = a.id and c.artifact_digest = a.artifact_digest
         left join parameter_catalog.catalog_materializations m on m.release_id = r.id
-       where s.singleton and r.release_digest = $1 and c.version = $2`, [digest, version, epoch]);
+       where s.singleton and r.release_digest = $1 and c.version = $2
+         and exists (select from catalog_publication.checkpoint_epoch where singleton and generation::text = $3)`, [digest, version, epoch]);
   const pin = pins.rows[0];
   if (!pin) return null;
   if (!pin.pins_match || sha256DigestOfBytes(pin.proof_bytes) !== pin.proof_checksum) throw new CorruptActivationCheckpoint();
+  let proof: unknown;
+  try {
+    proof = JSON.parse(pin.proof_bytes.toString("utf8"));
+  } catch {
+    throw new CorruptActivationCheckpoint();
+  }
+  return { epoch, pin, proof };
+}
+
+/** Use the same repeatable-read transaction that pins the candidate artifact. */
+export async function readActivationCheckpoint(db: Queryable, digest: string, version: string, knownEpoch?: string): Promise<ActivationCheckpoint | null> {
+  const checked = await readActivationCheckpointProof(db, digest, version, knownEpoch);
+  if (!checked) return null;
+  const { epoch, pin, proof } = checked;
   const targetRows = await timeCatalogStage("activation-checkpoint-read", () => db.query<ArtifactByteChunkRow>(
     `select ${artifactByteColumns} from (
        select coalesce(c.target_bytes, a.artifact_bytes) as artifact_bytes
@@ -70,10 +85,8 @@ export async function readActivationCheckpoint(db: Queryable, digest: string, ve
        where c.artifact_id = $1 and c.version = $2
      ) artifact ${artifactByteChunkJoin} order by chunk.byte_start`, [pin.artifact_id, version],
   ), result => ({ artifactCount: result.rows.length ? 1 : 0, byteCount: result.rows[0]?.artifact_byte_length ?? 0 }));
-  let proof: unknown;
   let target: CatalogReleaseNode;
   try {
-    proof = JSON.parse(pin.proof_bytes.toString("utf8"));
     const bytes = assembleArtifactBytes(targetRows.rows);
     if (sha256DigestOfBytes(bytes) !== pin.target_checksum) throw new CorruptActivationCheckpoint();
     const parsed = parseBundleBytes(bytes);
@@ -139,13 +152,15 @@ export async function putActivationCheckpoint(db: Queryable, checkpoint: Activat
   return true;
 }
 
-/** All pre-existing definition memberships persist. Materialized revision and release identifiers are permanent. */
-export async function hasAvailableAppendIdentities(db: Queryable, target: CatalogReleaseNode, revisionIds: readonly string[]): Promise<boolean> {
+/** Called under the pointer lock. Installed release, revision and subject identifiers are permanent. */
+export async function hasAvailableAppendIdentities(db: Queryable, target: CatalogReleaseNode, revisionIds: readonly string[],
+  driverIds: readonly string[] = []): Promise<boolean> {
   const release = target.manifest.release;
   const result = await db.query<{ available: boolean }>(
     `select not exists (select from parameter_catalog.catalog_releases where id = $1 or release_version = $2 or release_digest = $3)
-       and not exists (select from parameter_catalog.definition_revisions where id = any($4::text[])) as available`,
-    [release.id, release.version, release.digest, [...revisionIds]],
+       and not exists (select from parameter_catalog.definition_revisions where id = any($4::text[]))
+       and not exists (select from parameter_catalog.catalog_subjects where id = any($5::text[])) as available`,
+    [release.id, release.version, release.digest, revisionIds, driverIds],
   );
   return result.rows[0]?.available === true;
 }

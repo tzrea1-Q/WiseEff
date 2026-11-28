@@ -1,4 +1,5 @@
 import type pg from "pg";
+import { timeCatalogStage, withCatalogStageLogging } from "../../observability/catalogPublicationStages";
 
 import { getAuthContextForExternalIdentity } from "../auth/repository";
 import type { AuthContext } from "../auth/types";
@@ -792,7 +793,9 @@ const createGovernancePorts = (
     exportModuleStructure: pool ? (organizationId, invocation, requestId) => exportModuleStructure(pool, organizationId, invocation, requestId) : undefined,
     previewModuleStructure: pool ? (organizationId, invocation, body) => previewModuleStructure(pool, organizationId, invocation, body) : undefined,
     applyModuleStructure: pool ? (organizationId, invocation, requestId, body) => applyModuleStructure(pool, organizationId, invocation, requestId, body) : undefined,
-    publishModuleStructureDrivers: pool ? (organizationId, invocation, requestId, body) => publishModuleStructureDrivers(pool, organizationId, invocation, requestId, body) : undefined,
+    publishModuleStructureDrivers: pool && db ? (organizationId, invocation, requestId, body) =>
+      withCatalogStageLogging({ requestId }, () => timeCatalogStage("module-driver-publication",
+        () => publishModuleStructureDrivers(db, pool, organizationId, invocation, requestId, body))) : undefined,
     readRegistrationRecognition: db ? (organizationId, registrationId) => readRegistrationRecognitionSettings(db, organizationId, registrationId) : undefined,
     updateRegistrationRecognition: db ? (input) => updateRegistrationRecognitionSettings(db, input) : undefined,
     listUnregisteredSubjects: pool ? (organizationId, releaseId, source) => listUnregisteredSubjects(pool, organizationId, releaseId, source) : undefined,

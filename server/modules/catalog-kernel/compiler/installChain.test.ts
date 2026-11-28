@@ -2,13 +2,13 @@ import { describe, expect, it } from "vitest";
 import { hashContractJson } from "../../parameter-catalog-contract/chunkedSerialization";
 import type { ContractJsonValue } from "../../parameter-catalog-contract";
 import {
-  buildCatalogInstallProof, compileCatalogDefinitionAppend, compileCatalogRelease,
+  buildCatalogInstallProof, compileCatalogInstallAppend, compileCatalogRelease,
   INSTALL_CHAIN_COMPILER, INSTALL_CHAIN_SOURCE_FORMAT, isCatalogInstallProof, type CatalogReleaseNode,
 } from "./index";
 import {
   refreshAuthoritativeSource, refreshReleaseAggregateDigest, reorderCatalogReleaseBundle, validCatalogReleaseBundle,
 } from "./__fixtures__/catalogReleaseBundle";
-import { SUBJECT_RULES_CORRECTION } from "./subjectIdentity";
+import { SUBJECT_IDENTITY_CORRECTION, SUBJECT_RULES_CORRECTION, TYPED_CHANGESET_SOURCE_PATH } from "./subjectIdentity";
 
 type MutableNode = Parameters<typeof refreshAuthoritativeSource>[0];
 const copy = (node: CatalogReleaseNode) => structuredClone(node) as MutableNode;
@@ -34,6 +34,46 @@ function compile(releases: readonly CatalogReleaseNode[]) {
 }
 
 describe("versioned installation chain", () => {
+  it("matches a full install for added drivers and remembers both spellings of a historical identity", () => {
+    const first = copy(validCatalogReleaseBundle().releases[0]!);
+    const original = first.documents.find(doc => doc.kind === "subject")!;
+    original.content.canonicalKey = "driver:sample,legacy-key";
+    refreshAuthoritativeSource(first);
+    const renamed = successor(first);
+    const changed = renamed.documents.find(doc => doc.kind === "subject")!;
+    changed.content.selector.value = "sample,renamed";
+    changed.content.canonicalKey = "driver:sample,renamed";
+    changed.content.selector.provenance = { source: SUBJECT_IDENTITY_CORRECTION, reviewReference: renamed.manifest.release.id };
+    refreshAuthoritativeSource(renamed);
+    for (const doc of renamed.documents) doc.source.path = TYPED_CHANGESET_SOURCE_PATH;
+    for (const doc of renamed.manifest.documents) doc.sourcePath = TYPED_CHANGESET_SOURCE_PATH;
+    renamed.manifest.files[0]!.path = renamed.sources[0]!.path = TYPED_CHANGESET_SOURCE_PATH;
+    refreshReleaseAggregateDigest(renamed);
+    const proof = buildCatalogInstallProof(compile([first, renamed]));
+    expect(proof.driverSpellings).toEqual(expect.arrayContaining(["sample,legacy-key", original.content.selector.value, "sample,renamed"]));
+    for (const name of ["sample,new", "sample,legacy-key", original.content.selector.value]) {
+      const next = successor(renamed);
+      const added = structuredClone(changed);
+      added.content.id = "csub_newdriver";
+      added.content.selector = { kind: "driver-compatible", value: name, provenance: { source: "typed-changeset" } };
+      added.content.canonicalKey = `driver:${name}`;
+      next.documents.push(added);
+      refreshAuthoritativeSource(next);
+      expect(compileCatalogInstallAppend({ ...proof, driverSpellings: undefined }, renamed, next)).toBeNull();
+      const warm = compileCatalogInstallAppend(proof, renamed, next);
+      const cold = compileCatalogRelease({ schemaVersion: "1.0.0", targetReleaseId: next.manifest.release.id, releases: [first, renamed, next] });
+      if (name === "sample,new") {
+        if (!warm || !cold.ok) throw new Error("fresh driver rejected");
+        expect(warm.newDriverIds).toEqual(["csub_newdriver"]);
+        expect(warm.proof).toEqual(buildCatalogInstallProof(cold.value));
+        expect(warm.compiled.materializationFingerprint).toBe(cold.value.materializationFingerprint);
+      } else {
+        expect(warm).toBeNull();
+        expect(cold.ok).toBe(false);
+      }
+    }
+  });
+
   it("matches a complete replay for legacy-to-v2 and v2-to-v2 changes across sequence 10", () => {
     const first = copy(validCatalogReleaseBundle().releases[0]!);
     const firstSubject = first.documents.find(doc => doc.kind === "subject")!;
@@ -67,7 +107,7 @@ describe("versioned installation chain", () => {
       added.content.revision.id = `drev_extra_${sequence}`;
       next.documents.push(added);
       refreshAuthoritativeSource(next);
-      const warm = compileCatalogDefinitionAppend(JSON.parse(JSON.stringify(proof)), base, next);
+      const warm = compileCatalogInstallAppend(JSON.parse(JSON.stringify(proof)), base, next);
       expect(warm).not.toBeNull();
       if (!warm) throw new Error("eligible successor rejected");
       history.push(next);
@@ -97,21 +137,21 @@ describe("versioned installation chain", () => {
     const base = validCatalogReleaseBundle().releases[0]!;
     const proof = buildCatalogInstallProof(compile([base]));
     const unmarked = successor(base, false);
-    expect(compileCatalogDefinitionAppend(proof, base, unmarked)).toBeNull();
+    expect(compileCatalogInstallAppend(proof, base, unmarked)).toBeNull();
     unmarked.manifest.toolchain.compiler = INSTALL_CHAIN_COMPILER;
-    expect(compileCatalogDefinitionAppend(proof, base, unmarked)).toBeNull();
+    expect(compileCatalogInstallAppend(proof, base, unmarked)).toBeNull();
     refreshReleaseAggregateDigest(unmarked);
     const legacy = compile([base, unmarked]);
     expect(legacy.modelReceipt).toBeUndefined();
     expect(legacy.compiledReleaseDigest).toBe(hashContractJson(legacy.model as unknown as ContractJsonValue));
     unmarked.manifest.toolchain.sourceFormat = INSTALL_CHAIN_SOURCE_FORMAT;
-    expect(compileCatalogDefinitionAppend(proof, base, unmarked)).toBeNull(); // marker not in the aggregate
+    expect(compileCatalogInstallAppend(proof, base, unmarked)).toBeNull(); // marker not in the aggregate
     const next = successor(base);
-    expect(compileCatalogDefinitionAppend({ ...proof, releaseId: "wrong" }, base, next)).toBeNull();
-    expect(compileCatalogDefinitionAppend({ ...proof, sourceCompilerFingerprint: "old" }, base, next)).toBeNull();
-    expect(compileCatalogDefinitionAppend(proof, base, {} as CatalogReleaseNode)).toBeNull();
+    expect(compileCatalogInstallAppend({ ...proof, releaseId: "wrong" }, base, next)).toBeNull();
+    expect(compileCatalogInstallAppend({ ...proof, sourceCompilerFingerprint: "old" }, base, next)).toBeNull();
+    expect(compileCatalogInstallAppend(proof, base, {} as CatalogReleaseNode)).toBeNull();
     next.sources[0]!.bytes = "WA==";
-    expect(compileCatalogDefinitionAppend(proof, base, next)).toBeNull();
+    expect(compileCatalogInstallAppend(proof, base, next)).toBeNull();
   });
 
   it("requires full replay for subject changes and rejects omitted predecessor memberships", () => {
@@ -121,10 +161,10 @@ describe("versioned installation chain", () => {
     changed.documents.find(d => d.kind === "subject")!.content.selector.provenance.source = "correction";
     refreshAuthoritativeSource(changed);
     expect(compile([base, changed]).release.id).toBe(changed.manifest.release.id);
-    expect(compileCatalogDefinitionAppend(proof, base, changed)).toBeNull();
+    expect(compileCatalogInstallAppend(proof, base, changed)).toBeNull();
     const omitted = successor(base);
     omitted.documents = omitted.documents.filter(d => d.kind !== "definition");
     refreshAuthoritativeSource(omitted);
-    expect(compileCatalogDefinitionAppend(proof, base, omitted)).toBeNull();
+    expect(compileCatalogInstallAppend(proof, base, omitted)).toBeNull();
   });
 });

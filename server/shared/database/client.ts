@@ -70,8 +70,17 @@ function savepointHandle(session: Queryable, depth: number): Database {
         await session.query(`release savepoint ${savepoint}`);
         return result;
       } catch (error) {
-        await session.query(`rollback to savepoint ${savepoint}`);
-        await session.query(`release savepoint ${savepoint}`);
+        try {
+          await session.query(`rollback to savepoint ${savepoint}`);
+          await session.query(`release savepoint ${savepoint}`);
+        } catch (cleanupError) {
+          // Callers must see failed recovery. Attach the write failure as its
+          // cause when pg reports a second error on the same connection.
+          if (cleanupError instanceof Error && cleanupError !== error && !("cause" in cleanupError) && Object.isExtensible(cleanupError)) {
+            Object.defineProperty(cleanupError, "cause", { value: error, configurable: true });
+          }
+          throw cleanupError;
+        }
         throw error;
       }
     }

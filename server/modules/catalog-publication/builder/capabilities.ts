@@ -87,14 +87,16 @@ export const CATALOG_CAPABILITY_ALLOW_LIST: CapabilityAllowListIdentity = {
 };
 
 /** Bump the algorithm revision for changes to admission logic outside the frozen contracts. */
-export const ACTIVATION_CHECKPOINT_VERSION = hashContractJson({
-  algorithm: "catalog-activation-checkpoint/v1",
+const activationCheckpointVersion = (algorithm: string) => hashContractJson({
+  algorithm,
   compiler: INSTALL_CHAIN_COMPILER,
   sourceFormat: INSTALL_CHAIN_SOURCE_FORMAT,
   sourceContracts: [catalogCompilerContractFingerprint, catalogCompilerOwnerContractFingerprint,
     catalogCompilerDtsContract(false).compilerFingerprint, catalogCompilerDtsContract(true).compilerFingerprint],
   allowList: CATALOG_CAPABILITY_ALLOW_LIST,
 } as unknown as ContractJsonValue);
+export const LEGACY_ACTIVATION_CHECKPOINT_VERSION = activationCheckpointVersion("catalog-activation-checkpoint/v1");
+export const ACTIVATION_CHECKPOINT_VERSION = activationCheckpointVersion("catalog-activation-checkpoint/v2");
 
 const CONTENT_KEYS = new Set([
   "displayName",

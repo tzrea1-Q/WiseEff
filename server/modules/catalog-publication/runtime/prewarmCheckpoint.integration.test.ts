@@ -1,4 +1,4 @@
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import pg from "pg";
 import { expect, it, vi } from "vitest";
 import { withCatalogStageLogging } from "../../../observability/catalogPublicationStages";
@@ -7,6 +7,7 @@ import { dropLabRuntimeLogins, provisionPublicationRuntimeLogins } from "../../.
 import { installPublishedRelease } from "../../catalog-kernel/install/installer";
 import { bootstrapFirstAcme, connect, domainSnapshot, persistPredecessorArtifact, provisionOnlineActivation } from "../../catalog-kernel/install/publicationTestHarness";
 import { identitySnapshotOf } from "../builder/identitySnapshot";
+import { ACTIVATION_CHECKPOINT_VERSION, LEGACY_ACTIVATION_CHECKPOINT_VERSION } from "../builder/capabilities";
 import { asQueryable } from "../persistence/integrationHarness";
 import { putValidatedPreviewSnapshot } from "../persistence/store";
 import { prewarmCatalogCheckpoint } from "./prewarmCheckpoint";
@@ -54,6 +55,18 @@ it("warms an installed pre-upgrade release and repairs a missing preview while p
       expect(await warm()).toEqual({ status: "warmed" });
       expect(await warm()).toEqual({ status: "already-warm" });
       expect((await checkpoints()).rows).toEqual(checkpoint);
+      // An old synchronizer may have certified this exact release before the
+      // corresponding coordinator preview was created. Keep its immutable row.
+      const legacy = JSON.parse(checkpoint[0]!.proof_bytes.toString("utf8"));
+      delete legacy.driverSpellings;
+      const bytes = Buffer.from(JSON.stringify(legacy));
+      await owner.query("update catalog_publication.activation_checkpoints set version=$1, proof_bytes=$2, proof_checksum=$3",
+        [LEGACY_ACTIVATION_CHECKPOINT_VERSION, bytes, `sha256:${createHash("sha256").update(bytes).digest("hex")}`]);
+      await owner.query("delete from catalog_publication.preview_snapshots where artifact_digest=$1", [before.currentDigest]);
+      expect(await warm()).toEqual({ status: "warmed" });
+      const repaired = (await checkpoints()).rows;
+      expect(repaired.map(row => row.version).sort()).toEqual([ACTIVATION_CHECKPOINT_VERSION, LEGACY_ACTIVATION_CHECKPOINT_VERSION].sort());
+      expect(repaired.find(row => row.version === LEGACY_ACTIVATION_CHECKPOINT_VERSION)?.proof_bytes).toEqual(bytes);
       await owner.query("delete from catalog_publication.activation_checkpoints");
       expect((await owner.query(
         "update catalog_publication.preview_snapshots set target_bytes = $1 where artifact_digest = $2",

@@ -1,5 +1,5 @@
-export { compileCatalogDefinitionAppend, compileCatalogRelease, createCatalogReleaseDigestValidator, validateCatalogReleaseDigest, validateIdentityAppendDigest } from "./compileCatalogRelease";
-export { buildCatalogInstallProof, isCatalogInstallProof, type CatalogInstallProof } from "./installChain";
+export { compileCatalogInstallAppend, compileCatalogRelease, createCatalogReleaseDigestValidator, validateCatalogReleaseDigest, validateIdentityAppendDigest } from "./compileCatalogRelease";
+export { buildCatalogInstallProof, collectDriverSpellings, isCatalogInstallProof, type CatalogInstallProof } from "./installChain";
 export { isCatalogReleaseBundle } from "./validation";
 export { freezeCatalogJson } from "./contractArtifacts";
 export {

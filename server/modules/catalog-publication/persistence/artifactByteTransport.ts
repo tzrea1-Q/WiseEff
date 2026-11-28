@@ -3,6 +3,16 @@
 // string limit. Read every chunk of an artifact in the same SQL snapshot.
 export const ARTIFACT_BYTE_CHUNK_SIZE = 8 * 1024 * 1024;
 
+// PostgreSQL accepts up to MaxAllocSize - 1 bytes in a Bind message. pg uses
+// unnamed statements and portals, one format per parameter and one result format.
+export function canBindArtifact(byteLength: number, metadata: readonly (string | null)[]): boolean {
+  const parameterCount = metadata.length + 2; // artifact bytes and their sha256 checksum
+  const headerBytes = 14 + 6 * parameterCount;
+  const checksumBytes = "sha256:".length + 64;
+  const textBytes = metadata.reduce((sum, value) => sum + (value === null ? 0 : Buffer.byteLength(value)), 0);
+  return headerBytes + checksumBytes + byteLength + textBytes <= 0x3ffffffe;
+}
+
 export const artifactByteColumns = `
   octet_length(artifact.artifact_bytes) as artifact_byte_length,
   chunk.byte_start as artifact_byte_start,

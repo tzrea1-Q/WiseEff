@@ -28,6 +28,15 @@ The command verifies the current historical lineage once and seeds preview and a
 
 For a warm ordinary definition batch, the API reports `snapshot-read` and the manager reports `activation-checkpoint-read` and `compile-append`. The manager still reads the new candidate and the complete predecessor target. A full compile is expected for operations requiring historical validation or when a compatible installation proof is missing.
 
+For a module import that publishes new drivers, follow the API request ID through
+`module-driver-publication`, `candidate-build` and `artifact-write`. The
+`byteCount` at the start of the write measures the encoded successor, including
+the current catalog contents. A missing compatible proof can require reading
+the historical base. The successor is still stored separately on a migrated
+database. After the request commits, follow its job ID in the manager logs
+through activation and the receipt. These two intervals measure the time to
+enqueue the import and the time to make the drivers available, respectively.
+
 Use `./scripts/compose` rather than raw `docker compose`. Configuration sources:
 
 | File | Used by | Contents |

@@ -3,7 +3,10 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { applyMigrations, migrationsDir, withTempDatabase } from "../../../testing/tempDatabase";
 import { buildCatalogInstallProof } from "../../catalog-kernel/compiler/installChain";
+import { createDatabase } from "../../../shared/database/client";
+import { checkDriverSpellingHistory } from "../builder/identitySnapshot";
 import { ACTIVATION_CHECKPOINT_VERSION } from "../builder/capabilities";
+import { hasUnrenamedDriverHistory } from "./driverIdentityHistory";
 import { installPublishedRelease } from "../../catalog-kernel/install/installer";
 import { bootstrapFirstAcme, buildAuthorizedJob, persistPredecessorArtifact } from "../../catalog-kernel/install/publicationTestHarness";
 import { CATALOG_BASELINE_READER_ROLE, CATALOG_PUBLICATION_COORDINATOR_ROLE, CATALOG_SYNCHRONIZER_ROLE } from "../../catalog-kernel/security/catalogRoleManifest";
@@ -39,6 +42,19 @@ describe("durable activation proof", () => {
     };
   }
 
+  it("checks driver declarations against the verified install proof before preview persistence", async () => {
+    const checkpoint = await installBase();
+    const db = createDatabase(asQueryable(database.client));
+    expect(await putActivationCheckpoint(db, checkpoint)).toBe(true);
+    const check = (selector: string) => checkDriverSpellingHistory(db, checkpoint.target, [
+      { subjectId: "csub_fresh", canonicalKey: `driver:${selector}` },
+    ]);
+    expect(await check("test,new")).toBe("available");
+    expect(await check("acme,power")).toBe("occupied");
+    await db.query("update catalog_publication.activation_checkpoints set proof_checksum=$1", [sha256Digest("other")]);
+    await expect(check("test,new")).rejects.toThrow(CorruptActivationCheckpoint);
+  });
+
   it("pins a populated legacy base with the production synchronizer and denies other runtime roles", async () => {
     const checkpoint = await installBase();
     const digest = checkpoint.target.manifest.release.digest;
@@ -61,6 +77,11 @@ describe("durable activation proof", () => {
         const priorRevision = (await login.query<{ id: string }>("select id from parameter_catalog.definition_revisions limit 1")).rows[0]!.id;
         expect(await hasAvailableAppendIdentities(db, fresh, ["drev_fresh"])).toBe(true);
         expect(await hasAvailableAppendIdentities(db, fresh, [priorRevision])).toBe(false);
+        expect(await hasAvailableAppendIdentities(db, fresh, [], ["csub_new_driver"])).toBe(true);
+        expect(await hasAvailableAppendIdentities(db, fresh, [], ["csub_acme_power"])).toBe(false);
+        expect(await hasUnrenamedDriverHistory(db, firstRelease.id, 1)).toBe(true);
+        expect(await hasUnrenamedDriverHistory(db, firstRelease.id, 2)).toBe(false);
+        expect(await hasUnrenamedDriverHistory(db, "missing-base")).toBe(false);
         for (const key of ["id", "version", "digest"] as const) {
           const release = { ...fresh.manifest.release, [key]: firstRelease[key] };
           expect(await hasAvailableAppendIdentities(db, { ...fresh, manifest: { ...fresh.manifest, release } }, [])).toBe(false);

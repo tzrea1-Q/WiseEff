@@ -244,11 +244,13 @@ export const compileCatalogRelease = (
   return { ok: true, value };
 };
 
-const definitionAppendRevisionIds = (base: CatalogReleaseNode, target: CatalogReleaseNode): string[] | null => {
+const appendIdentities = (base: CatalogReleaseNode, target: CatalogReleaseNode, proof: CatalogInstallProof) => {
   const byIdentity = new Map(base.documents.map(document => [`${document.kind}:${document.content.id}`, document]));
   if (byIdentity.size !== base.documents.length) return null;
   const seen = new Set<string>();
   const newRevisionIds: string[] = [];
+  const newDriverIds: string[] = [];
+  const claimedSpellings = proof.driverSpellings && new Set(proof.driverSpellings);
   for (const document of target.documents) {
     const identity = `${document.kind}:${document.content.id}`;
     if (seen.has(identity)) return null;
@@ -256,6 +258,15 @@ const definitionAppendRevisionIds = (base: CatalogReleaseNode, target: CatalogRe
     const previous = byIdentity.get(identity);
     byIdentity.delete(identity);
     if (previous?.normalizedDigest === document.normalizedDigest) continue;
+    if (document.kind === "subject") {
+      const { content } = document;
+      if (previous || !claimedSpellings || content.kind !== "driver" || content.lifecycle !== "active" ||
+          content.ownerSubjectId !== undefined || content.selector.kind !== "driver-compatible" ||
+          content.canonicalKey !== `driver:${content.selector.value}` || content.selector.provenance.source !== "typed-changeset" ||
+          claimedSpellings.has(content.selector.value)) return null;
+      newDriverIds.push(content.id);
+      continue;
+    }
     if (document.kind !== "definition") return null;
     const { revision } = document.content;
     if (revision.lifecycle !== "active" || revision.successorDefinitionId !== undefined) return null;
@@ -267,18 +278,18 @@ const definitionAppendRevisionIds = (base: CatalogReleaseNode, target: CatalogRe
     } else if (revision.number !== 1) return null;
     newRevisionIds.push(revision.id);
   }
-  return byIdentity.size === 0 ? newRevisionIds : null;
+  return byIdentity.size === 0 && !(newDriverIds.length && newRevisionIds.length) ? { newRevisionIds, newDriverIds } : null;
 };
 
 /**
  * The caller verifies the stored base and proof checksums/live install pins and
  * must reject historical release/revision key collisions before using this projection.
- * Both endpoints are complete snapshots. Unchanged identities and mandatory membership
- * preserve all previous definition natural keys; advanced revisions have increasing numbers.
+ * Mandatory membership retains prior identities. Driver-only appends additionally
+ * check both permanent spellings against the certified history, including renames.
  */
-export function compileCatalogDefinitionAppend(
+export function compileCatalogInstallAppend(
   proof: unknown, base: CatalogReleaseNode, successor: CatalogReleaseNode,
-): { readonly compiled: CompiledCatalogAppend; readonly proof: CatalogInstallProof; readonly newRevisionIds: readonly string[] } | null {
+) {
   if (!isCatalogInstallProof(proof) || !isInstallChainToolchain(successor?.manifest?.toolchain)) return null;
   const before = base?.manifest?.release;
   const after = successor.manifest.release;
@@ -290,8 +301,8 @@ export function compileCatalogDefinitionAppend(
     bundle => prepareIdentityAppend(bundle, base),
   );
   if (!validated.ok) return null;
-  const newRevisionIds = definitionAppendRevisionIds(base, validated.target);
-  if (!newRevisionIds) return null;
+  const identities = appendIdentities(base, validated.target, proof);
+  if (!identities) return null;
   const target = normalizeRelease(validated.target);
   const state = extendInstallChain(proof, target);
   const modelReceipt = installChainReceipt(state, target);
@@ -305,5 +316,5 @@ export function compileCatalogDefinitionAppend(
       releases: [normalizeRelease(base), target],
     },
   });
-  return { compiled, proof: proofForInstall(state, target, compiled), newRevisionIds };
+  return { compiled, proof: proofForInstall(state, target, compiled), ...identities };
 }

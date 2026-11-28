@@ -24,7 +24,7 @@ import {
   persistSuccessorBuild,
 } from "./builder/completeSuccessor";
 import { targetReleaseOf } from "./builder/bundleCodec";
-import { appendPreviewSnapshot, canAppendPreviewSnapshot, identitySnapshotOf, onlyDefinitionEdits, withPreviewBaseline } from "./builder/identitySnapshot";
+import { appendPreviewSnapshot, canAppendPreviewSnapshot, checkDriverSpellingHistory, identitySnapshotOf, onlyDefinitionEdits, onlyDriverCreations, withPreviewBaseline } from "./builder/identitySnapshot";
 import {
   readPreparedPredecessor,
   preparedPredecessorBundle,
@@ -425,7 +425,13 @@ type PreviewInput = {
   readonly markdownSource?: { readonly fileName: string; readonly sha256: string; readonly parserVersion: string };
 };
 
-export const previewPublicationCandidate = (input: PreviewInput) => preview(input, true);
+type PreviewResult = { ok: true; value: PreviewPublicationValue } | { ok: false; error: PreviewPublicationError };
+type PreparedPreview = { ok: true; value: { persist(db: Database): Promise<PreviewResult> } }
+  | { ok: false; error: PreviewPublicationError };
+
+/** Pure candidate preparation and database reads. The import rechecks its base before persisting. */
+export const preparePublicationCandidate = (input: PreviewInput) => prepare(input, true);
+export const previewPublicationCandidate = (input: PreviewInput) => preview(input);
 
 const previewSnapshotAccess = async (db: Database) => (await db.query<{ available: boolean; can_read: boolean; checkpoint_format: boolean }>(
   `select exists (select from pg_catalog.pg_attribute where attrelid=to_regclass('catalog_publication.preview_snapshots')
@@ -448,19 +454,26 @@ export async function prepareMarkdownPlanningSnapshot(db: Database, predecessorD
   const snapshot = freezeCatalogJson(found.value);
   return { ok: true as const, value: {
     target: snapshot.target,
-    previewCandidate: (input: PreviewInput) => preview({ ...input, db, predecessorDigest }, true, snapshot, undefined, access.checkpoint_format),
+    previewCandidate: (input: PreviewInput) => preview({ ...input, db, predecessorDigest }, snapshot, access.checkpoint_format),
   } };
 }
 
-async function preview(input: PreviewInput, useSnapshot: boolean, planningSnapshot?: PreviewSnapshot,
+async function preview(input: PreviewInput, planningSnapshot?: PreviewSnapshot, checkpointFormat = false): Promise<PreviewResult> {
+  const ready = await prepare(input, true, planningSnapshot, undefined, checkpointFormat);
+  return ready.ok ? ready.value.persist(input.db) : ready;
+}
+
+async function prepare(input: PreviewInput, useSnapshot: boolean, planningSnapshot?: PreviewSnapshot,
   fallbackIdentity?: FrozenPublicationIdentity, planningCheckpointFormat = false):
-  Promise<{ ok: true; value: PreviewPublicationValue } | { ok: false; error: PreviewPublicationError }> {
+  Promise<PreparedPreview> {
   const [first] = input.changeSet;
   const spelling = input.changeSet.length === 1 && (first?.op === "rename-subject" || first?.op === "set-subject-alias") ? first : undefined;
-  const compactEligible = Boolean(spelling || (input.markdownSource && onlyDefinitionEdits(input.changeSet)));
+  const drivers = onlyDriverCreations(input.changeSet);
+  const definitions = Boolean(input.markdownSource && onlyDefinitionEdits(input.changeSet));
+  const compactEligible = Boolean(spelling || drivers || definitions);
   // Only compact writers need the storage format before building. Other edits
   // can reject invalid changes before checking whether to save a preview snapshot.
-  const access = !planningSnapshot && (spelling || input.markdownSource) ? await previewSnapshotAccess(input.db) : undefined;
+  const access = !planningSnapshot && (spelling || drivers || input.markdownSource) ? await previewSnapshotAccess(input.db) : undefined;
   let snapshotsAvailable = planningSnapshot ? true : access?.available;
   let snapshot = useSnapshot && compactEligible && (!spelling || planningSnapshot?.coversSubjectSpellings) ? planningSnapshot : undefined;
   if (snapshotsAvailable && access?.can_read && useSnapshot && compactEligible && !snapshot && !input.predecessorArtifact) {
@@ -483,7 +496,7 @@ async function preview(input: PreviewInput, useSnapshot: boolean, planningSnapsh
     return { ok: false, error: { kind: "predecessor-incomplete", detail: "predecessor-target-missing" } };
   }
   const toolchain = predecessorTarget.manifest.toolchain;
-  const useInstallChain = (planningCheckpointFormat || access?.checkpoint_format) && input.markdownSource && onlyDefinitionEdits(input.changeSet);
+  const useInstallChain = (planningCheckpointFormat || access?.checkpoint_format) && (definitions || drivers);
   const frozen = fallbackIdentity ?? mintFrozenIdentity(
     predecessorTarget.manifest.release.version,
     {
@@ -517,7 +530,7 @@ async function preview(input: PreviewInput, useSnapshot: boolean, planningSnapsh
     snapshot ? buildSuccessorFromSnapshot(buildInput, snapshot) : buildCompleteSuccessor(buildInput));
   // Reviewed historical retirements may rely on an earlier successor state.
   // Resolve ambiguous diagnostics against the original complete lineage.
-  if (snapshot && !built.ok && built.error.kind === "invalid-release") return preview(input, false, undefined, frozen);
+  if (snapshot && !built.ok && built.error.kind === "invalid-release") return prepare(input, false, undefined, frozen);
 
   if (!built.ok) {
     if (built.error.kind === "artifact-missing") {
@@ -567,8 +580,13 @@ async function preview(input: PreviewInput, useSnapshot: boolean, planningSnapsh
   if (built.value.kind !== "successor") {
     return { ok: false, error: { kind: "invalid-input", reason: "noop-revise" } };
   }
+  if (snapshot && drivers) {
+    const history = await checkDriverSpellingHistory(input.db, snapshot.target, frozen.subjects ?? []);
+    if (history === "occupied") return { ok: false, error: { kind: "subject-selector-occupied" } };
+    if (history === "unknown") return prepare(input, false, undefined, frozen);
+  }
   if (snapshot && !await canAppendPreviewSnapshot(input.db, snapshot, spelling, frozen, built.value.artifact.artifactDigest)) {
-    return preview(input, false, undefined, frozen);
+    return prepare(input, false, undefined, frozen);
   }
 
   const facts = { ...publicationImpactFacts(input.authorPrincipalId, input.changeSet, built.value.impact),
@@ -623,60 +641,70 @@ async function preview(input: PreviewInput, useSnapshot: boolean, planningSnapsh
     ...(replacementChange ? { definitionReplacement: replacementChange } : {}) };
   snapshotsAvailable ??= (await previewSnapshotAccess(input.db))?.available;
   const baseSnapshot = snapshotsAvailable && compactEligible && bundle ? identitySnapshotOf(bundle, predecessorTarget) : undefined;
-  const artifact = built.value.artifact;
+  // A cold build may reconstruct the entire release history. The deferred write
+  // retains only the encoded artifact and the snapshots it will actually store.
+  const { bundle: builtBundle, ...artifact } = built.value.artifact;
   const verifiedBase = snapshot ?? baseSnapshot;
   const successorSnapshot = snapshotsAvailable && target && (verifiedBase ?
-    appendPreviewSnapshot(verifiedBase, target) : identitySnapshotOf(artifact.bundle, target));
+    appendPreviewSnapshot(verifiedBase, target) : identitySnapshotOf(builtBundle, target));
   const candidate = built.value.candidate;
-  const persisted = await timeCatalogStage("candidate-persist", () => persistSuccessorBuild(
-    {
-      db: input.db,
-      ports: {
-        persistArtifact: async (db, artifactInput) => {
-          if (baseSnapshot) {
-            const saved = await putValidatedPreviewSnapshot(db, input.predecessorDigest, baseSnapshot);
-            if (!saved.ok) return saved;
-          }
-          const stored = await storePersistArtifact(db, artifactInput);
-          if (stored.ok && successorSnapshot) {
-            const saved = await putValidatedPreviewSnapshot(db, artifact.artifactDigest, successorSnapshot, stored.value.storageFormat);
-            if (!saved.ok) return saved;
-          }
-          return stored;
+  const riskClass = classified.value;
+  async function persist(writer: Database): Promise<PreviewResult> {
+    const persisted = await timeCatalogStage("candidate-persist", () => persistSuccessorBuild(
+      {
+        db: writer,
+        ports: {
+          persistArtifact: async (db, artifactInput) => {
+            if (baseSnapshot) {
+              const saved = await putValidatedPreviewSnapshot(db, input.predecessorDigest, baseSnapshot);
+              if (!saved.ok) return saved;
+            }
+            const stored = await storePersistArtifact(db, artifactInput);
+            if (stored.ok && successorSnapshot) {
+              const saved = await putValidatedPreviewSnapshot(db, artifact.artifactDigest, successorSnapshot, stored.value.storageFormat);
+              if (!saved.ok) return saved;
+            }
+            return stored;
+          },
+          persistCandidate: async (db, candidateInput) =>
+            storePersistCandidate(db, {
+              ...candidateInput,
+              identityAllocation: {
+                ...candidateInput.identityAllocation,
+                authorPrincipalId: input.authorPrincipalId,
+                authorOrganizationId: input.authorOrganizationId,
+                impactFacts: facts as unknown as JsonObject,
+                impactSummary,
+                ...(rulesReview && identity && isSubjectRulesOp(identity.op) ? { subjectRulesReview: {
+                  subjectId: identity.subjectId, fingerprint: rulesReview.fingerprint,
+                } } : {}),
+              },
+            }),
         },
-        persistCandidate: async (db, candidateInput) =>
-          storePersistCandidate(db, {
-            ...candidateInput,
-            identityAllocation: {
-              ...candidateInput.identityAllocation,
-              authorPrincipalId: input.authorPrincipalId,
-              authorOrganizationId: input.authorOrganizationId,
-              impactFacts: facts as unknown as JsonObject,
-              impactSummary,
-              ...(rulesReview && identity && isSubjectRulesOp(identity.op) ? { subjectRulesReview: {
-                subjectId: identity.subjectId, fingerprint: rulesReview.fingerprint,
-              } } : {}),
-            },
-          }),
       },
-    },
-    input.markdownSource ? { ...artifact, sourceKind: "markdown-import", toolchain: { ...artifact.toolchain, markdownImport: input.markdownSource } } : artifact,
-    candidate,
-  ));
-  if ("ok" in persisted) {
-    return { ok: false, error: { kind: "persist-failed", detail: persisted.error.kind } };
-  }
-  if (persisted.kind !== "persisted") {
-    return { ok: false, error: { kind: "persist-failed", detail: "candidate-not-persisted" } };
-  }
+      input.markdownSource ? { ...artifact, sourceKind: "markdown-import", toolchain: { ...artifact.toolchain, markdownImport: input.markdownSource } } : artifact,
+      candidate,
+    ));
+    if ("ok" in persisted) {
+      const failure = persisted.error;
+      const cause = failure.kind === "persist-failed" ? failure.cause : undefined;
+      const detail = cause && "kind" in cause && cause.kind === "invalid-input" && cause.reason === "artifact-too-large"
+        ? cause.reason : failure.kind === "persist-failed" ? failure.stage : failure.kind;
+      return { ok: false, error: { kind: "persist-failed", detail } };
+    }
+    if (persisted.kind !== "persisted") {
+      return { ok: false, error: { kind: "persist-failed", detail: "candidate-not-persisted" } };
+    }
 
-  return {
-    ok: true,
-    value: {
-      candidate: persisted.candidate,
-      riskClass: classified.value,
-      impactFacts: facts,
-      impactSummary,
-    },
-  };
+    return {
+      ok: true,
+      value: {
+        candidate: persisted.candidate,
+        riskClass,
+        impactFacts: facts,
+        impactSummary,
+      },
+    };
+  }
+  return { ok: true, value: { persist } };
 }
