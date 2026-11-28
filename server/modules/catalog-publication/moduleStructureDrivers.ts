@@ -31,7 +31,7 @@ export async function observeModuleDriverPublication(db: Queryable, organization
 
 export function prepareModuleDriverPublication(db: Database, organizationId: string, predecessorDigest: string,
   invocation: UserInvocationContext, drivers: ImportDriverDeclaration[]) {
-  return preparePublicationCandidate({ db, predecessorDigest,
+  return preparePublicationCandidate({ db, predecessorDigest, moduleDriverImport: true,
     authorPrincipalId: invocation.principal.user.id, authorOrganizationId: organizationId,
     changeSet: drivers.map(driver => ({ op: "create-subject" as const, kind: "driver" as const,
       canonicalKey: `driver:${driver.compatible}`, selector: { kind: "driver-compatible" as const, value: driver.compatible },

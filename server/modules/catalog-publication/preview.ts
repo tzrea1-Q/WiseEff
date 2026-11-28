@@ -430,7 +430,7 @@ type PreparedPreview = { ok: true; value: { persist(db: Database): Promise<Previ
   | { ok: false; error: PreviewPublicationError };
 
 /** Pure candidate preparation and database reads. The import rechecks its base before persisting. */
-export const preparePublicationCandidate = (input: PreviewInput) => prepare(input, true);
+export const preparePublicationCandidate = (input: PreviewInput & { readonly moduleDriverImport?: true }) => prepare(input, true);
 export const previewPublicationCandidate = (input: PreviewInput) => preview(input);
 
 const previewSnapshotAccess = async (db: Database) => (await db.query<{ available: boolean; can_read: boolean; checkpoint_format: boolean }>(
@@ -463,17 +463,20 @@ async function preview(input: PreviewInput, planningSnapshot?: PreviewSnapshot, 
   return ready.ok ? ready.value.persist(input.db) : ready;
 }
 
-async function prepare(input: PreviewInput, useSnapshot: boolean, planningSnapshot?: PreviewSnapshot,
+async function prepare(input: PreviewInput & { readonly moduleDriverImport?: true }, useSnapshot: boolean, planningSnapshot?: PreviewSnapshot,
   fallbackIdentity?: FrozenPublicationIdentity, planningCheckpointFormat = false):
   Promise<PreparedPreview> {
   const [first] = input.changeSet;
   const spelling = input.changeSet.length === 1 && (first?.op === "rename-subject" || first?.op === "set-subject-alias") ? first : undefined;
-  const drivers = onlyDriverCreations(input.changeSet);
+  const standaloneDrivers = onlyDriverCreations(input.changeSet);
+  // The general publication API preserves its existing capability contract.
+  // Only the module import opts into driver checkpoint compilation.
+  const drivers = input.moduleDriverImport === true && standaloneDrivers;
   const definitions = Boolean(input.markdownSource && onlyDefinitionEdits(input.changeSet));
   const compactEligible = Boolean(spelling || drivers || definitions);
   // Only compact writers need the storage format before building. Other edits
   // can reject invalid changes before checking whether to save a preview snapshot.
-  const access = !planningSnapshot && (spelling || drivers || input.markdownSource) ? await previewSnapshotAccess(input.db) : undefined;
+  const access = !planningSnapshot && (spelling || standaloneDrivers || input.markdownSource) ? await previewSnapshotAccess(input.db) : undefined;
   let snapshotsAvailable = planningSnapshot ? true : access?.available;
   let snapshot = useSnapshot && compactEligible && (!spelling || planningSnapshot?.coversSubjectSpellings) ? planningSnapshot : undefined;
   if (snapshotsAvailable && access?.can_read && useSnapshot && compactEligible && !snapshot && !input.predecessorArtifact) {
