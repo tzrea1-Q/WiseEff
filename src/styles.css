@@ -12706,10 +12706,6 @@ body:has([data-xiaoze-launcher-anchor]) .main-content {
   padding-bottom: var(--space-6);
 }
 
-body:has([data-xiaoze-launcher-anchor]) .main-content:has(.review-inbox) {
-  margin-bottom: 0;
-}
-
 .xiaoze-chat-toggle-anchor {
   position: fixed;
   right: 1.5rem;
