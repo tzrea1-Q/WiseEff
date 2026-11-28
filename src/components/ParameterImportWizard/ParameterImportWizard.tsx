@@ -378,9 +378,8 @@ export function ParameterImportWizard({
           <>
           <div className="submission-dialog-head param-admin-editor-dialog-head">
             <div className="param-admin-editor-dialog-head-text">
-              {/* The eyebrow names the wizard so its accessible name stays stable across steps. */}
-              <span className="eyebrow" id={titleId}>项目值批量导入</span>
-              <h2>{completed ? "导入处理完成" : `步骤 ${step} / 5`}</h2>
+              <h2 id={titleId}>项目值批量导入</h2>
+              <p className="text-muted-foreground">{completed ? "导入处理完成" : `步骤 ${step} / 5`}</p>
               <p>{completed ? "保留本次处理回执，继续完成项目参数审核。" : "选择目标项目与导入来源，逐步核对后再应用变更。"}</p>
             </div>
             <button type="button" className="audit-dialog-close-icon" disabled={parsePending || applyPending || createProjectPending} onClick={requestClose} aria-label="关闭">

@@ -116,6 +116,7 @@ export type PageProps = {
   onAuthContextRefresh?: (context: AuthContextDto) => void;
   onEndSession?: () => Promise<void>;
   organizationId?: string;
+  organizationNames?: Readonly<Record<string, string>>;
   sessionPermissions?: readonly string[] | null;
   sessionRoles?: readonly AuthContextDto["roles"][number][] | null;
   projectMemberships?: AuthContextDto["projectMemberships"];
@@ -186,6 +187,7 @@ function RoutedPage({
   onAuthContextRefresh,
   onEndSession,
   organizationId,
+  organizationNames,
   sessionPermissions,
   sessionRoles,
   projectMemberships,
@@ -430,6 +432,7 @@ function RoutedPage({
           definitionRelatedKnowledge={definitionRelatedKnowledge}
           runtime={runtime}
           catalogOrganizationId={runtime?.operatingOrganizationId ?? organizationId}
+          organizationNames={organizationNames}
           sessionPermissions={sessionPermissions}
           sessionRoles={sessionRoles}
           projectMemberships={projectMemberships}

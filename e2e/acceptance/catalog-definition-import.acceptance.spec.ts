@@ -103,7 +103,8 @@ test("imports an owned definition and explicitly registers its child without cha
     page.on("request", request => {
       if (request.method() === "POST" && new URL(request.url()).pathname === "/api/v2/catalog/publication-candidates") batchPreviewRequests += 1;
     });
-    await dialog.getByLabel("上传 .md 文件", { exact: true }).setInputFiles([
+    await dialog.getByText("Markdown 文档（1 个文件）", { exact: true }).click();
+    await dialog.getByTestId("file-drop-zone-input").setInputFiles([
       { name: longName, mimeType: "text/markdown", buffer: Buffer.from(importedDocument) },
       { name: "second.md", mimeType: "text/markdown", buffer: Buffer.from(importedDocument) },
       { name: "errors.md", mimeType: "text/markdown", buffer: Buffer.from("# Driver `acme,power`\n## `iin_max` 错误与冲突\n| 字段 | 值 |\n| --- | --- |\n| 类型 | enum |\n| 未知 | x |") },
@@ -120,6 +121,7 @@ test("imports an owned definition and explicitly registers its child without cha
     await expect(dialog.getByRole("button", { name: "发布到目录", exact: true })).toHaveCount(0);
     await assertNoPageOverflow(page);
     await catalogScreenshot(page, testInfo, "definition-import-multiple-conflict-1440x900");
+    await dialog.getByText("Markdown 文档（3 个文件）", { exact: true }).click();
     await dialog.getByRole("button", { name: "移除 errors.md", exact: true }).click();
     await dialog.getByRole("button", { name: "second.md", exact: true }).click();
     await dialog.getByLabel("Markdown 文档", { exact: true }).fill(importedDocument.replace("clear_water_intrused_flag_after_read", "second_property"));

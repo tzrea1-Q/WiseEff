@@ -77,6 +77,7 @@ export type ParameterAdminNextPageProps = {
   definitionRelatedKnowledge?: SpecRelatedKnowledgeSource;
   runtime?: AppRuntime;
   catalogOrganizationId?: string;
+  organizationNames?: Readonly<Record<string, string>>;
   sessionPermissions?: readonly string[] | null;
   sessionRoles?: readonly AuthContextDto["roles"][number][] | null;
   projectMemberships?: AuthContextDto["projectMemberships"];
@@ -107,6 +108,7 @@ export function ParameterAdminNextPage({
   definitionRelatedKnowledge,
   runtime,
   catalogOrganizationId,
+  organizationNames,
   sessionPermissions,
   projectMemberships,
   sessionRoles
@@ -303,6 +305,7 @@ export function ParameterAdminNextPage({
                 catalog={runtime?.parameterCatalogRepository}
                 governance={runtime?.parameterCatalogGovernanceRepository}
                 organizationId={catalogOrganizationId}
+                organizationNames={organizationNames}
                 actor={catalogActorForSession({
                   roleId: runtimeMode === "api"
                     ? sessionRoles?.some((role) => role.roleId === "platform-admin" && role.projectId === null) ? "platform-admin"

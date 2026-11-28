@@ -79,9 +79,8 @@ test("corrects a deleted target from structure import preview and shows its copy
   await signInBrowserAsRole(page, "admin", "/parameter-admin/modules");
   await page.getByRole("button", { name: "导入结构" }).click();
   const dialog = page.getByRole("dialog", { name: "导入模块结构" });
-  await dialog.getByLabel("导入模式").click();
-  await page.getByRole("option", { name: "复制到当前组织" }).click();
-  await dialog.getByLabel("JSON 文件").setInputFiles({ name: "copy-correction.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(document)) });
+  await dialog.getByRole("radio", { name: "复制到当前组织" }).check();
+  await dialog.getByTestId("file-drop-zone-input").setInputFiles({ name: "copy-correction.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(document)) });
   await dialog.getByRole("button", { name: "预览" }).click();
   await expect(dialog.getByRole("alert")).toContainText("已保存的目标已删除或不可用");
   await expect(dialog.getByRole("button", { name: "确认提交" })).toBeDisabled();
@@ -92,7 +91,8 @@ test("corrects a deleted target from structure import preview and shows its copy
   await expect(dialog.getByText(new RegExp(`${originalId} · 已删除`))).toBeVisible();
   await dialog.getByRole("combobox", { name: `${sourceRef}:name 的冲突选择` }).click();
   await page.getByRole("option", { name: "保留当前" }).click();
-  await expect(dialog.getByText("待解决冲突（0）")).toBeVisible();
+  await expect(dialog.getByText("请填写变更原因", { exact: true })).toBeVisible();
+  await expect(dialog.getByRole("heading", { name: /待解决冲突/ })).toHaveCount(0);
   await dialog.getByLabel("变更原因").fill("核对后改用当前业务模块");
   await dialog.getByText("查看原有复制记录（1）", { exact: true }).click();
   await page.screenshot({ path: info.outputPath("mapping-correction-1440x900.png"), animations: "disabled" });

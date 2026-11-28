@@ -131,6 +131,8 @@ test.describe("PARAM-ADMIN-002 parameter import wizard browser acceptance", () =
     const wizard = page.getByRole("dialog", { name: "项目值批量导入" });
     await expect(wizard).toBeVisible();
 
+    await expect(wizard.getByRole("heading", { level: 2, name: "项目值批量导入" })).toBeVisible();
+    await expect(wizard.getByText("步骤 1 / 5", { exact: true })).toBeVisible();
     await expect(wizard.getByRole("region", { name: "选择来源与目标项目" })).toBeVisible();
     const projectSelect = wizard.getByRole("combobox", { name: "目标项目" });
     await expect(projectSelect).toBeVisible();

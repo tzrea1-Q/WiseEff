@@ -61,6 +61,7 @@ export type ParameterModuleMappingPanelProps = {
   canonicalCatalog?: ParameterCatalogRepository;
   canonicalGovernance?: ParameterCatalogGovernanceRepository;
   canonicalOrganizationId?: string;
+  organizationNames?: Readonly<Record<string, string>>;
   canonicalActor?: CatalogActorKind;
   canonicalSessionPermissions?: readonly string[] | null;
   canonicalEnabled?: boolean;
@@ -82,6 +83,7 @@ export function ParameterModuleMappingPanel({
   canonicalCatalog,
   canonicalGovernance,
   canonicalOrganizationId,
+  organizationNames,
   canonicalActor = "user",
   canonicalSessionPermissions,
   canonicalEnabled = false,
@@ -377,7 +379,7 @@ export function ParameterModuleMappingPanel({
     onValueChange={(value) => selectTab(value as ParameterAdminModulesSubView)} items={[...moduleTabs]} />;
   const structureActions = canonicalEnabled ? <div className="module-structure-actions" role="group" aria-label="模块结构操作">
     <ModuleStructureImport key={`${canonicalOrganizationId}:${currentPersonId}`} apiClient={apiClient} organizationId={canonicalOrganizationId} sessionPermissions={canonicalSessionPermissions}
-      canImport={canManageTaxonomy && canonicalActor !== "agent"} onChanged={() => {
+      organizationNames={organizationNames} projects={projects} canImport={canManageTaxonomy && canonicalActor !== "agent"} onChanged={() => {
         setRegistryRefresh(value => value + 1);
         setCanonicalDiscoveryRefresh(value => value + 1);
       }} />

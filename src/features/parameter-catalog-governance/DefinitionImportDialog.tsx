@@ -7,7 +7,10 @@ import type { ParameterCatalogRepository } from "@/application/ports/ParameterCa
 import type { ParameterCatalogGovernanceRepository } from "@/application/ports/ParameterCatalogGovernanceRepository";
 import type { ParameterModuleRegistryRepository } from "@/application/ports/ParameterModuleRegistryRepository";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
-import { ModalDialog } from "@/components/common/ModalDialog";
+import { FileDropZone } from "@/components/common/FileDropZone";
+import { ImportDialog } from "@/components/common/ImportDialog";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { SelectControl } from "@/components/common/SelectControl";
 import { Textarea } from "@/components/ui/textarea";
 import { modulePathSegments } from "@/components/admin/moduleManagementTreeUtils";
@@ -32,7 +35,13 @@ import { formatUsageSummary } from "./formatUsageSummary";
 import { createGovernanceIdempotencyKey, createGovernanceSubmitGate, fingerprintGovernanceDraft } from "./governanceState";
 
 const formatDiffValue = (value: unknown) => value == null ? "—" : typeof value === "string" ? value : JSON.stringify(value);
-const outcomeLabels = { create: "新建", revise: "修订", error: "错误", skip: "跳过", conflict: "冲突" } as const;
+const outcomes = {
+  create: { label: "新建", tone: "success" },
+  revise: { label: "修订", tone: "info" },
+  skip: { label: "无变化", tone: "neutral" },
+  error: { label: "错误", tone: "danger" },
+  conflict: { label: "冲突", tone: "warning" },
+} as const;
 const matchLabels = { "catalog-primary": "规范标识", "catalog-alias": "正式目录别名", "organization-compatible": "组织 compatible 规则" } as const;
 
 export type DefinitionImportDialogProps = {
@@ -68,7 +77,7 @@ export function DefinitionImportDialog(props: DefinitionImportDialogProps) {
   const documents = [{ document, fileName }, ...additionalDocuments];
   const fingerprint = JSON.stringify([catalogReleaseId, documents, organizationSubjectSelections]);
   const hasContent = documents.some(item => item.document.trim());
-  const fileInput = useRef<HTMLInputElement>(null);
+  const [editorOpen, setEditorOpen] = useState(false);
   const [entries, setEntries] = useState<CatalogMarkdownImportResponse["item"]["entries"] | null>(null);
   const organizationCandidates = [...new Map(entries?.flatMap(entry => entry.matchCandidates?.length
     ? [[entry.selector, entry.matchCandidates] as const] : [])).entries()];
@@ -204,6 +213,13 @@ export function DefinitionImportDialog(props: DefinitionImportDialogProps) {
     flow.reset();
     setOrganizationSubjectSelections(current => [...current.filter(item => item.selector !== selector), ...(subjectId ? [{ selector, subjectId }] : [])]);
   };
+  const removeFile = (index: number) => {
+    const remaining = documents.filter((_, i) => i !== index);
+    const first = remaining[0];
+    updateDocument(first?.document ?? "", first?.fileName ?? "粘贴.md");
+    setAdditionalDocuments(remaining.slice(1)); setActiveFile(0);
+    setUploadedFileName(first?.fileName ?? null);
+  };
   const runPreview = async () => {
     if (!canPreview || inputDisabled || !hasContent || (parsedFingerprint === fingerprint && !mustRePreview) || !catalog.previewMarkdownImport) return;
     await flow.preview(async () => {
@@ -212,6 +228,7 @@ export function DefinitionImportDialog(props: DefinitionImportDialogProps) {
           ...(organizationSubjectSelections.length ? { organizationSubjectSelections } : {}) } }, { catalogReleaseId },
       );
       setEntries(result.item.entries);
+      setEditorOpen(false);
       setParsedFingerprint(fingerprint);
       setPlacementHints(result.item.placementHints ?? []);
       setNoChange(result.item.noChange);
@@ -303,26 +320,45 @@ export function DefinitionImportDialog(props: DefinitionImportDialogProps) {
         : "补登记失败，可重试同一次操作。");
     } finally { if (epoch === registrationEpoch.current) setRegistrationPending(false); }
   };
-  const visibleEntries = entries?.filter((entry) =>
-    !errorsOnly || entry.outcome === "error" || entry.outcome === "conflict");
+  const groups = new Map<string, NonNullable<typeof entries>>();
   const counts = { create: 0, revise: 0, error: 0, skip: 0, conflict: 0 };
-  entries?.forEach((entry) => { counts[entry.outcome] += 1; });
-  const summary = (Object.keys(outcomeLabels) as (keyof typeof outcomeLabels)[])
-    .filter((outcome) => counts[outcome]).map((outcome) => `${outcomeLabels[outcome]} ${counts[outcome]}`).join(" · ");
+  for (const entry of entries ?? []) {
+    counts[entry.outcome] += 1;
+    if (errorsOnly && entry.outcome !== "error" && entry.outcome !== "conflict") continue;
+    const key = entry.match?.subjectId ?? JSON.stringify([entry.subjectHeading, entry.selector]);
+    const group = groups.get(key);
+    if (group) group.push(entry);
+    else groups.set(key, [entry]);
+  }
   const placementWarnings = placementHints?.flatMap((hint) => hint.warnings.map((warning) => ({
     selector: hint.selector, fileName: hint.fileName, line: warning.line, warning: warning.message,
   }))) ?? [];
 
   return <>
-    <ModalDialog open={open} onDismiss={pending || registrationPending ? undefined : close}
-      className={["confirm-dialog", "governance-confirm-dialog", "modal-card--lg", "parameter-catalog-publication-dialog",
-        "parameter-catalog-import-dialog"].join(" ")}
-      backdropClassName="param-admin-modal-backdrop" describedBy>
-      {({ titleId, descriptionId }) => <>
-        <h2 id={titleId}>批量导入定义</h2>
-        <div className="confirm-dialog__scroll"><div id={descriptionId} className="governance-confirm-dialog__body">
+    <ImportDialog open={open} scope="参数定义" title="批量导入定义"
+      description="粘贴或上传 .md 定义文件，解析预览全部通过后一次发布。"
+      closeDisabled={pending || registrationPending} onClose={close}
+      utilities={<>
+        {canPreview && !succeeded ? <a className="link-button" download="定义导入模板.md"
+          href={`data:text/markdown;charset=utf-8,${encodeURIComponent(DEFINITION_IMPORT_TEMPLATE)}`}>下载模板</a> : null}
+        {job && publicationJobIsPending(job) ? <Button type="button" variant="ghost"
+          onClick={() => void flow.pollJob(job.id)}>{publicationCopy.refreshJob}</Button> : null}
+        {canRefresh ? <Button type="button" variant="ghost" disabled={pending}
+          onClick={() => void refresh()}>更新发布状态</Button> : null}
+      </>}
+      actions={<>
+        {canPublish && candidate && !succeeded ? <Button type="button" variant={mustRePreview ? "outline" : "default"}
+          disabled={inputDisabled || mustRePreview} onClick={() => setConfirm("publish")}>
+          {pending ? publicationCopy.processing : publicationCopy.publish}</Button> : null}
+        {canPreview && !succeeded && (!candidate || mustRePreview) ? <Button type="button"
+          disabled={inputDisabled || !hasContent || (parsedFingerprint === fingerprint && !mustRePreview)} onClick={() => void runPreview()}>
+          {pending ? "正在解析并预览…" : mustRePreview ? publicationCopy.rebase : "解析并预览"}</Button> : null}
+      </>}>
+        <details className="import-dialog__rules">
+          <summary>格式与限制</summary>
           <p>粘贴或一次上传多个 .md 文件，格式见模板。每批最多 20 个文件、合计 1 MiB、1024 条定义；点击一次即可解析全部文件，集中显示错误与冲突，全部通过后一次发布。业务分类和展示别名为可选的登记提示，不影响发布。</p>
           <p>主体标题可用规范标识或正式目录别名。仅由当前组织 compatible 规则识别的短名，需要在预览中确认主体。</p>
+        </details>
           {unavailable ? <p role="status">{unavailable}</p> : null}
           {advisory ? <p role="status" data-tone={advisory.tone}>{advisory.message}</p> : null}
           {status ? <p ref={jobStatusRef} tabIndex={-1} role="status" aria-label="发布任务状态" data-publication-status={job?.status}
@@ -361,15 +397,13 @@ export function DefinitionImportDialog(props: DefinitionImportDialogProps) {
             <button type="button" className="button subtle sm" disabled={registrationPending}
               onClick={() => setSubjectEpoch(value => value + 1)}>刷新登记状态</button>
           </section> : null}
-          {canPreview && !succeeded ? <div className="parameter-catalog-publication-dialog__form">
-            <div className="parameter-catalog-import-dialog__file-actions">
-              <button type="button" className="button subtle sm" disabled={inputDisabled}
-                onClick={() => fileInput.current?.click()}>上传 .md 文件</button>
-              <input ref={fileInput} aria-label="上传 .md 文件" type="file" accept=".md,text/markdown" multiple
-                hidden disabled={inputDisabled} onChange={(event) => {
-                const files = Array.from(event.target.files ?? []);
-                event.target.value = "";
-                if (!files.length) return;
+          {canPreview && !succeeded ? <details open={!entries || editorOpen}
+            onToggle={event => { if (entries) setEditorOpen(event.currentTarget.open); }}>
+            <summary hidden={!entries}>Markdown 文档（{documents.length} 个文件）</summary>
+            <div className="grid min-w-0 gap-3">
+              <FileDropZone label="上传 .md 文件" accept=".md,text/markdown" multiple disabled={inputDisabled}
+                hint={uploadedFileName ? `已选择 ${documents.length} 个文件（重新上传将替换本批文件）` : undefined}
+                onRemove={removeFile} onSelect={files => {
                 if (files.some(file => !/\.md$/iu.test(file.name))) { flow.setFailure("请选择 .md 文件。"); return; }
                 if (files.length > 20 || files.reduce((size, file) => size + file.size, 0) > 1_048_576) {
                   flow.setFailure("每批最多上传 20 个文件，合计不能超过 1 MiB。"); return;
@@ -385,26 +419,17 @@ export function DefinitionImportDialog(props: DefinitionImportDialogProps) {
                   .catch(() => { if (epoch === registrationEpoch.current) flow.setFailure("文件读取失败，请重试。"); })
                   .finally(() => { if (epoch === registrationEpoch.current) flow.setPending(false); });
               }} />
-              {uploadedFileName ? <span>已选择 {documents.length} 个文件（重新上传将替换本批文件）</span> : null}
-              <a className="link-button" download="定义导入模板.md"
-                href={`data:text/markdown;charset=utf-8,${encodeURIComponent(DEFINITION_IMPORT_TEMPLATE)}`}>下载模板</a>
-            </div>
             {uploadedFileName ? <ul className="space-y-1" aria-label="已选择的文件">
               {documents.map((item, index) => <li key={index} className="flex items-center gap-2 break-all">
                 <button type="button" className="button subtle sm min-w-0" style={{ whiteSpace: "normal", overflowWrap: "anywhere", textAlign: "left" }} aria-pressed={activeFile === index}
                   disabled={inputDisabled} onClick={() => setActiveFile(index)}>{item.fileName}</button>
                 <button type="button" className="button ghost sm" aria-label={`移除 ${item.fileName}`}
-                  disabled={inputDisabled} onClick={() => {
-                    const remaining = documents.filter((_, i) => i !== index);
-                    const first = remaining[0];
-                    updateDocument(first?.document ?? "", first?.fileName ?? "粘贴.md");
-                    setAdditionalDocuments(remaining.slice(1)); setActiveFile(0);
-                    setUploadedFileName(first?.fileName ?? null);
-                  }}>移除</button>
+                  disabled={inputDisabled} onClick={() => removeFile(index)}>移除</button>
               </li>)}
             </ul> : null}
             <label>Markdown 文档
-              <Textarea aria-label="Markdown 文档" rows={14} value={documents[activeFile]?.document ?? ""} disabled={inputDisabled}
+              <Textarea aria-label="Markdown 文档" className="field-sizing-fixed font-mono" rows={14}
+                value={documents[activeFile]?.document ?? ""} disabled={inputDisabled}
                 onChange={(event) => {
                   if (activeFile === 0) updateDocument(event.target.value, fileName);
                   else {
@@ -414,7 +439,8 @@ export function DefinitionImportDialog(props: DefinitionImportDialogProps) {
                   }
                 }} />
             </label>
-          </div> : null}
+            </div>
+          </details> : null}
             {entries ? <div ref={resultsRef} tabIndex={-1} role="region" aria-label="整批导入结果" className="parameter-catalog-import-dialog__results">
               <p role="status">已完成全部 {documents.length} 个文件的解析与预览。{counts.error || counts.conflict
                 ? "以下列出本批全部错误与冲突，修正后重新预览。" : "请核对本批全部结果。"}</p>
@@ -424,7 +450,10 @@ export function DefinitionImportDialog(props: DefinitionImportDialogProps) {
                   <li key={`${item.selector}-${item.line}-${index}`}>{item.fileName ? `${item.fileName} · ` : ""}{item.selector} · 第 {item.line} 行：{item.warning}</li>)}</ul>
               </section> : null}
               <div className="parameter-catalog-import-dialog__summary">
-                {summary ? <p>{summary}</p> : null}
+                <div className="import-dialog__badges">
+                  {(Object.keys(outcomes) as (keyof typeof outcomes)[]).filter(outcome => counts[outcome] > 0).map(outcome =>
+                    <Badge key={outcome} variant="secondary" data-tone={outcomes[outcome].tone}>{outcomes[outcome].label} {counts[outcome]}</Badge>)}
+                </div>
                 {counts.error > 0 || counts.conflict > 0
                   ? <button type="button" className="button subtle sm" aria-pressed={errorsOnly}
                     onClick={() => setErrorsOnly((value) => !value)}>仅显示错误与冲突</button> : null}
@@ -443,25 +472,33 @@ export function DefinitionImportDialog(props: DefinitionImportDialogProps) {
                 {organizationSubjectSelections.length > 0 && !succeeded ? <button type="button" className="button subtle sm"
                   disabled={inputDisabled} onClick={() => { flow.reset(); setOrganizationSubjectSelections([]); }}>清除组织匹配选择</button> : null}
               </section> : null}
-              <table className="definition-editor__table parameter-catalog-import-dialog__table">
-                <caption>导入结果</caption><colgroup><col /><col /><col /><col /><col /></colgroup><thead><tr>
-                  <th scope="col">主体</th><th scope="col">属性键</th><th scope="col">显示名</th>
+              <table className="import-dialog__table parameter-catalog-import-dialog__table">
+                <caption className="sr-only">导入结果</caption><thead><tr>
+                  <th scope="col">属性键</th><th scope="col">显示名</th>
                   <th scope="col">结果</th><th scope="col">诊断</th>
-                </tr></thead><tbody>{visibleEntries?.map((entry, index) =>
-                  <tr key={`${entry.subjectHeading}-${entry.definitionHeading}-${index}`}>
-                    <td>{entry.selector || "—"}{entry.match ? <div>{matchLabels[entry.match.source]} · {entry.match.canonicalName}</div> : null}
-                      {entry.fileName ? <div className="break-all text-xs text-muted-foreground">{entry.fileName}</div> : null}</td><td><code>{entry.propertyKey || "—"}</code></td>
+                </tr></thead>
+                {[...groups].map(([key, group]) => {
+                  const canonicalName = group[0]!.match?.canonicalName ?? group[0]!.selector;
+                  const aliases = new Map(group.flatMap(({ selector, match }) =>
+                    match && selector && selector !== canonicalName ? [[selector, matchLabels[match.source]] as const] : []));
+                  return <tbody key={key}>
+                  <tr><th scope="rowgroup" colSpan={4}>{canonicalName || "未识别主体"}
+                    {[...aliases].map(([alias, label]) => <span key={alias} className="import-dialog__secondary ml-2 font-normal">{label} · {alias}</span>)}
+                  </th></tr>
+                  {group.map((entry, index) =>
+                  <tr key={index} data-tone={outcomes[entry.outcome].tone}>
+                    <td><code>{entry.propertyKey || "—"}</code></td>
                     <td>{entry.displayName || "—"}</td>
-                    <td><span className="parameter-catalog__badge"
-                      data-tone={entry.outcome === "error" || entry.outcome === "conflict" ? "warning" : undefined}>
-                      {outcomeLabels[entry.outcome]}</span>
+                    <td><Badge variant="secondary" data-tone={outcomes[entry.outcome].tone}>{outcomes[entry.outcome].label}</Badge>
                       {entry.revisionClass ? <div>{entry.revisionClass === "semantic" ? "语义修订" : "说明修订"}</div> : null}
                       {entry.riskClass ? <div>{entry.riskClass === "high" ? "高风险" : "低风险"}</div> : null}</td>
-                    <td>{entry.diffs?.map((diff) => <div key={diff.field}>{diff.field}：{formatDiffValue(diff.oldValue)} → {formatDiffValue(diff.newValue)}</div>)}
+                    <td>{entry.fileName ? <div className="import-dialog__secondary text-sm">{entry.fileName}</div> : null}
+                      {entry.diffs?.map((diff) => <div key={diff.field}>{diff.field}：{formatDiffValue(diff.oldValue)} → {formatDiffValue(diff.newValue)}</div>)}
                       {entry.usageSummary ? <div>{formatUsageSummary(entry.usageSummary)}</div> : null}
                       {entry.diagnostics.map((item, i) => <div key={`${item.field}-${item.line}-${i}`}>
-                      第 {item.line} 行 · {item.field}：{item.message}</div>)}</td>
-                  </tr>)}</tbody>
+                      <span className="import-dialog__secondary">第 {item.line} 行 · </span>{item.field}：{item.message}</div>)}</td>
+                  </tr>)}</tbody>;
+                })}
               </table>
             </div> : null}
           {candidate && !previewStale && !succeeded
@@ -474,24 +511,7 @@ export function DefinitionImportDialog(props: DefinitionImportDialogProps) {
             <div><dt>{publicationCopy.approval}</dt><dd>{publicationApprovalCopy(candidate.riskClass)}</dd></div>
             <div><dt>{publicationCopy.scope}</dt><dd>{publicationCopy.sharedScope}</dd></div>
           </dl> : null}
-        </div></div>
-        <div className="dialog-actions">
-          {canPreview && !succeeded && (!candidate || mustRePreview)
-            ? <button type="button" className="button primary sm"
-            disabled={inputDisabled || !hasContent || (parsedFingerprint === fingerprint && !mustRePreview)} onClick={() => void runPreview()}>
-            {pending ? "正在解析并预览…" : mustRePreview ? publicationCopy.rebase : "解析并预览"}</button> : null}
-          {canPublish && candidate && !succeeded ? <button type="button" className="button primary sm"
-            disabled={inputDisabled || mustRePreview}
-            onClick={() => setConfirm("publish")}>
-            {pending ? publicationCopy.processing : publicationCopy.publish}</button> : null}
-          {job && publicationJobIsPending(job) ? <button type="button" className="button ghost sm"
-            onClick={() => void flow.pollJob(job.id)}>{publicationCopy.refreshJob}</button> : null}
-          {canRefresh ? <button type="button" className="button ghost sm" disabled={pending}
-            onClick={() => void refresh()}>更新发布状态</button> : null}
-          <button type="button" className="button ghost sm" disabled={pending || registrationPending} onClick={close}>关闭</button>
-        </div>
-      </>}
-    </ModalDialog>
+    </ImportDialog>
     <ConfirmDialog open={Boolean(childRegistration)} title="补登记子节点" confirmLabel="确认补登记" pending={registrationPending}
       confirmDisabled={registrationStale || !mayRegisterInOrganization(actor, sessionPermissions, domainState)}
       acknowledgement="我已核对全部待登记子节点及驱动的业务归属" error={registrationError}

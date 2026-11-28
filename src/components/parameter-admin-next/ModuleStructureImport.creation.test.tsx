@@ -21,7 +21,7 @@ const receipt = { id: "created", organizationId: "org-a", changedModules: 2, cha
 
 async function openFile(user: ReturnType<typeof userEvent.setup>) {
   await user.click(screen.getByRole("button", { name: "导入结构" }));
-  await user.upload(screen.getByLabelText("JSON 文件"), new File([JSON.stringify(document)], "new-drivers.json", { type: "application/json" }));
+  await user.upload(screen.getByTestId("file-drop-zone-input"), new File([JSON.stringify(document)], "new-drivers.json", { type: "application/json" }));
   await user.click(screen.getByRole("button", { name: "预览" }));
   await screen.findByRole("region", { name: "新增驱动预览" });
 }
@@ -52,7 +52,7 @@ it("publishes declared drivers with an acknowledgement, then requires a separate
   await confirmPublication(user);
   expect(await screen.findByLabelText("驱动创建进度")).toHaveTextContent("正在发布新驱动，模块与组织登记尚未提交");
   expect(screen.getByRole("button", { name: "确认提交" })).toBeDisabled();
-  expect(screen.getByLabelText("JSON 文件")).toBeDisabled();
+  expect(screen.getByTestId("file-drop-zone-input")).toBeDisabled();
   expect(changed).not.toHaveBeenCalled();
   expect(post.mock.calls[1]).toEqual(["/api/v2/organizations/org-a/module-structure/driver-publications", expect.objectContaining({
     document, token: "required", reason: "新增防伪驱动", idempotencyKey: expect.any(String),
@@ -86,7 +86,7 @@ it("keeps a failed publication request key for explicit retry and distinguishes 
   await openFile(user);
   await user.type(screen.getByLabelText("变更原因"), "新增");
   await confirmPublication(user);
-  expect(await screen.findByRole("alert")).toHaveTextContent("网络连接失败");
+  expect(await screen.findByRole("alert")).toHaveTextContent("无法连接服务器");
   await user.click(screen.getByText("诊断详情（可提供给编码代理）"));
   expect((screen.getByLabelText("导入诊断信息") as HTMLTextAreaElement).value).toContain('"phase": "publish"');
   await confirmPublication(user);
@@ -102,10 +102,10 @@ it("preserves an in-flight publication when closing and reopening the import dia
   await openFile(user);
   await user.type(screen.getByLabelText("变更原因"), "新增");
   await confirmPublication(user);
-  await user.click(screen.getByRole("button", { name: "关闭" }));
+  await user.click(screen.getAllByRole("button", { name: "关闭" })[1]!);
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   await user.click(screen.getByRole("button", { name: "导入结构" }));
-  expect(screen.getByText(/文件：new-drivers.json/)).toBeInTheDocument();
+  expect(screen.getByRole("list", { name: "已选文件" })).toHaveTextContent("new-drivers.json");
   expect(screen.getByLabelText("驱动创建进度")).toHaveTextContent("正在发布新驱动");
   await user.click(screen.getByRole("button", { name: "刷新发布进度" }));
   expect(await screen.findByLabelText("驱动创建进度")).toHaveTextContent("驱动已发布");
@@ -122,7 +122,7 @@ it("starts a new acknowledged attempt after a confirmed failed job but preserves
   await confirmPublication(user);
   expect(await screen.findByLabelText("驱动创建进度")).toHaveTextContent("暂时无法继续");
   await confirmPublication(user, "重新发布驱动");
-  expect(await screen.findByRole("alert")).toHaveTextContent("网络连接失败");
+  expect(await screen.findByRole("alert")).toHaveTextContent("无法连接服务器");
   await confirmPublication(user, "重新发布驱动");
   expect(await screen.findByLabelText("驱动创建进度")).toHaveTextContent("正在发布新驱动");
   expect(post.mock.calls[1][1].idempotencyKey).not.toBe(post.mock.calls[2][1].idempotencyKey);
@@ -139,7 +139,7 @@ it("resumes published drivers from a reuploaded original file without another pu
   expect(screen.getByText(/重新上传同一份 JSON/)).toBeInTheDocument();
   await user.type(screen.getByLabelText("变更原因"), "继续登记");
   await user.click(screen.getByRole("button", { name: "确认提交" }));
-  expect(await screen.findByRole("alert")).toHaveTextContent("网络连接失败");
+  expect(await screen.findByRole("alert")).toHaveTextContent("无法连接服务器");
   await user.click(screen.getByRole("button", { name: "确认提交" }));
   expect(await screen.findByText(/回执 created/)).toBeInTheDocument();
   expect(post.mock.calls[1][1].idempotencyKey).toBe(post.mock.calls[2][1].idempotencyKey);
@@ -186,12 +186,14 @@ it("copies the new-driver declaration identity and exact field diagnostic", asyn
   const copy = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue();
   render(<ModuleStructureImport apiClient={{ post } as unknown as ApiClient} organizationId="org-a" canImport sessionPermissions={permissions} />);
   await user.click(screen.getByRole("button", { name: "导入结构" }));
-  await user.upload(screen.getByLabelText("JSON 文件"), new File([JSON.stringify(document)], "new-drivers.json", { type: "application/json" }));
+  await user.upload(screen.getByTestId("file-drop-zone-input"), new File([JSON.stringify(document)], "new-drivers.json", { type: "application/json" }));
   await user.click(screen.getByRole("button", { name: "预览" }));
-  const alert = await screen.findByRole("alert");
-  expect(alert).toHaveTextContent("新驱动：防伪驱动 · fm1230 · fdw,* · newDrivers[0]");
-  expect(alert).toHaveTextContent("/newDrivers/0/compatible");
-  expect(alert).toHaveTextContent("填写 DTS 中的精确 compatible");
+  await screen.findByRole("alert");
+  await user.click(screen.getByText("诊断详情（可提供给编码代理）"));
+  const details = screen.getByText("诊断详情（可提供给编码代理）").closest("details");
+  expect(details).toHaveTextContent("新驱动：防伪驱动 · fm1230 · fdw,* · newDrivers[0]");
+  expect(details).toHaveTextContent("/newDrivers/0/compatible");
+  expect(details).toHaveTextContent("填写 DTS 中的精确 compatible");
   await user.click(screen.getByRole("button", { name: "复制诊断信息" }));
   expect(JSON.parse(String(copy.mock.calls[0][0]))).toMatchObject({ issues: [expect.objectContaining({ newDriver: issue.newDriver })] });
 });

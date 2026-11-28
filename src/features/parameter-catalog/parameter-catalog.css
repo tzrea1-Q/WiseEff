@@ -1308,20 +1308,16 @@ button.parameter-catalog__tree-toggle:hover {
 }
 
 .parameter-catalog-import-dialog__table {
-  width: 100%;
-  min-width: 0;
   table-layout: fixed;
   overflow-wrap: anywhere;
 }
 
-.parameter-catalog-import-dialog__table caption {
-  text-align: left;
+.parameter-catalog-import-dialog__table thead th:first-child {
+  width: clamp(30%, 15rem, 42%);
 }
 
-.parameter-catalog-import-dialog__table col:nth-child(1) { width: 20%; }
-.parameter-catalog-import-dialog__table col:nth-child(2) { width: 18%; }
-.parameter-catalog-import-dialog__table col:nth-child(3) { width: 16%; }
-.parameter-catalog-import-dialog__table col:nth-child(4) { width: 5.5rem; }
+.parameter-catalog-import-dialog__table thead th:nth-child(2) { width: 18%; }
+.parameter-catalog-import-dialog__table thead th:nth-child(3) { width: 15%; }
 
 .parameter-catalog-import-dialog__results {
   display: grid;
@@ -1335,29 +1331,6 @@ button.parameter-catalog__tree-toggle:hover {
   align-items: center;
   justify-content: space-between;
   gap: var(--space-2);
-}
-
-.parameter-catalog-import-dialog__file-actions {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: var(--space-3);
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-
-.parameter-catalog-import-dialog__file-actions input[hidden] {
-  display: none;
-}
-
-.parameter-catalog-import-dialog .parameter-catalog-publication-dialog__form textarea {
-  height: 20rem;
-  field-sizing: fixed;
-  font-family: var(--font-mono);
-}
-
-.parameter-catalog-import-dialog .confirm-dialog__scroll {
-  padding-right: var(--space-4);
 }
 
 .parameter-catalog-publication-dialog .confirm-dialog__scroll {

@@ -25,6 +25,7 @@ export function OrganizationModuleGovernancePanel({
   catalog,
   governance,
   organizationId,
+  organizationNames,
   actor = "user",
   sessionPermissions,
   canonicalEnabled = false,
@@ -38,6 +39,7 @@ export function OrganizationModuleGovernancePanel({
   catalog?: ParameterCatalogRepository | null;
   governance?: ParameterCatalogGovernanceRepository | null;
   organizationId?: string;
+  organizationNames?: Readonly<Record<string, string>>;
   actor?: CatalogActorKind;
   sessionPermissions?: readonly string[] | null;
   canonicalEnabled?: boolean;
@@ -93,6 +95,7 @@ export function OrganizationModuleGovernancePanel({
       canonicalCatalog={canonicalEnabled ? catalog ?? undefined : undefined}
       canonicalGovernance={canonicalEnabled ? governance ?? undefined : undefined}
       canonicalOrganizationId={canonicalEnabled ? organizationId : undefined}
+      organizationNames={organizationNames}
       canonicalActor={actor}
       canonicalSessionPermissions={sessionPermissions}
       canonicalEnabled={canonicalEnabled}
