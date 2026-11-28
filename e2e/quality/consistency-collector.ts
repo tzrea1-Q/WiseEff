@@ -99,7 +99,7 @@ export function collectConsistencyMeasurements() {
     switchProbe.style.borderRadius = tier.radius;
     switchProbe.style.fontSize = tier.fontSize;
     switchProbe.style.lineHeight = tier.lineHeight;
-    switchProbe.style.fontWeight = tier.variant === "page" ? "normal" : "var(--view-switch-font-weight)";
+    switchProbe.style.fontWeight = "var(--view-switch-font-weight)";
     switchProbe.style.backgroundColor = tier.background;
     const style = getComputedStyle(switchProbe);
     const resolved = {
@@ -108,9 +108,7 @@ export function collectConsistencyMeasurements() {
       fontSize: style.fontSize, lineHeight: style.lineHeight, fontWeight: style.fontWeight, background: style.backgroundColor
     };
     switchProbe.style.backgroundColor = tier.selectedBackground;
-    switchProbe.style.fontWeight = "var(--view-switch-font-weight)";
-    return { ...resolved, selectedBackground: style.backgroundColor,
-      ...(tier.variant === "page" ? { selectedFontWeight: style.fontWeight } : {}) };
+    return { ...resolved, selectedBackground: getComputedStyle(switchProbe).backgroundColor };
   });
   switchProbe.remove();
   const primaryToken = getComputedStyle(document.documentElement).getPropertyValue("--primary").trim();

@@ -9,13 +9,12 @@ const signatures = [
   { variant: "tabs", role: "tab", groupRole: "tablist", height: 32, radius: "8px 8px 8px 8px", fontSize: "13px", lineHeight: "20px", fontWeight: "600", background: "rgb(255, 255, 255)", selectedBackground: "rgb(218, 226, 255)" },
   { variant: "toggle", role: "radio", groupRole: "radiogroup", height: 28, radius: "6px 6px 6px 6px", fontSize: "12px", lineHeight: "18px", fontWeight: "600", background: "rgb(247, 249, 252)", selectedBackground: "rgb(255, 255, 255)" },
   { variant: "toggle-outline", role: "radio", groupRole: "radiogroup", height: 28, radius: "6px 6px 6px 6px", fontSize: "12px", lineHeight: "18px", fontWeight: "600", background: "rgb(255, 255, 255)", selectedBackground: "rgb(218, 226, 255)" },
-  { variant: "page", role: "button", groupRole: "navigation", height: 40, radius: "0px 0px 0px 0px", fontSize: "14px", lineHeight: "22px", fontWeight: "400", selectedFontWeight: "600", background: "rgba(0, 0, 0, 0)", selectedBackground: "rgba(0, 0, 0, 0)" }
+  { variant: "page", role: "button", groupRole: "navigation", height: 40, radius: "0px 0px 0px 0px", fontSize: "14px", lineHeight: "22px", fontWeight: "600", background: "rgba(0, 0, 0, 0)", selectedBackground: "rgba(0, 0, 0, 0)" }
 ];
 const pageSignature = signatures[4];
 
 function measurement(style = signatures[0], selected = true) {
   return { ...style, dom: "button.organization-switch", group: "nav.organization", selected,
-    fontWeight: selected ? style.selectedFontWeight ?? style.fontWeight : style.fontWeight,
     background: selected ? style.selectedBackground : style.background };
 }
 
