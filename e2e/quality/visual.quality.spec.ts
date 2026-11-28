@@ -65,9 +65,14 @@ async function expectLocalizedVisualReviewFixture(page: Page) {
   await expect(review.getByRole("heading", { name: "cccv_0", exact: true })).toBeVisible();
   await expect(review.getByText(`修改原因：${title}`, { exact: true })).toBeVisible();
   await expect(review.getByRole("region", { name: "固定源修改片段" }).locator('[data-kind="add"] code')).toContainText("<4600 0>");
+  const queuePanel = page.getByRole("region", { name: "审阅队列", exact: true });
+  const queueHeight = await queuePanel.evaluate(element => element.clientHeight);
+  const detailHeight = await review.evaluate(element => element.clientHeight);
   await review.getByText("查看完整源文件", { exact: true }).click();
   await expect(review.getByLabel("固定源变更前")).toContainText("<4500 0>");
   await expect(review.getByLabel("固定源变更后")).toContainText("<4600 0>");
+  await expect.poll(() => review.evaluate(element => element.clientHeight)).toBeGreaterThan(detailHeight);
+  expect(await queuePanel.evaluate(element => element.clientHeight)).toBe(queueHeight);
   await review.getByText("查看完整源文件", { exact: true }).click();
   await review.getByRole("heading", { name: "cccv_0", exact: true }).scrollIntoViewIfNeeded();
   const provenance = review.locator("details").filter({ has: page.getByText("溯源信息", { exact: true }) });

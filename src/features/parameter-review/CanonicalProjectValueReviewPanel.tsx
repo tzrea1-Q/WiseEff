@@ -771,6 +771,7 @@ export function CanonicalProjectValueReviewPanel({
                   <div><dt>提交人</dt><dd>{selected.submitterName ?? userName(selected.submitterUserId)}</dd></div>
                   <div><dt>指定审核人</dt><dd>{selected.assignedToName ?? userName(selected.assignedToUserId)}</dd></div>
                 </dl>
+                {selected.status !== "pending" ? <p className="review-inspector__outcome" role="note">{selected.status === "approved" ? selected.applyOutcome ? "已批准并应用。" : "已批准，应用结果待核对。" : `${canonicalStatusLabels[selected.status]}，本次变更未应用。`}</p> : null}
               </header>
               {reviewIssue && !approveOpen && !rejectOpen ? <div className="review-state" role="alert"><p>{reviewIssue}</p>
                 <button type="button" className="button subtle" disabled={busy || loading} onClick={refreshSelection}>{loading ? "核对中…" : "重新核对状态"}</button></div> : null}
@@ -800,13 +801,18 @@ export function CanonicalProjectValueReviewPanel({
                     ) : null}
                 </div>
               <section aria-label="变更摘要" className="review-inspector__change-summary">
-                <h4 className="sr-only">变更摘要</h4>
-                <p>{singleDiff?.sourceName ?? selected.sourceFormat.toUpperCase()} · {selectedLocator}</p>
+                <h4>变更摘要</h4>
+                {sourceDiffState !== "loading" ? <dl className="review-inspector__values">
+                  <div><dt>提交前</dt><dd><code>{selectedBefore ?? "原值待核对"}</code>{selectedBefore && selectedParameter?.unit ? ` ${selectedParameter.unit}` : ""}</dd></div>
+                  <div><dt>提交目标</dt><dd><code aria-label="固定源目标内容">{selected.action === "delete" ? "删除属性" : canonicalRequestSourceText(selected)}</code>{selected.action !== "delete" && selectedParameter?.unit ? ` ${selectedParameter.unit}` : ""}</dd></div>
+                </dl> : null}
               </section>
-              {selected.status !== "pending" ? <p className="review-inspector__notice" role="note">{selected.status === "approved" ? selected.applyOutcome ? "已批准并应用。" : "已批准，应用结果待核对。" : `${canonicalStatusLabels[selected.status]}，本次变更未应用。`}</p> : null}
               <section aria-label="前后对比"><h4>前后对比</h4>
+                <dl className="review-inspector__source">
+                  <div><dt>来源文件</dt><dd>{singleDiff?.sourceName ?? selected.sourceFormat.toUpperCase()}</dd></div>
+                  <div><dt>参数路径</dt><dd><code>{selectedLocator}</code></dd></div>
+                </dl>
               <p role="note">提交时来源快照</p>
-              {!singleDiff && sourceDiffState !== "loading" ? <p className="review-target-change"><code>{selectedBefore ?? "原值待核对"}</code><span aria-hidden="true"> → </span><code aria-label="固定源目标内容">{selected.action === "delete" ? "删除属性" : canonicalRequestSourceText(selected)}</code>{selectedParameter?.unit ? ` ${selectedParameter.unit}` : ""}</p> : null}
               {sourceDiffState === "loading" ? <p role="status">正在加载固定源差异…</p> : null}
               {singleDiff ? (
                 <section aria-label="固定源差异"><ReviewSourceDiff before={singleDiff.before} after={singleDiff.after} /></section>
