@@ -2,7 +2,7 @@ import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { WiseEffApiError } from "@/infrastructure/http/apiClient";
-import { presentError } from "@/infrastructure/http/presentError";
+import { toUserErrorMessage } from "@/infrastructure/http/userErrorMessage";
 
 type ImportIssue = {
   path: string;
@@ -80,8 +80,10 @@ export function importDiagnostic(cause: unknown, fallback: string, phase: Import
   if (!issues.length && apiError && (typeof apiError.details.path === "string" || Array.isArray(apiError.details.path))) {
     issues.push(normalizeIssue({ ...apiError.details, message: apiError.message }));
   }
+  const productError = apiError ? new WiseEffApiError(apiError.code, labels[apiError.message] ?? fallback, apiError.details, "") : cause;
+  const mapped = toUserErrorMessage(productError, fallback);
   return {
-    summary: boundedText(apiError && labels[apiError.message] || presentError(cause, fallback)),
+    summary: boundedText(apiError && labels[apiError.message] || mapped),
     code: apiError ? boundedText(apiError.code) : phase === "read" ? "INVALID_JSON" : "REQUEST_FAILED",
     message: boundedText(cause instanceof Error ? cause.message : fallback),
     ...(typeof apiError?.details.reason === "string" ? { reason: boundedText(apiError.details.reason) } : {}),
@@ -117,8 +119,12 @@ export function ModuleStructureImportError({ diagnostic, context }: {
   return <section className="min-w-0 space-y-3" aria-label="导入错误诊断">
     <div role="alert" className="space-y-2 break-words">
       <p className="form-error">{diagnostic.summary}</p>
-      {diagnostic.phase === "apply" && diagnostic.code === "CONFLICT" ? <p>请处理以下原因，再重新预览后确认。</p> : null}
-      {diagnostic.issues.length ? <ol className="max-h-64 space-y-3 overflow-auto">
+      {diagnostic.phase === "apply" && diagnostic.code === "CONFLICT" ? <p>请查看诊断详情，再重新预览后确认。</p> : null}
+    </div>
+    <details ref={detailsRef} className="space-y-3">
+      <summary>诊断详情（可提供给编码代理）</summary>
+      <p>具体原因：<code>{diagnostic.message}</code></p>
+      {diagnostic.issues.length ? <ol className="space-y-3">
         {diagnostic.issues.map((issue, index) => <li key={`${index}:${issue.path}`}>
           <p><strong>字段：<code>{issue.path}</code></strong></p>
           {issue.subject ? <p>主体：{issue.subject.displayAlias ? `${issue.subject.displayAlias} · ` : ""}<code>{issue.subject.subjectId}</code>
@@ -138,14 +144,11 @@ export function ModuleStructureImportError({ diagnostic, context }: {
           {issue.hint ? <p>修复建议：{issue.hint}</p> : null}
           {Object.prototype.hasOwnProperty.call(issue, "example") ? <p>格式示例（仅示意，请按实际业务填写）：<code>{displayValue(issue.example)}</code>{issue.exampleTruncated ? "（仅显示部分值）" : ""}</p> : null}
         </li>)}
-      </ol> : <p>具体原因：<code>{diagnostic.message}</code></p>}
+      </ol> : null}
       {diagnostic.truncated ? <p>错误较多，当前仅显示前 {diagnostic.issues.length} 条。修复后重新预览以检查剩余问题。</p> : null}
       {diagnostic.requestId ? <p>请求 ID：<code>{diagnostic.requestId}</code></p> : null}
-    </div>
-    <Button type="button" variant="outline" onClick={() => void copy()}>复制诊断信息</Button>
-    {copyStatus ? <p role="status">{copyStatus}</p> : null}
-    <details ref={detailsRef}>
-      <summary>诊断详情（可提供给编码代理）</summary>
+      <Button type="button" variant="outline" onClick={() => void copy()}>复制诊断信息</Button>
+      {copyStatus ? <p role="status">{copyStatus}</p> : null}
       <p>包含文件信息、错误原因和字段差异。请结合原始导出文件修复，再重新上传预览。</p>
       <Textarea ref={textRef} aria-label="导入诊断信息" readOnly value={report} rows={12} className="field-sizing-fixed max-h-64 font-mono" onFocus={event => event.currentTarget.select()} />
     </details>

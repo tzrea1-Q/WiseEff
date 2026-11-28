@@ -72,14 +72,15 @@ test("creates two drivers under new modules and resumes after publication withou
     const dialog = page.getByRole("dialog", { name: "导入模块结构", exact: true });
     const invalid = structuredClone(document);
     invalid.newDrivers![0]!.compatible = "wiseeff,*";
-    await dialog.getByLabel("JSON 文件").setInputFiles({ ...uploaded, buffer: Buffer.from(JSON.stringify(invalid)) });
+    await dialog.getByTestId("file-drop-zone-input").setInputFiles({ ...uploaded, buffer: Buffer.from(JSON.stringify(invalid)) });
     await dialog.getByRole("button", { name: "预览", exact: true }).click();
     const diagnostic = dialog.getByRole("region", { name: "导入错误诊断" });
+    await diagnostic.getByText("诊断详情（可提供给编码代理）", { exact: true }).click();
     await expect(diagnostic).toContainText("document.newDrivers.0.compatible");
     await expect(diagnostic).toContainText("wiseeff,*");
     await expect(dialog.getByRole("button", { name: "确认提交", exact: true })).toBeDisabled();
 
-    await dialog.getByLabel("JSON 文件").setInputFiles(uploaded);
+    await dialog.getByTestId("file-drop-zone-input").setInputFiles(uploaded);
     await dialog.getByRole("button", { name: "预览", exact: true }).click();
     const declarations = dialog.getByRole("region", { name: "新增驱动预览" });
     await expect(declarations).toContainText(compatibles[0]!);
@@ -112,7 +113,7 @@ test("creates two drivers under new modules and resumes after publication withou
       resolvePublisherActor: async principalId => createUserInvocation(await getAuthContext(db, principalId)),
       ownerId: "module-driver-import-browser-manager" })).toBe("claimed");
     await page.getByRole("button", { name: "导入结构", exact: true }).click();
-    await dialog.getByLabel("JSON 文件").setInputFiles(uploaded);
+    await dialog.getByTestId("file-drop-zone-input").setInputFiles(uploaded);
     await dialog.getByRole("button", { name: "预览", exact: true }).click();
     await expect(dialog.getByRole("status", { name: "驱动创建进度" })).toContainText("驱动已发布，模块与归属尚未提交");
     await expect(dialog.getByRole("button", { name: "发布新驱动", exact: true })).toHaveCount(0);
@@ -140,9 +141,9 @@ test("creates two drivers under new modules and resumes after publication withou
     const ids = created.map((subject: { subjectId: string }) => subject.subjectId);
     expect((await pool.query("select id from parameter_catalog.parameter_definitions where subject_id=any($1::text[])", [ids])).rowCount).toBe(0);
 
-    await dialog.getByRole("button", { name: "关闭", exact: true }).click();
+    await dialog.locator("footer").getByRole("button", { name: "关闭", exact: true }).click();
     await page.getByRole("button", { name: "导入结构", exact: true }).click();
-    await dialog.getByLabel("JSON 文件").setInputFiles(uploaded);
+    await dialog.getByTestId("file-drop-zone-input").setInputFiles(uploaded);
     await dialog.getByRole("button", { name: "预览", exact: true }).click();
     await expect(dialog.getByText("没有领域数据变更。", { exact: true })).toBeVisible();
     await expect(dialog.getByRole("button", { name: "发布新驱动", exact: true })).toHaveCount(0);

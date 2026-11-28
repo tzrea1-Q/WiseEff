@@ -29,6 +29,7 @@ function renderImport(options: {
   const ports = createMockCatalogPorts({ publicationOutcome: options.outcome ?? "active" });
   options.prepare?.(ports);
   const completed = vi.fn();
+  const onOpenChange = vi.fn();
   const ui = (catalogReleaseId: string = CATALOG_RELEASE_ID) => <DefinitionImportDialog open initialDocument={options.initialDocument} runtimeMode={options.runtimeMode ?? "api"}
     actor="org-admin" sessionPermissions={["catalog:author", "catalog:publish", "catalog:review-high-risk"]}
     domainState={deriveCatalogDomainState({ document: readyCatalogDocument })} catalog={ports.catalog}
@@ -40,10 +41,21 @@ function renderImport(options: {
       lowRiskSingleActorPublish: false, policyRevision: 1, frozen: false, adopted: true,
       currentReleaseId: CATALOG_RELEASE_ID, authoringAllowed: true, publishingAllowed: true,
       reviewHighRiskAllowed: true, blockers: [] }}
-    createIdempotencyKey={options.createIdempotencyKey ?? (() => "pub-key")} onOpenChange={vi.fn()} onCompleted={completed} />;
+    createIdempotencyKey={options.createIdempotencyKey ?? (() => "pub-key")} onOpenChange={onOpenChange} onCompleted={completed} />;
   const view = render(ui());
-  return { ports, completed, rerenderRelease: (releaseId: string) => view.rerender(ui(releaseId)) };
+  return { ports, completed, onOpenChange, rerenderRelease: (releaseId: string) => view.rerender(ui(releaseId)) };
 }
+
+it("routes the header close button through the unsaved draft confirmation", async () => {
+  const { onOpenChange } = renderImport({ initialDocument: "draft" });
+  const user = userEvent.setup();
+  const dialog = screen.getByRole("dialog", { name: "批量导入定义" });
+  await user.click(within(dialog).getAllByRole("button", { name: "关闭" })[0]!);
+  const confirm = screen.getByRole("dialog", { name: "离开未保存的编写" });
+  expect(onOpenChange).not.toHaveBeenCalled();
+  await user.click(within(confirm).getByRole("button", { name: "离开" }));
+  expect(onOpenChange).toHaveBeenCalledWith(false);
+});
 
 it("confirms an existing subject from the current organization's compatible rules and previews again", async () => {
   const document = "# Driver `direct_charger`";
@@ -62,7 +74,7 @@ it("confirms an existing subject from the current organization's compatible rule
   await user.click(await screen.findByRole("combobox", { name: "direct_charger 的组织匹配主体" }));
   await user.click(await screen.findByRole("option", { name: /huawei,direct_charger/ }));
   await user.click(screen.getByRole("button", { name: "解析并预览" }));
-  expect(await screen.findByText("组织 compatible 规则 · huawei,direct_charger")).toBeVisible();
+  expect(await screen.findByRole("rowheader", { name: /huawei,direct_charger.*组织 compatible 规则 · direct_charger/ })).toBeVisible();
   expect(preview).toHaveBeenLastCalledWith({ markdownImport: { document, fileName: "粘贴.md",
     organizationSubjectSelections: [{ selector: "direct_charger", subjectId: match.subjectId }] } }, { catalogReleaseId: CATALOG_RELEASE_ID });
 });
@@ -346,7 +358,8 @@ it("shows revision risk, unchanged notices and conflict guidance", async () => {
   expect((await screen.findByText("rev")).closest("tr")).toHaveTextContent("高风险");
   expect(screen.getByText("docs").closest("tr")).toHaveTextContent("低风险");
   expect(screen.getByText(/项目 2 · 当前值 3/)).toBeVisible();
-  expect(screen.getByText(/无变化/)).toBeVisible();
+  expect(screen.getByText("无变化", { exact: true })).toBeVisible();
+  expect(screen.getByText("操作：无变化。")).toBeVisible();
   expect(screen.getByText(/如要修订，请加/)).toBeVisible();
 });
 
@@ -373,7 +386,7 @@ it("previews pasted text, publishes and tracks the existing publication job", as
   expect(screen.getByText("电流")).toBeVisible();
   expect(screen.queryByText("## `batch_one` 电流")).not.toBeInTheDocument();
   expect(within(screen.getByRole("table", { name: "导入结果" })).getAllByRole("columnheader")
-    .map((cell) => cell.textContent)).toEqual(["主体", "属性键", "显示名", "结果", "诊断"]);
+    .map((cell) => cell.textContent)).toEqual(["属性键", "显示名", "结果", "诊断"]);
   expect(screen.getByText("新建 1")).toBeVisible();
   expect(screen.queryByRole("button", { name: "仅显示错误与冲突" })).not.toBeInTheDocument();
   expect(screen.getByText("新建")).toBeVisible();
@@ -395,7 +408,7 @@ it("uploads multiple files, edits and removes them before one preview", async ()
     Object.defineProperty(file, "text", { value: async () => `content ${index}` });
     return file;
   });
-  await user.upload(screen.getByLabelText("上传 .md 文件"), files);
+  await user.upload(screen.getByTestId("file-drop-zone-input"), files);
   await user.click(await screen.findByRole("button", { name: "second.md" }));
   expect(screen.getByLabelText("Markdown 文档")).toHaveValue("content 1");
   await user.type(screen.getByLabelText("Markdown 文档"), " edited");
@@ -408,6 +421,8 @@ it("uploads multiple files, edits and removes them before one preview", async ()
   expect(screen.getByRole("button", { name: "解析并预览" })).toBeDisabled();
   await user.click(screen.getByRole("button", { name: "解析并预览" }));
   expect(preview).toHaveBeenCalledTimes(1);
+  expect(screen.getByLabelText("Markdown 文档")).not.toBeVisible();
+  await user.click(screen.getByText("Markdown 文档（2 个文件）"));
   await user.click(screen.getByRole("button", { name: "移除 first.md" }));
   expect(screen.getByRole("button", { name: "解析并预览" })).toBeEnabled();
   expect(screen.queryByText("没有需要发布的变更。")).not.toBeInTheDocument();
@@ -425,7 +440,7 @@ it("preserves the draft when any uploaded file cannot be read", async () => {
     Object.defineProperty(file, "text", { value: async () => { if (index) throw new Error("read failed"); return "new"; } });
     return file;
   });
-  await user.upload(screen.getByLabelText("上传 .md 文件"), files);
+  await user.upload(screen.getByTestId("file-drop-zone-input"), files);
   expect(await screen.findByRole("alert")).toHaveTextContent("文件读取失败");
   expect(screen.getByLabelText("Markdown 文档")).toHaveValue("draft");
 });
@@ -444,7 +459,7 @@ it("uploads Markdown and shows the line of each diagnostic", async () => {
   const user = userEvent.setup();
   const file = new File(["无效内容"], "bad.md", { type: "text/markdown" });
   Object.defineProperty(file, "text", { value: async () => "无效内容" });
-  const input = screen.getByLabelText("上传 .md 文件");
+  const input = screen.getByTestId("file-drop-zone-input");
   const openPicker = vi.spyOn(input, "click");
   await user.click(screen.getByRole("button", { name: "上传 .md 文件" }));
   expect(openPicker).toHaveBeenCalledOnce();
@@ -452,7 +467,8 @@ it("uploads Markdown and shows the line of each diagnostic", async () => {
   await waitFor(() => expect(screen.getByLabelText("Markdown 文档")).toHaveValue("无效内容"));
   expect(screen.getByText("bad.md")).toBeVisible();
   await user.click(screen.getByRole("button", { name: "解析并预览" }));
-  expect(await screen.findByText("第 5 行 · 类型：不支持此类型。")).toBeVisible();
+  const diagnostic = await screen.findByText("类型：不支持此类型。");
+  expect(diagnostic.closest("td")).toHaveTextContent("第 5 行 · 类型：不支持此类型。");
   expect(screen.getByText("错误 1")).toBeVisible();
   expect(screen.getByRole("button", { name: "仅显示错误与冲突" })).toBeVisible();
   expect(screen.queryByRole("button", { name: "发布到目录" })).not.toBeInTheDocument();
@@ -460,24 +476,31 @@ it("uploads Markdown and shows the line of each diagnostic", async () => {
     { catalogReleaseId: CATALOG_RELEASE_ID });
 });
 
-it("summarizes outcomes and filters errors and conflicts without losing the counts", async () => {
+it("groups results by canonical subject and keeps tone counts when filtering", async () => {
   renderImport({ prepare: (ports) => {
     ports.catalog.previewMarkdownImport = async () => ({ item: { candidate: null, noChange: false, placementHints: [],
       source: { fileName: "粘贴.md", sha256: "sha256:test", parserVersion: "v1" },
-      entries: (["create", "error", "skip", "conflict"] as const).map((outcome) => ({
+      entries: (["create", "revise", "error", "skip", "conflict"] as const).map((outcome) => ({
         subjectHeading: "# Driver `acme,power`", definitionHeading: `## \`${outcome}\` 名称`,
-        selector: "acme,power", propertyKey: outcome, displayName: "名称", outcome, diagnostics: [],
+        selector: "acme,power", match: { subjectId: CATALOG_SUBJECT_ID, canonicalName: "acme,power", source: "catalog-primary" }, propertyKey: outcome, displayName: "名称", outcome, diagnostics: [],
       })) } });
   } });
   const user = userEvent.setup();
   await user.type(screen.getByLabelText("Markdown 文档"), "文档内容");
   await user.click(screen.getByRole("button", { name: "解析并预览" }));
-  expect(await screen.findByText("新建 1 · 错误 1 · 跳过 1 · 冲突 1")).toBeVisible();
+  const table = await screen.findByRole("table", { name: "导入结果" });
+  expect(within(table).getAllByText("acme,power")).toHaveLength(1);
+  expect(within(table).getByRole("rowheader", { name: "acme,power" })).toBeVisible();
+  for (const [label, tone] of [["新建", "success"], ["修订", "info"], ["无变化", "neutral"], ["错误", "danger"], ["冲突", "warning"]] as const) {
+    expect(screen.getByText(`${label} 1`)).toHaveAttribute("data-tone", tone);
+    expect(within(table).getByText(label)).toHaveAttribute("data-tone", tone);
+  }
   await user.click(screen.getByRole("button", { name: "仅显示错误与冲突" }));
   expect(screen.queryByText("create")).not.toBeInTheDocument();
   expect(screen.queryByText("skip")).not.toBeInTheDocument();
   expect(screen.getByText("error")).toBeVisible();
   expect(screen.getByText("conflict")).toBeVisible();
+  expect(screen.getByText("新建 1")).toBeVisible();
   await user.click(screen.getByRole("button", { name: "仅显示错误与冲突" }));
   expect(screen.getByText("skip")).toBeVisible();
 });
@@ -494,7 +517,9 @@ it("omits zero counts from a mixed create and skip summary", async () => {
   const user = userEvent.setup();
   await user.type(screen.getByLabelText("Markdown 文档"), "文档内容");
   await user.click(screen.getByRole("button", { name: "解析并预览" }));
-  expect(await screen.findByText("新建 1 · 跳过 3")).toBeVisible();
+  expect(await screen.findByText("新建 1")).toBeVisible();
+  expect(screen.getByText("无变化 3")).toBeVisible();
+  expect(screen.queryByText(/^(错误|冲突|修订) 0$/)).not.toBeInTheDocument();
 });
 
 it("keeps the document on rebase and invalidates a preview after editing", async () => {
@@ -517,6 +542,7 @@ it("keeps the document on rebase and invalidates a preview after editing", async
   await confirm("确认发布");
   await user.click(await screen.findByRole("button", { name: "重新预览" }));
   await waitFor(() => expect(requests).toEqual(["文档内容", "文档内容"]));
+  await user.click(await screen.findByText("Markdown 文档（1 个文件）"));
   await user.type(screen.getByLabelText("Markdown 文档"), "修改");
   expect(screen.queryByRole("button", { name: "发布到目录" })).not.toBeInTheDocument();
   expect(screen.getByRole("button", { name: "解析并预览" })).toBeEnabled();

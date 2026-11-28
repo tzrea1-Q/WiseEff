@@ -1,0 +1,207 @@
+.param-admin-modal-backdrop .import-dialog {
+  display: flex;
+  flex-direction: column;
+  width: min(60rem, calc(100vw - var(--space-8)));
+  max-height: min(88vh, 57.5rem);
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-3);
+  font-size: var(--text-md);
+  line-height: var(--leading-md);
+}
+
+.import-dialog__header,
+.import-dialog__footer {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-5);
+}
+
+.import-dialog__header {
+  border-bottom: 1px solid var(--border);
+}
+
+.import-dialog__header h2 {
+  font-size: var(--text-lg);
+  line-height: var(--leading-lg);
+  font-weight: 600;
+}
+
+.import-dialog__body {
+  min-height: 0;
+  overflow: auto;
+  padding: var(--space-4) var(--space-5);
+  overflow-wrap: anywhere;
+}
+
+.import-dialog__body > * + * {
+  margin-block-start: var(--space-3);
+}
+
+.import-dialog__body h3 {
+  margin-block: var(--space-4) var(--space-2);
+  font-size: var(--text-md);
+  font-weight: 600;
+}
+
+.import-dialog__body summary {
+  cursor: pointer;
+}
+
+.import-dialog__body .import-dialog__rules {
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  margin-block-end: var(--space-3);
+}
+
+.import-dialog__footer {
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  border-top: 1px solid var(--border);
+}
+
+.import-dialog__utilities {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin-inline-end: auto;
+}
+
+.import-dialog__secondary {
+  color: var(--text-secondary);
+}
+
+.import-dialog__badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.import-dialog [data-slot="badge"][data-tone="success"] {
+  color: var(--success);
+  background: var(--success-soft);
+}
+
+.import-dialog [data-slot="badge"][data-tone="info"] {
+  color: var(--info);
+  background: var(--info-soft);
+}
+
+.import-dialog [data-slot="badge"][data-tone="danger"],
+.import-dialog tr[data-tone="danger"] > td {
+  background: var(--danger-soft);
+}
+
+.import-dialog [data-slot="badge"][data-tone="danger"],
+.import-dialog .import-dialog__removed {
+  color: var(--danger);
+}
+
+.import-dialog [data-slot="badge"][data-tone="warning"],
+.import-dialog tr[data-tone="warning"] > td {
+  background: var(--warning-soft);
+}
+
+.import-dialog [data-slot="badge"][data-tone="warning"] {
+  color: var(--warning);
+}
+
+.import-dialog__table {
+  width: 100%;
+  text-align: start;
+}
+
+.import-dialog__table :is(th, td) {
+  padding: var(--space-2);
+  border-bottom: 1px solid var(--border);
+  text-align: start;
+  vertical-align: top;
+}
+
+.import-dialog__table th {
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+.import-dialog__table :is(thead th, th[scope="rowgroup"]) {
+  background: var(--surface-sunken);
+}
+
+.import-dialog__table th[scope="rowgroup"] {
+  color: var(--text);
+}
+
+.import-dialog .form-error {
+  color: var(--danger);
+}
+
+.import-dialog__modes {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
+  min-inline-size: 0;
+}
+
+.import-dialog__modes legend {
+  margin-block-end: var(--space-2);
+  font-weight: 600;
+}
+
+.import-dialog__mode {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+}
+
+.import-dialog__mode input {
+  margin-block-start: var(--space-1);
+  accent-color: var(--accent);
+}
+
+.import-dialog__mode:has(:checked) {
+  border-color: var(--accent);
+  background: var(--info-soft);
+}
+
+.import-dialog__modes:disabled .import-dialog__mode {
+  cursor: default;
+}
+
+.import-dialog__change {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.import-dialog__change h4 {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  font-weight: 600;
+}
+
+.import-dialog__diff {
+  table-layout: fixed;
+}
+
+.import-dialog__diff thead th:first-child {
+  width: 24%;
+}
+
+.import-dialog__diff tbody tr:last-child > * {
+  border-bottom: 0;
+}

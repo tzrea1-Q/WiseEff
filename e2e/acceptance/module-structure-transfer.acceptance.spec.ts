@@ -35,9 +35,10 @@ test("diagnoses agent-edited export metadata and supports manual copying before 
   await signInBrowserAsRole(page, "admin", "/parameter-admin/modules");
   await page.getByRole("button", { name: "导入结构" }).click();
   const dialog = page.getByRole("dialog", { name: "导入模块结构" });
-  await dialog.getByLabel("JSON 文件").setInputFiles({ name: "module-structure-import.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(edited)) });
+  await dialog.getByTestId("file-drop-zone-input").setInputFiles({ name: "module-structure-import.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(edited)) });
   await dialog.getByRole("button", { name: "预览" }).click();
   const diagnostic = dialog.getByRole("region", { name: "导入错误诊断" });
+  await diagnostic.getByText("诊断详情（可提供给编码代理）", { exact: true }).click();
   await expect(diagnostic).toContainText("document.counts.modules");
   await expect(diagnostic).toContainText("document.source.catalogReleaseId");
   await expect(diagnostic).toContainText("document.limits.maxBytes");
@@ -52,7 +53,7 @@ test("diagnoses agent-edited export metadata and supports manual copying before 
   expect(JSON.stringify(report)).toContain("readonly-module-structure-fields");
   expect(JSON.stringify(report)).toContain("module-structure-import.json");
   await page.screenshot({ path: info.outputPath("module-structure-diagnostics-1440x900.png"), animations: "disabled" });
-  await dialog.getByLabel("JSON 文件").setInputFiles({ name: "repaired.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(original)) });
+  await dialog.getByTestId("file-drop-zone-input").setInputFiles({ name: "repaired.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(original)) });
   await expect(diagnostic).toHaveCount(0);
   await dialog.getByRole("button", { name: "预览" }).click();
   await expect(dialog.getByText("没有领域数据变更。")).toBeVisible();
@@ -73,9 +74,10 @@ test("diagnoses a recognition field with subject identity, exact value and a rep
   await signInBrowserAsRole(page, "admin", "/parameter-admin/modules");
   await page.getByRole("button", { name: "导入结构" }).click();
   const dialog = page.getByRole("dialog", { name: "导入模块结构" });
-  await dialog.getByLabel("JSON 文件").setInputFiles({ name: "recognition-diagnostic.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(edited)) });
+  await dialog.getByTestId("file-drop-zone-input").setInputFiles({ name: "recognition-diagnostic.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(edited)) });
   await dialog.getByRole("button", { name: "预览" }).click();
   const diagnostic = dialog.getByRole("region", { name: "导入错误诊断" });
+  await diagnostic.getByText("诊断详情（可提供给编码代理）", { exact: true }).click();
   await expect(diagnostic).toContainText(subject.subjectId);
   await expect(diagnostic).toContainText(`/subjects/${index}/recognition/override/nodeTypeName`);
   await expect(diagnostic).toContainText("battery_checker@0");
@@ -91,7 +93,7 @@ test("diagnoses a recognition field with subject identity, exact value and a rep
     code: "unit-address-present", received: "battery_checker@0", example: "battery_checker",
     jsonPointer: `/subjects/${index}/recognition/override/nodeTypeName`, hint: expect.stringContaining("不带 @"),
   })]));
-  await dialog.getByLabel("JSON 文件").setInputFiles({ name: "recognition-repaired.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(original)) });
+  await dialog.getByTestId("file-drop-zone-input").setInputFiles({ name: "recognition-repaired.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(original)) });
   await dialog.getByRole("button", { name: "预览" }).click();
   await expect(dialog.getByText("没有领域数据变更。")).toBeVisible();
 });
@@ -125,10 +127,10 @@ test("corrects a root node to a compatible driver within the current organizatio
   await signInBrowserAsUser(page, user, email, "Correction admin", "/parameter-admin/modules", organization);
   await page.getByRole("button", { name: "导入结构" }).click();
   const dialog = page.getByRole("dialog", { name: "导入模块结构" });
-  await dialog.getByLabel("JSON 文件").setInputFiles({ name: "driver-correction.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(document)) });
+  await dialog.getByTestId("file-drop-zone-input").setInputFiles({ name: "driver-correction.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(document)) });
   await dialog.getByRole("button", { name: "预览" }).click();
-  await expect(dialog.getByText("当前组织主体类型：节点类型主体 → 驱动主体")).toBeVisible();
-  await expect(dialog.getByText("兼容标识：无 → fdw,fm1230_swi")).toBeVisible();
+  await expect(dialog.getByRole("row", { name: "当前组织主体类型 节点类型主体 驱动主体" })).toBeVisible();
+  await expect(dialog.getByRole("row", { name: "兼容标识 无 fdw,fm1230_swi" })).toBeVisible();
   await expect(dialog.getByRole("button", { name: "确认提交" })).toBeDisabled();
   await page.screenshot({ path: info.outputPath("module-structure-driver-correction-1440x900.png"), animations: "disabled" });
   await dialog.getByLabel("变更原因").fill("fm1230_swi uses compatible recognition");
@@ -189,7 +191,7 @@ test("MODULE-STRUCTURE-MIXED-001: review one mixed update", async ({ page, reque
   await signInBrowserAsUser(page, user, email, "Mixed admin", "/parameter-admin/modules", organization);
   await page.getByRole("button", { name: "导入结构" }).click();
   const dialog = page.getByRole("dialog", { name: "导入模块结构" });
-  await dialog.getByLabel("JSON 文件").setInputFiles({ name: "mixed.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(document)) });
+  await dialog.getByTestId("file-drop-zone-input").setInputFiles({ name: "mixed.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(document)) });
   await dialog.getByRole("button", { name: "预览" }).click();
   await expect(dialog.getByText(/Retired driver/).first()).toBeVisible();
   await expect(dialog.getByText(/New parent \/ New child/).first()).toBeVisible();
@@ -256,12 +258,15 @@ test("MODULE-STRUCTURE-LIFECYCLE-001: register, retire and restore roots", async
     if (operation !== "register") for (const subject of edited.subjects) if (subjects.includes(subject.subjectId)) subject.state = operation === "retire" ? "retired" : "active";
     await page.getByRole("button", { name: "导入结构" }).click();
     const dialog = page.getByRole("dialog", { name: "导入模块结构" });
-    await dialog.getByLabel("JSON 文件").setInputFiles({ name: `${operation}.json`, mimeType: "application/json", buffer: Buffer.from(JSON.stringify(edited)) });
+    await dialog.getByTestId("file-drop-zone-input").setInputFiles({ name: `${operation}.json`, mimeType: "application/json", buffer: Buffer.from(JSON.stringify(edited)) });
     await dialog.getByRole("button", { name: "预览" }).click();
-    await expect(dialog.locator("li").filter({ hasText: "登记状态" })).toHaveCount(2);
+    await expect(dialog.getByRole("row").filter({ has: page.getByRole("rowheader", { name: "登记状态" }) })).toHaveCount(2);
     if (operation !== "register") {
       await expect(dialog.getByRole("heading", { name: "受影响项目" })).toBeVisible();
-      await expect(dialog.getByText(`项目 structure-life-project-${suffix}`, { exact: false })).toContainText("绑定 1");
+      const impactRow = dialog.getByRole("table", { name: "受影响项目" }).getByRole("row")
+        .filter({ hasText: new RegExp(`Lifecycle project|structure-life-project-${suffix}`) });
+      await expect(impactRow).toHaveCount(1);
+      await expect(impactRow.getByRole("cell").nth(2)).toHaveText("1");
     }
     await dialog.getByLabel("变更原因").fill(`Review ${operation}`);
     if (operation === "retire") await page.screenshot({ path: info.outputPath("module-structure-lifecycle-1440x900.png"), animations: "disabled" });
@@ -269,7 +274,7 @@ test("MODULE-STRUCTURE-LIFECYCLE-001: register, retire and restore roots", async
     await dialog.getByRole("button", { name: "确认提交" }).click();
     lastResponse = await applied;
     await expect(dialog.getByRole("status")).toContainText("回执");
-    await dialog.getByRole("button", { name: "关闭" }).click();
+    await dialog.locator("footer").getByRole("button", { name: "关闭", exact: true }).click();
     const after = await exportDocument();
     for (const id of subjects) expect(after.subjects.find((item: { subjectId: string }) => item.subjectId === id).state).toBe(operation === "retire" ? "retired" : "active");
   }
@@ -297,7 +302,7 @@ test("MODULE-STRUCTURE-RECOGNITION-001: validate, override and restore inheritan
   const subjectId = subject.subjectId as string;
   const upload = async (document: unknown) => {
     const dialog = page.getByRole("dialog", { name: "导入模块结构" });
-    await dialog.getByLabel("JSON 文件").setInputFiles({ name: "recognition.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(document)) });
+    await dialog.getByTestId("file-drop-zone-input").setInputFiles({ name: "recognition.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(document)) });
     return dialog;
   };
   try {
@@ -309,24 +314,25 @@ test("MODULE-STRUCTURE-RECOGNITION-001: validate, override and restore inheritan
     let dialog = await upload(invalid);
     await dialog.getByRole("button", { name: "预览" }).click();
     await expect(dialog.getByRole("alert")).toBeVisible();
-    await expect(dialog.getByText(`文件：recognition.json；来源组织：${org}；目标组织：${org}`, { exact: true })).toBeVisible();
+    await expect(dialog.getByRole("list", { name: "已选文件" })).toContainText("recognition.json");
+    await expect(dialog.getByRole("list", { name: "已选文件" }).getByTitle(org, { exact: true })).toHaveCount(2);
     const edited = structuredClone(original);
     const rule = edited.subjects.find((item: { subjectId: string }) => item.subjectId === subjectId).recognition;
     rule.mode = "override"; rule.override = { ...rule.effective, compatibles: ["wiseeff,recognition-1499"] };
     dialog = await upload(edited);
     await dialog.getByRole("button", { name: "预览" }).click();
-    await expect(dialog.locator("li").filter({ hasText: "wiseeff,recognition-1499" }).first()).toBeVisible();
+    await expect(dialog.getByRole("row").filter({ hasText: "wiseeff,recognition-1499" }).first()).toBeVisible();
     await dialog.getByLabel("变更原因").fill("Review recognition override");
     await dialog.getByRole("button", { name: "确认提交" }).focus(); await page.keyboard.press("Enter");
     await expect(dialog.getByRole("status")).toContainText("回执");
-    await dialog.getByRole("button", { name: "关闭" }).click();
+    await dialog.locator("footer").getByRole("button", { name: "关闭", exact: true }).click();
     const reset = await exportDocument();
     const resetRule = reset.subjects.find((item: { subjectId: string }) => item.subjectId === subjectId).recognition;
     expect(resetRule.mode).toBe("override");
     resetRule.mode = "inherit"; resetRule.override = null;
     await page.getByRole("button", { name: "导入结构" }).click(); dialog = await upload(reset);
     await dialog.getByRole("button", { name: "预览" }).click();
-    await expect(dialog.locator("li").filter({ hasText: "wiseeff,recognition-1499" }).first()).toBeVisible();
+    await expect(dialog.getByRole("row").filter({ hasText: "wiseeff,recognition-1499" }).first()).toBeVisible();
     await page.screenshot({ path: info.outputPath("recognition-reset-1440x900.png"), animations: "disabled" });
     await dialog.getByLabel("变更原因").fill("Restore inherited recognition");
     const applied = page.waitForResponse(response => response.request().method() === "POST" && new URL(response.url()).pathname === `${base}/applies` && response.status() === 200);
@@ -383,16 +389,18 @@ test("MODULE-STRUCTURE-IMPORT-001: review conflict, stale preview and receipt", 
     await page.getByRole("button", { name: "导入结构" }).focus();
     await page.keyboard.press("Enter");
     const dialog = page.getByRole("dialog", { name: "导入模块结构" });
-    await dialog.getByLabel("JSON 文件").setInputFiles({ name: "edit.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(document)) });
-    await dialog.getByRole("button", { name: "关闭" }).click();
+    await dialog.getByTestId("file-drop-zone-input").setInputFiles({ name: "edit.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(document)) });
+    await dialog.locator("footer").getByRole("button", { name: "关闭", exact: true }).click();
     await page.getByRole("dialog", { name: "放弃导入？" }).getByRole("button", { name: "继续编辑" }).click();
-    await expect(dialog.getByText(`文件：edit.json；来源组织：${org}；目标组织：${org}`, { exact: true })).toBeVisible();
+    await expect(dialog.getByRole("list", { name: "已选文件" })).toContainText("edit.json");
+    await expect(dialog.getByRole("list", { name: "已选文件" }).getByTitle(org, { exact: true })).toHaveCount(2);
     await dialog.getByRole("button", { name: "预览" }).click();
     await expect(dialog.getByText('current edit', { exact: true })).toBeVisible();
     await expect(dialog.getByRole("button", { name: "确认提交" })).toBeDisabled();
     await dialog.getByLabel(`${module.ref}:description 的冲突选择`).click();
     await page.getByRole("option", { name: "采用文件" }).click();
-    await expect(dialog.getByText(/待解决冲突（0）/)).toBeVisible();
+    await expect(dialog.getByText("请填写变更原因", { exact: true })).toBeVisible();
+    await expect(dialog.getByRole("heading", { name: /待解决冲突/ })).toHaveCount(0);
     await dialog.getByLabel("变更原因").fill("Reviewed import");
     await patch("later edit");
     await dialog.getByRole("button", { name: "确认提交" }).click();
@@ -413,7 +421,7 @@ test("MODULE-STRUCTURE-IMPORT-001: review conflict, stale preview and receipt", 
     await page.screenshot({ path: info.outputPath("module-structure-receipt-1440x900.png"), animations: "disabled" });
     const actual = await withPgClient(async client => (await client.query<{ description: string }>("select description from parameter_modules where id=$1 and organization_id=$2", [moduleId, org])).rows[0]);
     expect(actual?.description).toBe("file edit");
-    await dialog.getByRole("button", { name: "关闭" }).click();
+    await dialog.locator("footer").getByRole("button", { name: "关闭", exact: true }).click();
     const suffix = `${Date.now()}`;
     const createModule = async (name: string, parentId?: string) => {
       const response = await request.post(apiRoute("/api/v1/parameter-modules"), { headers, data: { name, parentId } });
@@ -437,7 +445,7 @@ test("MODULE-STRUCTURE-IMPORT-001: review conflict, stale preview and receipt", 
       { ref: `new-child-${suffix}`, name: `New child ${suffix}`, parentRef: `new-parent-${suffix}`, description: "", scope: "", sortOrder: 0, importance: "medium" });
     await page.getByRole("button", { name: "导入结构" }).click();
     const treeDialog = page.getByRole("dialog", { name: "导入模块结构" });
-    await treeDialog.getByLabel("JSON 文件").setInputFiles({ name: "tree.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(structure)) });
+    await treeDialog.getByTestId("file-drop-zone-input").setInputFiles({ name: "tree.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(structure)) });
     await treeDialog.getByRole("button", { name: "预览" }).click();
     await expect(treeDialog.getByText(/新增模块/).first()).toBeVisible();
     await expect(treeDialog.getByText(/上级模块/).first()).toBeVisible();
@@ -451,12 +459,12 @@ test("MODULE-STRUCTURE-IMPORT-001: review conflict, stale preview and receipt", 
     extraIds.push(...createdRefs.map(row => row.module_id));
     const moved = await withPgClient(async client => (await client.query<{ path: string; parent_id: string }>("select path,parent_id from parameter_modules where id=$1", [leaf])).rows[0]);
     expect(moved).toEqual({ parent_id: child, path: `${right}/${child}/${leaf}` });
-    await treeDialog.getByRole("button", { name: "关闭" }).click();
+    await treeDialog.locator("footer").getByRole("button", { name: "关闭", exact: true }).click();
     const newParent = createdRefs.find(row => row.package_ref === `new-parent-${suffix}`)!;
     const renamed = await request.patch(apiRoute(`/api/v1/parameter-modules/${newParent.module_id}`), { headers, data: { name: `Renamed ${suffix}` } });
     expect(renamed.status(), await renamed.text()).toBe(200);
     await page.getByRole("button", { name: "导入结构" }).click();
-    await treeDialog.getByLabel("JSON 文件").setInputFiles({ name: "tree-again.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(structure)) });
+    await treeDialog.getByTestId("file-drop-zone-input").setInputFiles({ name: "tree-again.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(structure)) });
     await treeDialog.getByRole("button", { name: "预览" }).click();
     await expect(treeDialog.getByText("没有领域数据变更。")).toBeVisible();
     await treeDialog.getByLabel("变更原因").fill("Repeat reviewed tree");
@@ -504,10 +512,10 @@ test("MODULE-STRUCTURE-DELETE-001: move a child into a new category and delete i
     await signInBrowserAsRole(page, "admin", "/parameter-admin/modules");
     await page.getByRole("button", { name: "导入结构" }).click();
     const dialog = page.getByRole("dialog", { name: "导入模块结构" });
-    await dialog.getByLabel("JSON 文件").setInputFiles({ name: "delete.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(document)) });
+    await dialog.getByTestId("file-drop-zone-input").setInputFiles({ name: "delete.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(document)) });
     await dialog.getByRole("button", { name: "预览" }).click();
     await expect(dialog.getByText(/删除模块/).first()).toBeVisible();
-    await expect(dialog.getByText(/上级模块/).first()).toContainText(`Destination ${suffix}`);
+    await expect(dialog.getByRole("row").filter({ has: page.getByRole("rowheader", { name: "上级模块" }) }).filter({ hasText: `Destination ${suffix}` })).toBeVisible();
     await expect(dialog.getByText(/将解除的遗留引用数/).first()).toBeVisible();
     await page.screenshot({ path: info.outputPath("module-structure-delete-1440x900.png"), animations: "disabled" });
     await dialog.getByLabel("变更原因").fill("Review category deletion");
@@ -554,14 +562,15 @@ test("MODULE-STRUCTURE-COPY-001: confirm reuse and creation in a nonempty target
     await signInBrowserAsRole(page, "admin", "/parameter-admin/modules");
     await page.getByRole("button", { name: "导入结构" }).click();
     const dialog = page.getByRole("dialog", { name: "导入模块结构" });
-    await dialog.getByLabel("导入模式").click(); await page.getByRole("option", { name: "复制到当前组织" }).click();
-    await dialog.getByLabel("JSON 文件").setInputFiles({ name: "copy.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(document)) });
+    await dialog.getByRole("radio", { name: "复制到当前组织" }).check();
+    await dialog.getByTestId("file-drop-zone-input").setInputFiles({ name: "copy.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(document)) });
     await dialog.getByRole("button", { name: "预览" }).click();
-    await expect(dialog.getByText(`来源组织：${sourceOrg}`, { exact: false })).toBeVisible();
+    await expect(dialog.getByRole("list", { name: "已选文件" }).getByTitle(sourceOrg, { exact: true })).toBeVisible();
     await dialog.getByLabel(`${sourceId} 的目标模块`).click(); await page.getByRole("option", { name: `建议：复用 ${name}` }).click();
     await expect(dialog.getByLabel(`${sourceId} 的目标模块`)).toContainText(name);
     await dialog.getByLabel(`child-${suffix} 的目标模块`).click(); await page.getByRole("option", { name: "新建目标模块" }).click();
-    await expect(dialog.getByText("待解决冲突（0）")).toBeVisible();
+    await expect(dialog.getByText("请填写变更原因", { exact: true })).toBeVisible();
+    await expect(dialog.getByRole("heading", { name: /待解决冲突/ })).toHaveCount(0);
     await dialog.getByLabel("变更原因").fill("Review cross-organization copy");
     await page.screenshot({ path: info.outputPath("module-structure-copy-1440x900.png"), animations: "disabled" });
     const applied = page.waitForResponse(response => response.request().method() === "POST" && new URL(response.url()).pathname === `/api/v2/organizations/${org}/module-structure/applies` && response.status() === 200);
@@ -614,15 +623,16 @@ test("copy retained Subject settings into a populated target", async ({ page, re
   await signInBrowserAsUser(page, targetUser, email(targetUser), "Copy admin", "/parameter-admin/modules", targetOrg);
   await page.getByRole("button", { name: "导入结构" }).click();
   const dialog = page.getByRole("dialog", { name: "导入模块结构" });
-  await dialog.getByLabel("导入模式").click(); await page.getByRole("option", { name: "复制到当前组织" }).click();
-  await dialog.getByLabel("JSON 文件").setInputFiles({ name: "subjects.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(document)) });
+  await dialog.getByRole("radio", { name: "复制到当前组织" }).check();
+  await dialog.getByTestId("file-drop-zone-input").setInputFiles({ name: "subjects.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(document)) });
   await dialog.getByRole("button", { name: "预览" }).click();
   await dialog.getByLabel(`${sourceModule} 的目标模块`).click(); await page.getByRole("option", { name: "建议：复用 Copy category" }).click();
   for (const field of ["state", "displayAlias", "recognition"]) {
     await dialog.getByLabel(`subject:${subjectId}:${field} 的冲突选择`).click();
     await page.getByRole("option", { name: "采用文件" }).click();
   }
-  await expect(dialog.getByText("待解决冲突（0）")).toBeVisible();
+  await expect(dialog.getByText("请填写变更原因", { exact: true })).toBeVisible();
+  await expect(dialog.getByRole("heading", { name: /待解决冲突/ })).toHaveCount(0);
   await expect(dialog.getByText("Source alias", { exact: false }).first()).toBeVisible();
   await dialog.getByLabel("变更原因").fill("Copy reviewed Subject settings");
   await page.screenshot({ path: info.outputPath("module-structure-subject-copy-1440x900.png"), animations: "disabled" });

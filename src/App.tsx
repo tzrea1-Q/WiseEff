@@ -324,9 +324,9 @@ function AppShell({
   const [apiAuthPermissions, setApiAuthPermissions] = useState<string[]>([]);
   const [apiAuthRoles, setApiAuthRoles] = useState<AuthContextDto["roles"] | null>(null);
   const [apiProjectMemberships, setApiProjectMemberships] = useState<AuthContextDto["projectMemberships"]>([]);
-  const [organizationId, setOrganizationId] = useState(
-    () => (runtimeMode === "api" ? "" : CATALOG_ORGANIZATION_ID)
-  );
+  const [homeOrganization, setHomeOrganization] = useState(() =>
+    ({ id: runtimeMode === "api" ? "" : CATALOG_ORGANIZATION_ID, name: "" }));
+  const organizationId = homeOrganization.id;
   const initializationKey = JSON.stringify([scopeKey, organizationId, apiAuthStatus, apiAuthPermissions, apiAuthRoles,
     state.users.find((user) => user.id === state.currentUserId)?.isActive]);
   const initializationScope = useRef({ key: initializationKey, generation: 0 });
@@ -456,6 +456,10 @@ function AppShell({
   const [confirmedBusinessScope, setConfirmedBusinessScope] = useState<{ key: string; scope: Awaited<ReturnType<OrganizationWorkspaceClient["enterOperatingContext"]>> } | null>(null);
   const [failedBusinessScope, setFailedBusinessScope] = useState<string | null>(null);
   const confirmedScope = confirmedBusinessScope?.key === businessScopeKey ? confirmedBusinessScope.scope : undefined;
+  const organizationNames = {
+    [homeOrganization.id]: homeOrganization.name,
+    ...(confirmedScope ? { [confirmedScope.organization.id]: confirmedScope.organization.name } : {}),
+  };
   const businessScopeReady = !requiresBusinessScope || Boolean(confirmedScope);
   const handleBusinessScopeResolved = useCallback((scope: Awaited<ReturnType<OrganizationWorkspaceClient["enterOperatingContext"]>>) => {
     setConfirmedBusinessScope({ key: businessScopeKey, scope });
@@ -737,7 +741,7 @@ function AppShell({
     setApiAuthRoles(context.roles);
     setApiProjectMemberships(context.projectMemberships ?? []);
     setHomeOrganizationSuspended(context.organization.status === "suspended");
-    setOrganizationId(context.organization.id);
+    setHomeOrganization(context.organization);
     dispatch({
       type: "HYDRATE_AUTH_CONTEXT",
       roleId: primaryRole,
@@ -1364,6 +1368,7 @@ function AppShell({
                 onAuthContextRefresh={hydrateAuthContext}
                 onEndSession={handleLogout}
                 organizationId={organizationId}
+                organizationNames={organizationNames}
                 sessionPermissions={apiAuthPermissions}
                 sessionRoles={runtimeMode === "api" ? apiAuthRoles : undefined}
                 projectMemberships={runtimeMode === "api" ? apiProjectMemberships : undefined}
@@ -1419,6 +1424,7 @@ function AppShell({
                   onAuthContextRefresh={hydrateAuthContext}
                   onEndSession={handleLogout}
                   organizationId={organizationId}
+                  organizationNames={organizationNames}
                   sessionPermissions={apiAuthPermissions}
                   sessionRoles={runtimeMode === "api" ? apiAuthRoles : undefined}
                   projectMemberships={runtimeMode === "api" ? apiProjectMemberships : undefined}

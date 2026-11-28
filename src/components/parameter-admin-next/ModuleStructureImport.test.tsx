@@ -1,15 +1,34 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, it, vi } from "vitest";
 import { WiseEffApiError, type ApiClient } from "@/infrastructure/http/apiClient";
 import { ModuleStructureImport } from "./ModuleStructureImport";
 import { importDiagnostic, ModuleStructureImportError } from "./ModuleStructureImportError";
 
+it("blocks copy from the current organization and allows switching back to update", async () => {
+  const user = userEvent.setup();
+  const post = vi.fn();
+  render(<ModuleStructureImport apiClient={{ post } as unknown as ApiClient} organizationId="org-a" canImport />);
+  await user.click(screen.getByRole("button", { name: "导入结构" }));
+  expect(screen.getByRole("group", { name: "导入方式" })).toBeVisible();
+  expect(screen.getByText("请先预览")).toBeVisible();
+  await user.click(screen.getByRole("radio", { name: "复制到当前组织" }));
+  await user.upload(screen.getByTestId("file-drop-zone-input"), new File(['{"source":{"organizationId":"org-a"}}'], "copy.json", { type: "application/json" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent("复制需要其他组织导出的文件；要更新本组织，请选择「更新当前组织」。");
+  const preview = screen.getByRole("button", { name: "预览" });
+  expect(preview).toBeDisabled();
+  await user.click(preview);
+  expect(post).not.toHaveBeenCalled();
+  await user.click(screen.getByRole("radio", { name: "更新当前组织" }));
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  expect(preview).toBeEnabled();
+});
+
 it("accepts formatted files over 4 MiB but rejects content over 4 MiB", async () => {
   const user = userEvent.setup();
   render(<ModuleStructureImport apiClient={{ post: vi.fn() } as unknown as ApiClient} organizationId="org-a" canImport />);
   await user.click(screen.getByRole("button", { name: "导入结构" }));
-  const input = screen.getByLabelText("JSON 文件");
+  const input = screen.getByTestId("file-drop-zone-input");
   const boundary = { value: "x".repeat(4 * 1024 * 1024 - 12) };
   expect(new TextEncoder().encode(JSON.stringify(boundary))).toHaveLength(4 * 1024 * 1024);
   await user.upload(input, new File([JSON.stringify(boundary, null, 2)], "formatted.json", { type: "application/json" }));
@@ -29,19 +48,20 @@ it("re-previews conflict choices and preserves the request key for a failed appl
   const user = userEvent.setup();
   render(<ModuleStructureImport apiClient={{ post } as unknown as ApiClient} organizationId="org-a" canImport />);
   await user.click(screen.getByRole("button", { name: "导入结构" }));
-  await user.upload(screen.getByLabelText("JSON 文件"), new File(['{"source":{"organizationId":"org-a"}}'], "edit.json", { type: "application/json" }));
+  await user.upload(screen.getByTestId("file-drop-zone-input"), new File(['{"source":{"organizationId":"org-a"}}'], "edit.json", { type: "application/json" }));
   const unload = new Event("beforeunload", { cancelable: true });
   window.dispatchEvent(unload);
   expect(unload.defaultPrevented).toBe(true);
   await user.click(screen.getByRole("button", { name: "预览" }));
   expect(await screen.findByText('old')).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "确认提交" })).toBeDisabled();
+  expect(screen.getByText("还有 1 个冲突待解决")).toBeVisible();
   await user.click(screen.getByLabelText("a:name 的冲突选择"));
   await user.click(screen.getByRole("option", { name: "采用文件" }));
   await waitFor(() => expect(post).toHaveBeenCalledTimes(2));
   await user.type(screen.getByLabelText("变更原因"), "reviewed");
   await user.click(await screen.findByRole("button", { name: "确认提交" }));
-  expect(await screen.findByRole("alert")).toHaveTextContent("网络连接失败");
+  expect(await screen.findByRole("alert")).toHaveTextContent("无法连接服务器");
   await user.click(screen.getByRole("button", { name: "确认提交" }));
   expect(await screen.findByText(/回执 receipt/)).toBeInTheDocument();
   expect(post.mock.calls[2][1].idempotencyKey).toBe(post.mock.calls[3][1].idempotencyKey);
@@ -56,9 +76,15 @@ it("reports a no-op receipt", async () => {
   const user = userEvent.setup();
   render(<ModuleStructureImport apiClient={{ post } as unknown as ApiClient} organizationId="org-a" canImport />);
   await user.click(screen.getByRole("button", { name: "导入结构" }));
-  await user.upload(screen.getByLabelText("JSON 文件"), new File(["{}"], "same.json", { type: "application/json" }));
+  await user.upload(screen.getByTestId("file-drop-zone-input"), new File(["{}"], "same.json", { type: "application/json" }));
   await user.click(screen.getByRole("button", { name: "预览" }));
-  await user.type(await screen.findByLabelText("变更原因"), "unchanged");
+  const reason = await screen.findByLabelText("变更原因");
+  expect(reason).toBeRequired();
+  expect(screen.queryByRole("heading", { name: /待解决冲突/ })).not.toBeInTheDocument();
+  expect(screen.getByText("请填写变更原因")).toBeVisible();
+  expect(screen.getByRole("button", { name: "确认提交" })).toBeDisabled();
+  await user.type(reason, "unchanged");
+  expect(screen.queryByText("请填写变更原因")).not.toBeInTheDocument();
   await user.click(screen.getByRole("button", { name: "确认提交" }));
   expect(await screen.findByRole("status")).toHaveTextContent("没有领域数据变更");
 });
@@ -69,12 +95,14 @@ it("requires an explicit target mapping before confirming a copy", async () => {
     .mockResolvedValueOnce({ changes: [], conflicts: [], mappings: [{ ...suggestion, selected: "target" }], targets: [], token: "two" })
     .mockResolvedValueOnce({ id: "copied", organizationId: "target-org", changedModules: 0, changedFields: 0 });
   const user = userEvent.setup();
-  render(<ModuleStructureImport apiClient={{ post } as unknown as ApiClient} organizationId="target-org" canImport />);
+  render(<ModuleStructureImport apiClient={{ post } as unknown as ApiClient} organizationId="target-org" organizationNames={{ "target-org": "目标团队" }} canImport />);
   await user.click(screen.getByRole("button", { name: "导入结构" }));
-  await user.click(screen.getByLabelText("导入模式")); await user.click(screen.getByRole("option", { name: "复制到当前组织" }));
-  await user.upload(screen.getByLabelText("JSON 文件"), new File(['{"source":{"organizationId":"source-org"},"modules":[{"ref":"source","name":"Power"}]}'], "copy.json", { type: "application/json" }));
+  await user.click(screen.getByRole("radio", { name: "复制到当前组织" }));
+  await user.upload(screen.getByTestId("file-drop-zone-input"), new File(['{"source":{"organizationId":"source-org"},"modules":[{"ref":"source","name":"Power"}]}'], "copy.json", { type: "application/json" }));
   await user.click(screen.getByRole("button", { name: "预览" }));
-  expect(await screen.findByText(/来源组织：source-org；目标组织：target-org/)).toBeInTheDocument();
+  const selectedFile = within(screen.getByRole("list", { name: "已选文件" }));
+  expect(selectedFile.getByTitle("source-org")).toHaveTextContent("source-org");
+  expect(selectedFile.getByTitle("target-org")).toHaveTextContent("目标团队");
   expect(screen.getByRole("button", { name: "确认提交" })).toBeDisabled();
   await user.click(screen.getByLabelText("source 的目标模块")); await user.click(screen.getByRole("option", { name: "建议：复用 Power" }));
   await user.type(await screen.findByLabelText("变更原因"), "Reviewed copy");
@@ -89,14 +117,21 @@ it("shows the full placement path, unset and affected projects", async () => {
     before: { kind: "unset" }, after: { kind: "module", moduleRef: "child" } }], conflicts: [],
     impact: [{ subjectId: "driver", projectId: "project-a", bindingCount: 2, definitions: ["definition-a"] }], token: "preview" });
   const user = userEvent.setup();
-  render(<ModuleStructureImport apiClient={{ post } as unknown as ApiClient} organizationId="org-a" canImport />);
+  render(<ModuleStructureImport apiClient={{ post } as unknown as ApiClient} organizationId="org-a" projects={[{ id: "project-a", name: "电源项目" }]} canImport />);
   await user.click(screen.getByRole("button", { name: "导入结构" }));
-  await user.upload(screen.getByLabelText("JSON 文件"), new File([JSON.stringify({ modules: [
+  await user.upload(screen.getByTestId("file-drop-zone-input"), new File([JSON.stringify({ modules: [
     { ref: "root", name: "电源", parentRef: null }, { ref: "child", name: "充电", parentRef: "root" },
   ] })], "edit.json", { type: "application/json" }));
   await user.click(screen.getByRole("button", { name: "预览" }));
-  expect(await screen.findByText(/未设置归属 → 电源 \/ 充电/)).toBeInTheDocument();
-  expect(screen.getByText(/主体 driver · 项目 project-a · 绑定 2 · 定义 definition-a/)).toBeInTheDocument();
+  const placement = await screen.findByRole("row", { name: "归属 未设置归属 电源 / 充电" });
+  expect(within(placement).getAllByRole("cell").map(cell => cell.textContent)).toEqual(["未设置归属", "电源 / 充电"]);
+  const impact = within(screen.getByRole("table", { name: "受影响项目" }));
+  expect(impact.getByRole("cell", { name: "主体 driver" })).toBeVisible();
+  expect(impact.getByRole("cell", { name: "电源项目" })).toBeVisible();
+  expect(impact.getByRole("cell", { name: "2" })).toBeVisible();
+  expect(impact.getByText("definition-a")).not.toBeVisible();
+  await user.click(impact.getByText("条定义", { exact: false }));
+  expect(impact.getByText("definition-a")).toBeVisible();
 });
 
 it("groups subject changes and explains recognition settings field by field", async () => {
@@ -108,12 +143,12 @@ it("groups subject changes and explains recognition settings field by field", as
   const user = userEvent.setup();
   render(<ModuleStructureImport apiClient={{ post } as unknown as ApiClient} organizationId="org-a" canImport />);
   await user.click(screen.getByRole("button", { name: "导入结构" }));
-  await user.upload(screen.getByLabelText("JSON 文件"), new File([JSON.stringify({ subjects: [{ subjectId: "driver", displayAlias: "充电驱动", kind: "driver" }] })], "edit.json", { type: "application/json" }));
+  await user.upload(screen.getByTestId("file-drop-zone-input"), new File([JSON.stringify({ subjects: [{ subjectId: "driver", displayAlias: "充电驱动", kind: "driver" }] })], "edit.json", { type: "application/json" }));
   await user.click(screen.getByRole("button", { name: "预览" }));
-  expect(await screen.findByText("充电驱动")).toBeInTheDocument();
-  expect(screen.getByText(/启用 → 停用/)).toBeInTheDocument();
-  expect(screen.getByText(/继承目录设置 → 自定义覆盖/)).toBeInTheDocument();
-  expect(screen.getByText(/old → new/)).toBeInTheDocument();
+  expect(await screen.findByRole("heading", { name: "充电驱动 修改" })).toBeInTheDocument();
+  expect(screen.getByRole("row", { name: /启用 停用/ })).toBeInTheDocument();
+  expect(screen.getByRole("row", { name: /继承目录设置 自定义覆盖/ })).toBeInTheDocument();
+  expect(screen.getByRole("row", { name: /old new/ })).toBeInTheDocument();
 });
 
 it("makes organization subject type corrections explicit before confirmation", async () => {
@@ -125,11 +160,11 @@ it("makes organization subject type corrections explicit before confirmation", a
   const user = userEvent.setup();
   render(<ModuleStructureImport apiClient={{ post } as unknown as ApiClient} organizationId="org-a" canImport />);
   await user.click(screen.getByRole("button", { name: "导入结构" }));
-  await user.upload(screen.getByLabelText("JSON 文件"), new File([JSON.stringify({ subjects: [{ subjectId: "fm1230", displayAlias: "fm1230_swi", kind: "node-type" }] })], "correction.json", { type: "application/json" }));
+  await user.upload(screen.getByTestId("file-drop-zone-input"), new File([JSON.stringify({ subjects: [{ subjectId: "fm1230", displayAlias: "fm1230_swi", kind: "node-type" }] })], "correction.json", { type: "application/json" }));
   await user.click(screen.getByRole("button", { name: "预览" }));
-  expect(await screen.findByText("当前组织主体类型：节点类型主体 → 驱动主体")).toBeInTheDocument();
-  expect(screen.getByText("兼容标识：无 → fdw,fm1230_swi")).toBeInTheDocument();
-  expect(screen.getByText("节点名称：fm1230_swi → 无")).toBeInTheDocument();
+  expect(await screen.findByRole("row", { name: "当前组织主体类型 节点类型主体 驱动主体" })).toBeInTheDocument();
+  expect(screen.getByRole("row", { name: "兼容标识 无 fdw,fm1230_swi" })).toBeInTheDocument();
+  expect(screen.getByRole("row", { name: "节点名称 fm1230_swi 已移除" })).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "确认提交" })).toBeDisabled();
   await user.type(screen.getByLabelText("变更原因"), "纠正主体识别类型");
   expect(screen.getByRole("button", { name: "确认提交" })).toBeEnabled();
@@ -148,17 +183,21 @@ it("shows field differences and copies actionable diagnostics without the upload
   const post = vi.fn().mockRejectedValue(readonlyFailure());
   render(<ModuleStructureImport apiClient={{ post } as unknown as ApiClient} organizationId="org-a" canImport />);
   await user.click(screen.getByRole("button", { name: "导入结构" }));
-  await user.upload(screen.getByLabelText("JSON 文件"), new File([JSON.stringify({
+  await user.upload(screen.getByTestId("file-drop-zone-input"), new File([JSON.stringify({
     source: { organizationId: "org-a", exportId: "export-1" }, modules: [{ description: "private-content-not-needed-for-diagnostics" }],
   })], "agent-edited.json", { type: "application/json" }));
   await user.click(screen.getByRole("button", { name: "预览" }));
   const alert = await screen.findByRole("alert");
   expect(alert).toHaveTextContent("导入文件修改了只读的导出信息");
-  expect(alert).toHaveTextContent("document.counts.modules");
-  expect(alert).toHaveTextContent("期望值：3");
-  expect(alert).toHaveTextContent("文件值：4");
-  expect(alert).toHaveTextContent("恢复原始导出的数量");
-  expect(alert).toHaveTextContent("当前仅显示前 2 条");
+  expect(alert).not.toHaveTextContent("request-import-123");
+  expect(screen.getByText("document.counts.modules")).not.toBeVisible();
+  await user.click(screen.getByText("诊断详情（可提供给编码代理）"));
+  const details = screen.getByText("诊断详情（可提供给编码代理）").closest("details");
+  expect(details).toHaveTextContent("document.counts.modules");
+  expect(details).toHaveTextContent("期望值：3");
+  expect(details).toHaveTextContent("文件值：4");
+  expect(details).toHaveTextContent("恢复原始导出的数量");
+  expect(details).toHaveTextContent("当前仅显示前 2 条");
   await user.click(screen.getByRole("button", { name: "复制诊断信息" }));
   expect(await screen.findByRole("status")).toHaveTextContent("诊断信息已复制");
   const copied = String(writeText.mock.calls[0][0]);
@@ -182,17 +221,19 @@ it("identifies the subject and exact invalid field with allowed values and a cle
   const post = vi.fn().mockRejectedValue(new WiseEffApiError("VALIDATION_FAILED", "识别规则校验失败。", { issues: [issue] }, "request-recognition", 400));
   render(<ModuleStructureImport apiClient={{ post } as unknown as ApiClient} organizationId="org-a" canImport />);
   await user.click(screen.getByRole("button", { name: "导入结构" }));
-  await user.upload(screen.getByLabelText("JSON 文件"), new File(["{}"], "recognition.json", { type: "application/json" }));
+  await user.upload(screen.getByTestId("file-drop-zone-input"), new File(["{}"], "recognition.json", { type: "application/json" }));
   await user.click(screen.getByRole("button", { name: "预览" }));
-  const alert = await screen.findByRole("alert");
-  expect(alert).toHaveTextContent("无线充电 · csub_charge · 驱动主体（driver） · subjects[32]（第 33 个主体）");
-  expect(alert).toHaveTextContent(issue.path);
-  expect(alert).toHaveTextContent(issue.jsonPointer);
-  expect(alert).toHaveTextContent('文件值："physical"');
-  expect(alert).toHaveTextContent('允许值：["physical-device","logical-service"]');
-  expect(alert).toHaveTextContent(`校验规则：${issue.rule}`);
-  expect(alert).toHaveTextContent(`修复建议：${issue.hint}`);
-  expect(alert).toHaveTextContent('格式示例（仅示意，请按实际业务填写）："physical-device"');
+  await screen.findByRole("alert");
+  await user.click(screen.getByText("诊断详情（可提供给编码代理）"));
+  const details = screen.getByText("诊断详情（可提供给编码代理）").closest("details");
+  expect(details).toHaveTextContent("无线充电 · csub_charge · 驱动主体（driver） · subjects[32]（第 33 个主体）");
+  expect(details).toHaveTextContent(issue.path);
+  expect(details).toHaveTextContent(issue.jsonPointer);
+  expect(details).toHaveTextContent('文件值："physical"');
+  expect(details).toHaveTextContent('允许值：["physical-device","logical-service"]');
+  expect(details).toHaveTextContent(`校验规则：${issue.rule}`);
+  expect(details).toHaveTextContent(`修复建议：${issue.hint}`);
+  expect(details).toHaveTextContent('格式示例（仅示意，请按实际业务填写）："physical-device"');
   await user.click(screen.getByRole("button", { name: "复制诊断信息" }));
   expect(JSON.parse(String(writeText.mock.calls[0][0])).issues).toEqual([expect.objectContaining(issue)]);
   expect(screen.getByRole("button", { name: "确认提交" })).toBeDisabled();
@@ -207,13 +248,15 @@ it("keeps rich legacy path diagnostics and displays falsy values without inventi
     unrelated: "private-detail-do-not-copy",
   }, "request-legacy", 400), "预览失败。", "preview");
   render(<ModuleStructureImportError diagnostic={diagnostic} context={{ fileName: "edit.json", mode: "update" }} />);
-  const alert = screen.getByRole("alert");
-  expect(alert).toHaveTextContent("模块：电源 · power · modules[0]（第 1 个模块）");
-  expect(alert).toHaveTextContent("期望值：0");
-  expect(alert).toHaveTextContent("文件值：null");
-  expect(alert).toHaveTextContent("允许值：[0,null,false]");
-  expect(alert).toHaveTextContent("格式示例（仅示意，请按实际业务填写）：false");
-  expect(alert).not.toHaveTextContent("校验规则：");
+  await screen.findByRole("alert");
+  await user.click(screen.getByText("诊断详情（可提供给编码代理）"));
+  const details = screen.getByText("诊断详情（可提供给编码代理）").closest("details");
+  expect(details).toHaveTextContent("模块：电源 · power · modules[0]（第 1 个模块）");
+  expect(details).toHaveTextContent("期望值：0");
+  expect(details).toHaveTextContent("文件值：null");
+  expect(details).toHaveTextContent("允许值：[0,null,false]");
+  expect(details).toHaveTextContent("格式示例（仅示意，请按实际业务填写）：false");
+  expect(details).not.toHaveTextContent("校验规则：");
   await user.click(screen.getByRole("button", { name: "复制诊断信息" }));
   const report = String(writeText.mock.calls[0][0]);
   expect(JSON.parse(report).issues[0]).toMatchObject({ expected: 0, received: null, example: false, allowedValues: [0, null, false],
@@ -248,9 +291,10 @@ it.each(["unavailable", "rejected"])("offers selected diagnostic text when clipb
   try {
     render(<ModuleStructureImport apiClient={{ post: vi.fn().mockRejectedValue(readonlyFailure()) } as unknown as ApiClient} organizationId="org-a" canImport />);
     await user.click(screen.getByRole("button", { name: "导入结构" }));
-    await user.upload(screen.getByLabelText("JSON 文件"), new File(["{}"], "edit.json", { type: "application/json" }));
+    await user.upload(screen.getByTestId("file-drop-zone-input"), new File(["{}"], "edit.json", { type: "application/json" }));
     await user.click(screen.getByRole("button", { name: "预览" }));
-    await user.click(await screen.findByRole("button", { name: "复制诊断信息" }));
+    await user.click(await screen.findByText("诊断详情（可提供给编码代理）"));
+    await user.click(screen.getByRole("button", { name: "复制诊断信息" }));
     expect(await screen.findByRole("status")).toHaveTextContent("自动复制不可用");
     const text = screen.getByRole("textbox", { name: "导入诊断信息" }) as HTMLTextAreaElement;
     expect(text).toBeVisible();
@@ -271,20 +315,24 @@ it("retains the precise apply conflict and clears old diagnostics when changing 
   const user = userEvent.setup();
   render(<ModuleStructureImport apiClient={{ post } as unknown as ApiClient} organizationId="org-a" canImport />);
   await user.click(screen.getByRole("button", { name: "导入结构" }));
-  await user.upload(screen.getByLabelText("JSON 文件"), new File(["{}"], "edit.json", { type: "application/json" }));
+  await user.upload(screen.getByTestId("file-drop-zone-input"), new File(["{}"], "edit.json", { type: "application/json" }));
   await user.click(screen.getByRole("button", { name: "预览" }));
   await user.type(await screen.findByLabelText("变更原因"), "reviewed");
   await user.click(screen.getByRole("button", { name: "确认提交" }));
-  expect(await screen.findByRole("alert")).toHaveTextContent("Placement destination is unavailable.");
-  expect(screen.getByRole("alert")).toHaveTextContent("subjects.0.placement");
-  expect(screen.getByRole("alert")).toHaveTextContent("request-conflict");
+  expect(await screen.findByRole("alert")).toHaveTextContent("数据已被其他人修改，请刷新后基于最新状态重试。");
+  expect(screen.getByText("Placement destination is unavailable.", { selector: "code" })).not.toBeVisible();
+  expect(screen.getByText("request-conflict", { exact: true })).not.toBeVisible();
+  expect(screen.getByRole("button", { name: "复制诊断信息" })).not.toBeVisible();
+  await user.click(screen.getByText("诊断详情（可提供给编码代理）"));
+  expect(screen.getByText("Placement destination is unavailable.", { selector: "code" })).toBeVisible();
+  expect(screen.getByText("subjects.0.placement", { exact: true })).toBeVisible();
+  expect(screen.getByText("request-conflict", { exact: true })).toBeVisible();
   expect(screen.getByRole("button", { name: "确认提交" })).toBeDisabled();
-  await user.click(screen.getByLabelText("导入模式"));
-  await user.click(screen.getByRole("option", { name: "复制到当前组织" }));
+  await user.click(screen.getByRole("radio", { name: "复制到当前组织" }));
   expect(screen.queryByLabelText("导入错误诊断")).not.toBeInTheDocument();
   await user.click(screen.getByRole("button", { name: "预览" }));
   await screen.findByRole("alert");
-  await user.upload(screen.getByLabelText("JSON 文件"), new File(["{}"], "fixed.json", { type: "application/json" }));
+  await user.upload(screen.getByTestId("file-drop-zone-input"), new File(["{}"], "fixed.json", { type: "application/json" }));
   expect(screen.queryByLabelText("导入错误诊断")).not.toBeInTheDocument();
 });
 
@@ -296,18 +344,21 @@ it("includes JSON parser details and legacy schema issues in diagnostics", async
   }, "request-schema", 400));
   render(<ModuleStructureImport apiClient={{ post } as unknown as ApiClient} organizationId="org-a" canImport />);
   await user.click(screen.getByRole("button", { name: "导入结构" }));
-  await user.upload(screen.getByLabelText("JSON 文件"), new File(['{"modules":}'], "invalid.json", { type: "application/json" }));
+  await user.upload(screen.getByTestId("file-drop-zone-input"), new File(['{"modules":}'], "invalid.json", { type: "application/json" }));
   expect(await screen.findByRole("alert")).toHaveTextContent("JSON 格式无效");
-  expect(screen.getByRole("alert")).toHaveTextContent(/JSON|Unexpected|position/i);
+  await user.click(screen.getByText("诊断详情（可提供给编码代理）"));
+  expect(screen.getByText("诊断详情（可提供给编码代理）").closest("details")).toHaveTextContent(/JSON|Unexpected|position/i);
   expect(screen.getByRole("button", { name: "预览" })).toBeDisabled();
   await user.click(screen.getByRole("button", { name: "复制诊断信息" }));
   await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
   expect(JSON.parse(String(writeText.mock.calls[0][0]))).toMatchObject({ code: "INVALID_JSON", phase: "read", fileName: "invalid.json" });
   expect(JSON.parse(String(writeText.mock.calls[0][0])).message).toMatch(/JSON|Unexpected|position/i);
-  await user.upload(screen.getByLabelText("JSON 文件"), new File(["{}"], "schema.json", { type: "application/json" }));
+  await user.upload(screen.getByTestId("file-drop-zone-input"), new File(["{}"], "schema.json", { type: "application/json" }));
   await user.click(screen.getByRole("button", { name: "预览" }));
-  expect(await screen.findByRole("alert")).toHaveTextContent("document.modules.0.sortOrder");
-  expect(screen.getByRole("alert")).toHaveTextContent("Expected number, received string");
+  await screen.findByRole("alert");
+  await user.click(screen.getByText("诊断详情（可提供给编码代理）"));
+  expect(screen.getByText("document.modules.0.sortOrder")).toBeVisible();
+  expect(screen.getByText("Expected number, received string")).toBeVisible();
 });
 
 it("bounds imported metadata and error values while preserving the truncation warning", async () => {
@@ -318,9 +369,11 @@ it("bounds imported metadata and error values while preserving the truncation wa
   }, "request-bounded", 400));
   render(<ModuleStructureImport apiClient={{ post } as unknown as ApiClient} organizationId="org-a" canImport />);
   await user.click(screen.getByRole("button", { name: "导入结构" }));
-  await user.upload(screen.getByLabelText("JSON 文件"), new File([JSON.stringify({ source: { organizationId: "org-a", exportId: "e".repeat(5000) } })], "edited.json", { type: "application/json" }));
+  await user.upload(screen.getByTestId("file-drop-zone-input"), new File([JSON.stringify({ source: { organizationId: "org-a", exportId: "e".repeat(5000) } })], "edited.json", { type: "application/json" }));
   await user.click(screen.getByRole("button", { name: "预览" }));
-  expect(await screen.findByRole("alert")).toHaveTextContent("仅显示部分值");
+  await screen.findByRole("alert");
+  await user.click(screen.getByText("诊断详情（可提供给编码代理）"));
+  expect(screen.getByText("诊断详情（可提供给编码代理）").closest("details")).toHaveTextContent("仅显示部分值");
   await user.click(screen.getByRole("button", { name: "复制诊断信息" }));
   await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
   const report = JSON.parse(String(writeText.mock.calls[0][0]));

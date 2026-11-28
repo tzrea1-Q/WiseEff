@@ -35,6 +35,14 @@ function renderWizard(
 }
 
 describe("ParameterImportWizard", () => {
+  it("uses the import name as the title and keeps the step as secondary text", () => {
+    renderWizard();
+    const dialog = within(screen.getByRole("dialog", { name: "项目值批量导入" }));
+    expect(dialog.getByRole("heading", { level: 2, name: "项目值批量导入" })).toBeVisible();
+    expect(dialog.getByText("步骤 1 / 5")).toBeVisible();
+    expect(dialog.getByRole("navigation", { name: "导入步骤" })).toBeVisible();
+  });
+
   it("disables source changes and repeated Next while server parsing is pending", async () => {
     let finishParse!: (value: { format: "dts-full"; rows: [] }) => void;
     const parseDtsImport = vi.fn().mockReturnValue(new Promise((resolve) => { finishParse = resolve; }));
